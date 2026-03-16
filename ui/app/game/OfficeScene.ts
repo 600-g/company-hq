@@ -24,11 +24,11 @@ interface TeamConfig {
 
 const ALL_FLOORS: Record<number, TeamConfig[]> = {
   1: [
-    { id: "trading-bot", name: "매매봇", emoji: "🤖", chars: [0, 3, 4, 5], gridX: 1, gridY: 3, gridW: 4, gridH: 4 },
-    { id: "date-map", name: "데이트지도", emoji: "🗺️", chars: [1, 5, 3, 0], gridX: 6, gridY: 3, gridW: 4, gridH: 4 },
-    { id: "claude-biseo", name: "클로드비서", emoji: "🤵", chars: [2, 4, 5, 1], gridX: 11, gridY: 3, gridW: 4, gridH: 4 },
-    { id: "ai900", name: "AI900", emoji: "📚", chars: [3, 0, 1, 2], gridX: 16, gridY: 3, gridW: 4, gridH: 4 },
-    { id: "cl600g", name: "CL600G", emoji: "⚡", chars: [4, 2, 0, 3], gridX: 3, gridY: 9, gridW: 4, gridH: 4 },
+    { id: "trading-bot", name: "매매봇", emoji: "🤖", chars: [0, 3, 4, 5], gridX: 2, gridY: 3, gridW: 3, gridH: 3 },
+    { id: "date-map", name: "데이트지도", emoji: "🗺️", chars: [1, 5, 3, 0], gridX: 6, gridY: 3, gridW: 3, gridH: 3 },
+    { id: "claude-biseo", name: "클로드비서", emoji: "🤵", chars: [2, 4, 5, 1], gridX: 10, gridY: 3, gridW: 3, gridH: 3 },
+    { id: "ai900", name: "AI900", emoji: "📚", chars: [3, 0, 1, 2], gridX: 14, gridY: 3, gridW: 3, gridH: 3 },
+    { id: "cl600g", name: "CL600G", emoji: "⚡", chars: [4, 2, 0, 3], gridX: 18, gridY: 3, gridW: 3, gridH: 3 },
   ],
   2: [],
   3: [],
@@ -342,13 +342,19 @@ export default class OfficeScene extends Phaser.Scene {
     g.fillStyle(0xe0e0e8, 1);
     g.fillRect(doorX, corY, 40, 5);
 
-    // 소화기 (복도 안 좌측)
-    g.fillStyle(0xdd3333, 1);
-    g.fillRect(20, corY + 20, 6, 14);
-    g.fillStyle(0xaa2222, 1);
-    g.fillRect(21, corY + 21, 4, 12);
+    // 소화기 (복도 안 좌측, 고퀄)
+    g.fillStyle(0xcc2222, 1);
+    g.fillRect(16, corY + 18, 10, 20);
+    g.fillStyle(0xee3333, 1);
+    g.fillRect(18, corY + 20, 6, 16);
+    g.fillStyle(0xff5555, 0.4);
+    g.fillRect(18, corY + 20, 2, 14);
+    g.fillStyle(0x666666, 1);
+    g.fillRect(18, corY + 14, 6, 5);
     g.fillStyle(0x888888, 1);
-    g.fillRect(22, corY + 18, 2, 3);
+    g.fillRect(19, corY + 15, 4, 3);
+    g.fillStyle(0x444444, 1);
+    g.fillRect(24, corY + 16, 4, 2);
 
     // 비상구 표시 (복도 안 중앙 위)
     g.fillStyle(0x22aa44, 0.8);
@@ -387,8 +393,18 @@ export default class OfficeScene extends Phaser.Scene {
     // ── 서버실 벽 옆 — 벽장 (벽에서 충분히 떨어지게) ──
     this.envGroup.add(this.add.image(srvX - 40, wallY + 50, "wall_cabinet").setScale(1.2));
 
-    // ── 정수기 (좌측 하단) ──
-    this.envGroup.add(this.add.image(30, corY - 30, "water_cooler").setScale(SCALE));
+    // ── 정수기 (좌측 하단, 고퀄 그래픽스) ──
+    const wc = this.add.graphics();
+    const wcX = 24, wcY = corY - 42;
+    wc.fillStyle(0x5599cc, 1); wc.fillRect(wcX, wcY, 14, 12); // 물통
+    wc.fillStyle(0x77bbee, 1); wc.fillRect(wcX + 2, wcY + 2, 10, 8);
+    wc.fillStyle(0xaaddff, 0.4); wc.fillRect(wcX + 3, wcY + 3, 4, 6); // 반사
+    wc.fillStyle(0xcccccc, 1); wc.fillRect(wcX - 1, wcY + 12, 16, 24); // 본체
+    wc.fillStyle(0xdddddd, 1); wc.fillRect(wcX + 1, wcY + 14, 12, 20);
+    wc.fillStyle(0x4444ff, 1); wc.fillRect(wcX + 2, wcY + 18, 4, 3); // 차가운물
+    wc.fillStyle(0xff4444, 1); wc.fillRect(wcX + 8, wcY + 18, 4, 3); // 뜨거운물
+    wc.fillStyle(0xaaaaaa, 1); wc.fillRect(wcX - 2, wcY + 36, 18, 4); // 받침
+    this.envGroup.add(wc);
 
     // ── 창가 선인장 ──
     this.envGroup.add(this.add.image(8 * TILE, wallY + 6, "cactus").setScale(SCALE));
@@ -529,9 +545,9 @@ export default class OfficeScene extends Phaser.Scene {
     // 모든 에셋 동일 스케일, PC는 cropY로 모니터 부분만
     const members: MemberSprite[] = [];
     // 2x2 등맞대기 — 그래픽스 모니터
-    const S = 1.2;
-    const gapX = 36;
-    const rowGap = 20; // 4칸에 맞게
+    const S = 1.1;
+    const gapX = 30;
+    const rowGap = 16;
 
     // 모니터 그리기 헬퍼
     const drawMonFront = (g: Phaser.GameObjects.Graphics) => {
@@ -578,16 +594,16 @@ export default class OfficeScene extends Phaser.Scene {
         container.add(this.add.image(dx, baseY - 4, "desk_front").setScale(S * 0.55, S * 0.65).setDepth(2));
         const mon = this.add.graphics().setDepth(3);
         drawMonBack(mon);
-        mon.setPosition(dx, baseY + 4);
+        mon.setPosition(dx, baseY - 10);
         container.add(mon);
         members.push({ char, charIdx, baseX: dx, baseY: baseY - 16 });
       }
     });
 
-    // 화이트보드 명패
+    // 화이트보드 명패 (팀 바로 아래)
     const nameW = 80;
     const nameH = 20;
-    const nameY = ph / 2 - 12;
+    const nameY = ph / 2 - 2;
     const nameBg = this.add.graphics();
     nameBg.fillStyle(0xffffff, 0.95);
     nameBg.fillRoundedRect(-nameW / 2, nameY - nameH / 2, nameW, nameH, 3);
