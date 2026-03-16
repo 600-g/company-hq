@@ -29,7 +29,8 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline }: Pr
   }, []);
 
   useEffect(() => {
-    const ws = new WebSocket(`ws://localhost:8000/ws/chat/${team.id}`);
+    const host = typeof window !== "undefined" ? window.location.hostname : "localhost";
+    const ws = new WebSocket(`ws://${host}:8000/ws/chat/${team.id}`);
     wsRef.current = ws;
     ws.onopen = () => setConnected(true);
     ws.onclose = () => { setConnected(false); setStreaming(false); onWorkingChange(false); };
