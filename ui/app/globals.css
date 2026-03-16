@@ -1,0 +1,45 @@
+@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css');
+@import "tailwindcss";
+
+:root {
+  --background: #1a1a2e;
+  --font-main: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: #e5e7eb;
+}
+
+body {
+  background: var(--background);
+  color: #e5e7eb;
+  font-family: var(--font-main);
+  overflow: hidden;
+}
+
+canvas {
+  image-rendering: pixelated;
+}
+
+/* 스크롤바 */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #3a3a5a; border-radius: 2px; }
+
+/* 모바일 대응 */
+@media (max-width: 768px) {
+  .desktop-only { display: none !important; }
+  .mobile-sidebar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 40;
+    max-height: 50vh;
+    border-top: 1px solid #2a2a5a;
+  }
+}
+@media (min-width: 769px) {
+  .mobile-only { display: none !important; }
+}

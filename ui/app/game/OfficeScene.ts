@@ -1,0 +1,727 @@
+/**
+ * 타이쿤 사무실 씬
+ * - 층 시스템 (1F~3F 전환)
+ * - 상단 통창 + 날씨
+ * - 2x2 팀 배치, 그리드 겹침 방지
+ * - 콤팩트 캐릭터
+ */
+
+import * as Phaser from "phaser";
+import { preloadAssets, registerCharAnims, createCustomFurniture } from "./sprites";
+
+const TILE = 32;
+const COLS = 26;
+const ROWS = 18;
+const WORLD_W = COLS * TILE;
+const WORLD_H = ROWS * TILE;
+const SCALE = 1.5;
+const WALL_H = 2; // 벽(통창) 높이 (칸)
+
+interface TeamConfig {
+  id: string; name: string; emoji: string;
+  chars: number[]; gridX: number; gridY: number; gridW: number; gridH: number;
+}
+
+const ALL_FLOORS: Record<number, TeamConfig[]> = {
+  1: [
+    { id: "trading-bot", name: "매매봇", emoji: "🤖", chars: [0, 3, 4, 5], gridX: 1, gridY: 3, gridW: 4, gridH: 4 },
+    { id: "date-map", name: "데이트지도", emoji: "🗺️", chars: [1, 5, 3, 0], gridX: 6, gridY: 3, gridW: 4, gridH: 4 },
+    { id: "claude-biseo", name: "클로드비서", emoji: "🤵", chars: [2, 4, 5, 1], gridX: 11, gridY: 3, gridW: 4, gridH: 4 },
+    { id: "ai900", name: "AI900", emoji: "📚", chars: [3, 0, 1, 2], gridX: 16, gridY: 3, gridW: 4, gridH: 4 },
+    { id: "cl600g", name: "CL600G", emoji: "⚡", chars: [4, 2, 0, 3], gridX: 3, gridY: 9, gridW: 4, gridH: 4 },
+  ],
+  2: [],
+  3: [],
+};
+
+interface MemberSprite { char: Phaser.GameObjects.Sprite; charIdx: number; baseX: number; baseY: number; }
+interface TeamGroup {
+  container: Phaser.GameObjects.Container; members: MemberSprite[];
+  label: Phaser.GameObjects.Text; highlight: Phaser.GameObjects.Rectangle;
+  config: TeamConfig; gridX: number; gridY: number; prevGridX: number; prevGridY: number;
+}
+
+export default class OfficeScene extends Phaser.Scene {
+  private teamGroups: Map<string, TeamGroup> = new Map();
+  private workingSet: Set<string> = new Set();
+  private onTeamClick?: (id: string) => void;
+  private dragTarget: TeamGroup | null = null;
+  private dragOffX = 0; private dragOffY = 0;
+  private dragStartX = 0; private dragStartY = 0;
+  private overlapRect: Phaser.GameObjects.Rectangle | null = null;
+  private grid: boolean[][] = [];
+  private currentFloor = 1;
+  private floorLabel!: Phaser.GameObjects.Text;
+  private envGroup!: Phaser.GameObjects.Group;
+
+  constructor() { super({ key: "OfficeScene" }); }
+
+  init(data: { onTeamClick?: (id: string) => void }) {
+    this.onTeamClick = data.onTeamClick;
+  }
+
+  preload() { preloadAssets(this); }
+
+  create() {
+    registerCharAnims(this);
+    createCustomFurniture(this);
+    this.envGroup = this.add.group();
+
+    // 스프라이트 텍스처 픽셀 필터 (텍스트는 선명)
+    const nearest = Phaser.Textures.LINEAR; // fallback
+    const keys = ["desk_front","desk_side","pc_on1","pc_on2","pc_on3","pc_off","pc_back",
+      "chair_front","chair_back","plant","large_plant","bookshelf","cactus","bin","pot",
+      "floor_tile","wall_tile","whiteboard","coffee_table"];
+    for (let i = 0; i <= 5; i++) keys.push(`char_${i}`);
+    keys.forEach(k => {
+      const tex = this.textures.get(k);
+      if (tex && tex.key !== "__MISSING") {
+        tex.setFilter(0); // 0 = NEAREST
+      }
+    });
+
+    this.buildFloor(this.currentFloor);
+
+    // 겹침 표시
+    this.overlapRect = this.add.rectangle(0, 0, 0, 0, 0xff0000, 0.3)
+      .setStrokeStyle(2, 0xff0000, 0.8).setVisible(false).setDepth(100);
+
+    // 엘리베이터 (우하단)
+    this.drawElevator();
+
+    // 카메라
+    this.cameras.main.setBounds(0, 0, WORLD_W, WORLD_H);
+    this.cameras.main.setBackgroundColor(0x1a1a2e);
+
+    // 입력
+    this.input.on("pointerdown", this.onDown, this);
+    this.input.on("pointermove", this.onMove, this);
+    this.input.on("pointerup", this.onUp, this);
+
+    // 랜덤 움직임
+    this.time.addEvent({ delay: 3500, loop: true, callback: () => this.randomMove() });
+  }
+
+  // ═══════════════════════════════
+  // 층 구축
+  // ═══════════════════════════════
+
+  private buildFloor(floor: number) {
+    // 기존 제거
+    this.envGroup.clear(true, true);
+    this.teamGroups.forEach(tg => tg.container.destroy());
+    this.teamGroups.clear();
+
+    // 그리드 초기화
+    this.grid = Array.from({ length: ROWS }, () => Array(COLS).fill(false));
+    for (let x = 0; x < COLS; x++) {
+      for (let y = 0; y < WALL_H; y++) this.grid[y][x] = true;
+    }
+
+    // ── 사무실 바닥 (밝은 흰색 대리석) ──
+    const floorG = this.add.graphics();
+    const fy = WALL_H * TILE;
+    const fh = (ROWS - WALL_H) * TILE;
+    const tileSize = 64;
+    for (let y = fy; y < fy + fh; y += tileSize) {
+      for (let x = 0; x < WORLD_W; x += tileSize) {
+        const isLight = ((x / tileSize) + ((y - fy) / tileSize)) % 2 === 0;
+        floorG.fillStyle(isLight ? 0xe8e8ee : 0xdcdce4, 1);
+        floorG.fillRect(x, y, tileSize, tileSize);
+        // 대리석 결
+        floorG.fillStyle(isLight ? 0xf0f0f4 : 0xe2e2ea, 0.25);
+        for (let s = 3; s < tileSize; s += 10) {
+          floorG.fillRect(x + s, y, 1, tileSize);
+        }
+        for (let s = 5; s < tileSize; s += 14) {
+          floorG.fillRect(x, y + s, tileSize, 1);
+        }
+        // 광택 하이라이트
+        floorG.fillStyle(0xffffff, 0.08);
+        floorG.fillRect(x, y, tileSize, 2);
+        floorG.fillRect(x, y, 2, tileSize);
+        // 줄눈
+        floorG.fillStyle(0xc0c0c8, 0.4);
+        floorG.fillRect(x + tileSize - 1, y, 1, tileSize);
+        floorG.fillRect(x, y + tileSize - 1, tileSize, 1);
+      }
+    }
+    this.envGroup.add(floorG);
+
+    // ── 통창 ──
+    this.drawPanoramaWindow();
+
+    // ── 서버실 ──
+    this.drawServerRoom();
+
+    // ── 하단 복도 ──
+    this.drawCorridor();
+
+    // ── 사무실 디테일 장식 ──
+    this.drawOfficeDetails();
+
+    // 팀 배치
+    const teams = ALL_FLOORS[floor] || [];
+    teams.forEach(t => {
+      this.createTeamGroup(t);
+      this.occupyGrid(t.gridX, t.gridY, t.gridW, t.gridH, true);
+    });
+  }
+
+  private drawPanoramaWindow() {
+    const g = this.add.graphics();
+    const wh = WALL_H * TILE;
+
+    // 벽 배경
+    g.fillStyle(0x1e2d4a, 1);
+    g.fillRect(0, 0, WORLD_W, wh);
+
+    // 유리 (하늘)
+    const isNight = new Date().getHours() >= 18 || new Date().getHours() < 6;
+    const skyTop = isNight ? 0x0a1628 : 0x4a8ac0;
+    const skyBot = isNight ? 0x1a2a4a : 0x88c8f0;
+
+    g.fillGradientStyle(skyTop, skyTop, skyBot, skyBot);
+    g.fillRect(4, 4, WORLD_W - 8, wh - 8);
+
+    // 창틀 세로선
+    for (let x = 0; x < WORLD_W; x += 120) {
+      g.fillStyle(0x4a5a70, 1);
+      g.fillRect(x, 0, 3, wh);
+    }
+    // 창틀 가로선
+    g.fillStyle(0x4a5a70, 1);
+    g.fillRect(0, wh - 2, WORLD_W, 2);
+    g.fillRect(0, 0, WORLD_W, 2);
+
+    if (isNight) {
+      // 별
+      for (let i = 0; i < 30; i++) {
+        g.fillStyle(0xffffcc, 0.3 + Math.random() * 0.5);
+        g.fillRect(Math.random() * WORLD_W, 6 + Math.random() * (wh / 2), 2, 2);
+      }
+      // 달
+      g.fillStyle(0xffffdd, 0.8);
+      g.fillCircle(WORLD_W - 80, 20, 10);
+    } else {
+      // 구름
+      [100, 350, 600].forEach(cx => {
+        g.fillStyle(0xffffff, 0.3);
+        g.fillRoundedRect(cx, 10, 40, 12, 6);
+        g.fillRoundedRect(cx + 10, 6, 30, 10, 5);
+      });
+    }
+
+    // 빌딩 실루엣
+    const bColor = isNight ? 0x0f1a2a : 0x6a8aaa;
+    for (let bx = 0; bx < WORLD_W; bx += Phaser.Math.Between(15, 25)) {
+      const bh = Phaser.Math.Between(10, wh - 10);
+      g.fillStyle(bColor, isNight ? 1 : 0.3);
+      g.fillRect(bx, wh - bh, Phaser.Math.Between(10, 20), bh);
+      // 창불
+      if (isNight && Math.random() > 0.5) {
+        g.fillStyle(0xf5c842, 0.5);
+        g.fillRect(bx + 3, wh - bh + 5, 2, 2);
+      }
+    }
+
+    this.envGroup.add(g);
+  }
+
+  private drawServerRoom() {
+    const g = this.add.graphics();
+    // 서버실 영역: 우측 5칸 x 전체 높이(벽 제외)
+    const srX = (COLS - 5) * TILE;
+    const srY = WALL_H * TILE;
+    const srW = 5 * TILE;
+    const srH = Math.floor((ROWS - WALL_H - 3) / 2) * TILE; // 반토막
+
+    // 서버실 바닥 (어두운 톤)
+    g.fillStyle(0x2a2a3a, 1);
+    g.fillRect(srX, srY, srW, srH);
+    // 바닥 패턴 (서버실 느낌 — 격자)
+    g.lineStyle(1, 0x333345, 0.4);
+    for (let y = srY; y < srY + srH; y += 16) g.lineBetween(srX, y, srX + srW, y);
+    for (let x = srX; x < srX + srW; x += 16) g.lineBetween(x, srY, x, srY + srH);
+
+    // 좌측 벽 (사무실과 구분)
+    g.fillStyle(0x4a4a5a, 1);
+    g.fillRect(srX - 3, srY, 6, srH);
+    // 벽 하이라이트
+    g.fillStyle(0x5a5a6a, 0.5);
+    g.fillRect(srX - 2, srY, 1, srH);
+
+    // 출입구 (벽 중간에 빈 공간)
+    const doorY = srY + srH / 2 - 16;
+    g.fillStyle(0x2a2a3a, 1);
+    g.fillRect(srX - 3, doorY, 6, 32);
+    // 문 프레임
+    g.lineStyle(1, 0x5a5a6a, 0.6);
+    g.strokeRect(srX - 3, doorY, 6, 32);
+
+    // 서버 랙들 (세로 직사각형)
+    for (let ry = 0; ry < 3; ry++) {
+      const rackX = srX + 16;
+      const rackY = srY + 20 + ry * 50;
+      // 랙 본체
+      g.fillStyle(0x1a1a2a, 1);
+      g.fillRect(rackX, rackY, 24, 40);
+      g.fillStyle(0x222235, 1);
+      g.fillRect(rackX + 2, rackY + 2, 20, 36);
+      // 서버 유닛 (가로 줄)
+      for (let u = 0; u < 5; u++) {
+        g.fillStyle(0x2a2a40, 1);
+        g.fillRect(rackX + 3, rackY + 4 + u * 7, 18, 5);
+        // LED
+        g.fillStyle(u % 2 === 0 ? 0x40d080 : 0x40a0d0, 0.8);
+        g.fillRect(rackX + 4, rackY + 5 + u * 7, 2, 2);
+        g.fillStyle(0x40d080, 0.5);
+        g.fillRect(rackX + 8, rackY + 5 + u * 7, 2, 2);
+      }
+    }
+
+    // 우측에도 랙 (1개만)
+    for (let ry = 0; ry < 1; ry++) {
+      const rackX = srX + srW - 42;
+      const rackY = srY + 30 + ry * 60;
+      g.fillStyle(0x1a1a2a, 1);
+      g.fillRect(rackX, rackY, 24, 40);
+      g.fillStyle(0x222235, 1);
+      g.fillRect(rackX + 2, rackY + 2, 20, 36);
+      for (let u = 0; u < 5; u++) {
+        g.fillStyle(0x2a2a40, 1);
+        g.fillRect(rackX + 3, rackY + 4 + u * 7, 18, 5);
+        g.fillStyle(0x40d080, 0.6);
+        g.fillRect(rackX + 4, rackY + 5 + u * 7, 2, 2);
+      }
+    }
+
+    // "SERVER ROOM" 라벨
+    this.envGroup.add(g);
+    const srLabel = this.add.text(srX + srW / 2, srY + 10, "🖥 서버실", {
+      fontSize: "10px", fontFamily: "'Pretendard Variable',Pretendard,sans-serif",
+      color: "#60d090", resolution: 3,
+    }).setOrigin(0.5);
+    this.envGroup.add(srLabel);
+
+    // 서버실 영역 점유 (반토막)
+    const srRows = Math.floor((ROWS - WALL_H - 3) / 2);
+    for (let y = WALL_H; y < WALL_H + srRows; y++)
+      for (let x = COLS - 5; x < COLS; x++)
+        if (y >= 0 && x >= 0) this.grid[y][x] = true;
+  }
+
+  private drawCorridor() {
+    const g = this.add.graphics();
+    const corY = (ROWS - 3) * TILE;
+    const corH = 3 * TILE;
+
+    // 복도 바닥 (밝은 회색 타일)
+    for (let x = 0; x < WORLD_W; x += 48) {
+      const alt = (x / 48) % 2 === 0;
+      g.fillStyle(alt ? 0xd0d0d8 : 0xc8c8d0, 1);
+      g.fillRect(x, corY, 48, corH);
+      // 줄눈
+      g.fillStyle(0xb8b8c0, 0.3);
+      g.fillRect(x + 47, corY, 1, corH);
+    }
+    g.fillStyle(0xb8b8c0, 0.3);
+    g.fillRect(0, corY + corH / 2, WORLD_W, 1);
+
+    // 복도 상단 벽 (두꺼운 벽)
+    g.fillStyle(0x7a7a8a, 1);
+    g.fillRect(0, corY, WORLD_W, 5);
+    g.fillStyle(0x9a9aaa, 0.6);
+    g.fillRect(0, corY + 1, WORLD_W, 1);
+    // 벽 하단 그림자
+    g.fillStyle(0x000000, 0.05);
+    g.fillRect(0, corY + 5, WORLD_W, 3);
+
+    // 복도 출입구 (사무실 → 복도, 가운데)
+    const doorX = WORLD_W / 2 - 20;
+    g.fillStyle(0xe0e0e8, 1);
+    g.fillRect(doorX, corY, 40, 5);
+
+    // 소화기 (좌측 벽)
+    g.fillStyle(0xdd3333, 1);
+    g.fillRect(20, corY + 10, 6, 14);
+    g.fillStyle(0xaa2222, 1);
+    g.fillRect(21, corY + 11, 4, 12);
+    g.fillStyle(0x888888, 1);
+    g.fillRect(22, corY + 8, 2, 3);
+
+    // 비상구 표시 (우측 벽 위)
+    g.fillStyle(0x22aa44, 0.8);
+    g.fillRoundedRect(WORLD_W / 2 - 50, corY + 8, 24, 10, 2);
+
+    // 복도 조명 반사 (바닥에 원형 빛)
+    [120, 320, 520].forEach(lx => {
+      g.fillStyle(0xffffff, 0.04);
+      g.fillCircle(lx, corY + corH / 2, 20);
+    });
+
+    this.envGroup.add(g);
+
+    // 비상구 텍스트
+    const exitLabel = this.add.text(WORLD_W / 2 - 38, corY + 10, "EXIT", {
+      fontSize: "6px", fontFamily: "'Pretendard Variable',sans-serif",
+      color: "#ffffff", resolution: 3,
+    }).setOrigin(0.5);
+    this.envGroup.add(exitLabel);
+
+    // 복도 점유
+    for (let y = ROWS - 3; y < ROWS; y++)
+      for (let x = 0; x < COLS; x++)
+        this.grid[y][x] = true;
+  }
+
+  private drawOfficeDetails() {
+    const wallY = WALL_H * TILE + 8; // 벽 아래 여유
+    const corY = (ROWS - 3) * TILE;
+    const srvX = (COLS - 5) * TILE;
+
+    // ── 좌측 벽면 — 벽장 2개 ──
+    this.envGroup.add(this.add.image(24, wallY + 30, "wall_cabinet").setScale(1.3));
+    this.envGroup.add(this.add.image(24, wallY + 120, "wall_cabinet").setScale(1.3));
+
+    // ── 서버실 벽 옆 — 벽장 ──
+    this.envGroup.add(this.add.image(srvX - 24, wallY + 30, "wall_cabinet").setScale(1.3));
+    this.envGroup.add(this.add.image(srvX - 24, wallY + 120, "wall_cabinet").setScale(1.3));
+
+    // ── 정수기 (좌측 벽 하단) ──
+    this.envGroup.add(this.add.image(24, corY - 40, "water_cooler").setScale(SCALE));
+
+    // ── 소파 (서버실 아래 빈 공간) ──
+    const srHalf = Math.floor((ROWS - WALL_H - 3) / 2);
+    const sofaY = (WALL_H + srHalf) * TILE + 40;
+    this.envGroup.add(this.add.image(srvX + 2.5 * TILE, sofaY, "sofa").setScale(1.2));
+
+    // ── 화분 (모서리 4곳만) ──
+    this.envGroup.add(this.add.image(TILE, corY - 16, "large_plant").setScale(SCALE).setOrigin(0.5, 1));
+    this.envGroup.add(this.add.image(srvX - 20, corY - 16, "large_plant").setScale(SCALE).setOrigin(0.5, 1));
+
+    // ── 창가 선인장 ──
+    this.envGroup.add(this.add.image(7 * TILE, wallY - 2, "cactus").setScale(SCALE));
+    this.envGroup.add(this.add.image(14 * TILE, wallY - 2, "cactus").setScale(SCALE));
+
+    // ── 쓰레기통 ──
+    this.envGroup.add(this.add.image(2 * TILE, corY - 14, "bin").setScale(SCALE));
+
+    // ── 러그 (팀 사이 바닥) ──
+    this.envGroup.add(this.add.image(WORLD_W / 3, (WALL_H + 4) * TILE + 40, "rug"));
+
+    // ── 천장 조명 반사 ──
+    [4, 10, 16].forEach(col => {
+      [5, 11].forEach(row => {
+        this.envGroup.add(this.add.image(col * TILE, row * TILE, "light_glow").setScale(2));
+      });
+    });
+
+    // ── 벽 하단 걸레받이 (바닥과 벽 경계) ──
+    const baseG = this.add.graphics();
+    baseG.fillStyle(0xb0b0b8, 0.5);
+    baseG.fillRect(0, WALL_H * TILE, srvX, 3); // 사무실 영역만
+    this.envGroup.add(baseG);
+  }
+
+  changeFloor(floor: number) {
+    if (floor < 1 || floor > 3) return;
+    this.currentFloor = floor;
+    this.floorLabel?.setText(`${floor}F`);
+    this.buildFloor(floor);
+  }
+
+  // ═══════════════════════════════
+  // 엘리베이터
+  // ═══════════════════════════════
+
+  private drawElevator() {
+    const ex = WORLD_W - 50;
+    const ey = WORLD_H - 70;
+    const ew = 44;
+    const eh = 60;
+
+    const g = this.add.graphics().setDepth(150);
+    // 벽면
+    g.fillStyle(0x555565, 1);
+    g.fillRect(ex - ew / 2, ey - eh / 2, ew, eh);
+    // 문 (가운데 갈라짐)
+    g.fillStyle(0x888898, 1);
+    g.fillRect(ex - ew / 2 + 4, ey - eh / 2 + 4, ew / 2 - 5, eh - 8);
+    g.fillRect(ex + 1, ey - eh / 2 + 4, ew / 2 - 5, eh - 8);
+    // 문 사이 선
+    g.fillStyle(0x3a3a4a, 1);
+    g.fillRect(ex - 1, ey - eh / 2 + 4, 2, eh - 8);
+    // 상단 표시등
+    g.fillStyle(0x40d080, 0.8);
+    g.fillCircle(ex, ey - eh / 2 - 4, 3);
+    // 프레임
+    g.lineStyle(2, 0x444454, 1);
+    g.strokeRect(ex - ew / 2, ey - eh / 2, ew, eh);
+
+    // 층 표시
+    this.floorLabel = this.add.text(ex, ey - eh / 2 - 12, `${this.currentFloor}F`, {
+      fontSize: "11px", fontFamily: "'Pretendard Variable',Pretendard,-apple-system,sans-serif",
+      color: "#40d080", resolution: 4,
+    }).setOrigin(0.5).setDepth(151);
+
+    // ▲▼ 버튼 (문 옆)
+    const btnUp = this.add.text(ex + ew / 2 + 10, ey - 10, "▲", {
+      fontSize: "10px", color: "#aaa", backgroundColor: "#2a2a3a",
+      padding: { x: 4, y: 2 },
+    }).setOrigin(0.5).setDepth(151).setInteractive({ useHandCursor: true });
+
+    const btnDown = this.add.text(ex + ew / 2 + 10, ey + 10, "▼", {
+      fontSize: "10px", color: "#aaa", backgroundColor: "#2a2a3a",
+      padding: { x: 4, y: 2 },
+    }).setOrigin(0.5).setDepth(151).setInteractive({ useHandCursor: true });
+
+    btnUp.on("pointerdown", () => this.changeFloor(this.currentFloor + 1));
+    btnDown.on("pointerdown", () => this.changeFloor(this.currentFloor - 1));
+
+    btnUp.on("pointerover", () => btnUp.setColor("#40d080"));
+    btnUp.on("pointerout", () => btnUp.setColor("#aaa"));
+    btnDown.on("pointerover", () => btnDown.setColor("#40d080"));
+    btnDown.on("pointerout", () => btnDown.setColor("#aaa"));
+  }
+
+  // ═══════════════════════════════
+  // 그리드
+  // ═══════════════════════════════
+
+  private occupyGrid(gx: number, gy: number, gw: number, gh: number, occupy: boolean) {
+    for (let y = gy; y < gy + gh && y < ROWS; y++)
+      for (let x = gx; x < gx + gw && x < COLS; x++)
+        if (y >= 0 && x >= 0) this.grid[y][x] = occupy;
+  }
+
+  private canPlace(gx: number, gy: number, gw: number, gh: number, excludeId?: string): boolean {
+    for (let y = gy; y < gy + gh; y++)
+      for (let x = gx; x < gx + gw; x++) {
+        if (y < 0 || y >= ROWS || x < 0 || x >= COLS) return false;
+        if (this.grid[y][x]) {
+          if (excludeId) {
+            const tg = this.teamGroups.get(excludeId);
+            if (tg && x >= tg.gridX && x < tg.gridX + tg.config.gridW &&
+              y >= tg.gridY && y < tg.gridY + tg.config.gridH) continue;
+          }
+          return false;
+        }
+      }
+    return true;
+  }
+
+  // ═══════════════════════════════
+  // 팀 구역
+  // ═══════════════════════════════
+
+  private createTeamGroup(t: TeamConfig) {
+    const cx = t.gridX * TILE + (t.gridW * TILE) / 2;
+    const cy = t.gridY * TILE + (t.gridH * TILE) / 2;
+    const container = this.add.container(cx, cy);
+    container.setData("teamId", t.id);
+    const pw = t.gridW * TILE;
+    const ph = t.gridH * TILE;
+    container.setSize(pw, ph);
+
+    // 배경 (완전 투명 — 겹침 판정용으로만 존재)
+    container.add(this.add.rectangle(0, 0, pw, ph, 0x000000, 0));
+
+    // 하이라이트
+    const highlight = this.add.rectangle(0, 0, pw, ph, 0xf5c842, 0)
+      .setStrokeStyle(1, 0xf5c842, 0);
+    container.add(highlight);
+
+    // 2x2 등맞대기 배치
+    // 윗줄: PC → 데스크 → 캐릭(정면) | 아랫줄: 캐릭(뒷면) → 데스크 → PC뒷면
+    // Pixel Agents 에셋 비율 맞추기
+    // DESK=48x32, PC=16x32(세로 길음, 상단 절반만 보이게), CHAR=16x16
+    // 모든 에셋 동일 스케일, PC는 cropY로 모니터 부분만
+    const members: MemberSprite[] = [];
+    // 콤팩트 2x2 — 모니터는 Graphics로 직접 그려서 자연스럽게
+    const S = 1.2;
+    const gapX = 34;
+    const rowGap = 16;
+
+    t.chars.forEach((charIdx, i) => {
+      if (i >= 4) return;
+      const isTop = i < 2;
+      const col = i % 2;
+      const dx = (col === 0 ? -gapX / 2 : gapX / 2);
+
+      if (isTop) {
+        const deskY = -rowGap / 2 - 4;
+        // 책상
+        container.add(this.add.image(dx, deskY, "desk_front").setScale(S * 0.6, S * 0.75));
+        // 모니터 (Graphics로 직접 — 책상 위에 딱 붙게)
+        const mon = this.add.graphics();
+        mon.fillStyle(0x333333, 1); mon.fillRect(-9, -8, 18, 12); // 프레임
+        mon.fillStyle(0x1a2a40, 1); mon.fillRect(-7, -6, 14, 8);  // 화면
+        mon.fillStyle(0x50d070, 0.8); mon.fillRect(-5, -4, 6, 1);  // 코드
+        mon.fillStyle(0x60a0e0, 0.7); mon.fillRect(-5, -2, 9, 1);
+        mon.fillStyle(0x50d070, 0.6); mon.fillRect(-5, 0, 4, 1);
+        mon.fillStyle(0x444444, 1); mon.fillRect(-1, 4, 2, 2);     // 스탠드
+        mon.fillStyle(0x555555, 1); mon.fillRect(-4, 6, 8, 1);     // 받침
+        mon.setPosition(dx, deskY - 10);
+        container.add(mon);
+        // 캐릭
+        const char = this.add.sprite(dx, deskY + 14, `char_${charIdx}`, 0)
+          .setScale(S).play(`char_${charIdx}_idle`);
+        container.add(char);
+        members.push({ char, charIdx, baseX: dx, baseY: deskY + 14 });
+      } else {
+        const deskY = rowGap / 2 + 4;
+        // 캐릭 (뒷모습)
+        const char = this.add.sprite(dx, deskY - 14, `char_${charIdx}`, 3 * 7)
+          .setScale(S);
+        container.add(char);
+        // 책상
+        container.add(this.add.image(dx, deskY, "desk_front").setScale(S * 0.6, S * 0.75));
+        // 모니터 뒷면 (Graphics)
+        const mon = this.add.graphics();
+        mon.fillStyle(0x333333, 1); mon.fillRect(-9, -2, 18, 12);
+        mon.fillStyle(0x444444, 1); mon.fillRect(-7, 0, 14, 8);
+        mon.fillStyle(0x555555, 1); mon.fillRect(-1, 10, 2, 2);
+        mon.fillStyle(0x555555, 1); mon.fillRect(-4, 12, 8, 1);
+        mon.setPosition(dx, deskY + 8);
+        container.add(mon);
+        members.push({ char, charIdx, baseX: dx, baseY: deskY - 14 });
+      }
+    });
+
+    // 화이트보드 명패
+    const nameW = 80;
+    const nameH = 20;
+    const nameY = ph / 2 - 12;
+    const nameBg = this.add.graphics();
+    nameBg.fillStyle(0xffffff, 0.95);
+    nameBg.fillRoundedRect(-nameW / 2, nameY - nameH / 2, nameW, nameH, 3);
+    nameBg.lineStyle(1, 0xbbbbbb, 0.8);
+    nameBg.strokeRoundedRect(-nameW / 2, nameY - nameH / 2, nameW, nameH, 3);
+    nameBg.fillStyle(0x4a90d9, 1);
+    nameBg.fillRect(-nameW / 2, nameY - nameH / 2, nameW, 3);
+    container.add(nameBg);
+
+    const label = this.add.text(0, nameY + 1, `${t.emoji} ${t.name}`, {
+      fontSize: "13px", fontFamily: "'Pretendard Variable',Pretendard,-apple-system,sans-serif",
+      color: "#222222", resolution: 4,
+    }).setOrigin(0.5);
+    container.add(label);
+
+    // 인터랙션
+    const hit = this.add.zone(0, 0, pw, ph).setInteractive({ useHandCursor: true });
+    container.add(hit);
+    hit.on("pointerover", () => { highlight.setStrokeStyle(1, 0xf5c842, 0.4); highlight.setFillStyle(0xf5c842, 0.02); });
+    hit.on("pointerout", () => { highlight.setStrokeStyle(1, 0xf5c842, 0); highlight.setFillStyle(0xf5c842, 0); });
+
+    this.teamGroups.set(t.id, {
+      container, members, label, highlight, config: t,
+      gridX: t.gridX, gridY: t.gridY, prevGridX: t.gridX, prevGridY: t.gridY,
+    });
+  }
+
+  // ═══════════════════════════════
+  // 드래그
+  // ═══════════════════════════════
+
+  private onDown(ptr: Phaser.Input.Pointer) {
+    this.dragStartX = ptr.worldX; this.dragStartY = ptr.worldY;
+    for (const [, tg] of this.teamGroups) {
+      if (tg.container.getBounds().contains(ptr.worldX, ptr.worldY)) {
+        this.dragTarget = tg;
+        this.dragOffX = ptr.worldX - tg.container.x;
+        this.dragOffY = ptr.worldY - tg.container.y;
+        tg.container.setData("dragging", false);
+        tg.prevGridX = tg.gridX; tg.prevGridY = tg.gridY;
+        this.occupyGrid(tg.gridX, tg.gridY, tg.config.gridW, tg.config.gridH, false);
+        tg.container.setDepth(50);
+        break;
+      }
+    }
+  }
+
+  private onMove(ptr: Phaser.Input.Pointer) {
+    if (!this.dragTarget || !ptr.isDown) return;
+    if (Phaser.Math.Distance.Between(this.dragStartX, this.dragStartY, ptr.worldX, ptr.worldY) < 8) return;
+
+    this.dragTarget.container.setData("dragging", true);
+    const t = this.dragTarget;
+    t.container.x = ptr.worldX - this.dragOffX;
+    t.container.y = ptr.worldY - this.dragOffY;
+
+    const sgx = Math.round((t.container.x - (t.config.gridW * TILE) / 2) / TILE);
+    const sgy = Math.round((t.container.y - (t.config.gridH * TILE) / 2) / TILE);
+    const ok = this.canPlace(sgx, sgy, t.config.gridW, t.config.gridH, t.config.id);
+
+    if (this.overlapRect) {
+      this.overlapRect.setPosition(sgx * TILE + (t.config.gridW * TILE) / 2, sgy * TILE + (t.config.gridH * TILE) / 2);
+      this.overlapRect.setSize(t.config.gridW * TILE, t.config.gridH * TILE);
+      this.overlapRect.setFillStyle(ok ? 0x4ade80 : 0xff0000, 0.15);
+      this.overlapRect.setStrokeStyle(2, ok ? 0x4ade80 : 0xff0000, 0.6);
+      this.overlapRect.setVisible(true);
+    }
+  }
+
+  private onUp() {
+    if (!this.dragTarget) return;
+    const t = this.dragTarget;
+
+    if (!t.container.getData("dragging")) {
+      this.occupyGrid(t.prevGridX, t.prevGridY, t.config.gridW, t.config.gridH, true);
+      t.gridX = t.prevGridX; t.gridY = t.prevGridY;
+      this.onTeamClick?.(t.config.id);
+    } else {
+      const sgx = Math.round((t.container.x - (t.config.gridW * TILE) / 2) / TILE);
+      const sgy = Math.round((t.container.y - (t.config.gridH * TILE) / 2) / TILE);
+
+      if (this.canPlace(sgx, sgy, t.config.gridW, t.config.gridH, t.config.id)) {
+        t.gridX = sgx; t.gridY = sgy;
+        this.occupyGrid(sgx, sgy, t.config.gridW, t.config.gridH, true);
+        this.tweens.add({ targets: t.container,
+          x: sgx * TILE + (t.config.gridW * TILE) / 2,
+          y: sgy * TILE + (t.config.gridH * TILE) / 2,
+          duration: 120, ease: "Back.easeOut" });
+      } else {
+        this.occupyGrid(t.prevGridX, t.prevGridY, t.config.gridW, t.config.gridH, true);
+        t.gridX = t.prevGridX; t.gridY = t.prevGridY;
+        this.tweens.add({ targets: t.container,
+          x: t.prevGridX * TILE + (t.config.gridW * TILE) / 2,
+          y: t.prevGridY * TILE + (t.config.gridH * TILE) / 2,
+          duration: 250, ease: "Back.easeOut" });
+      }
+    }
+
+    t.container.setDepth(0);
+    this.overlapRect?.setVisible(false);
+    this.dragTarget = null;
+  }
+
+  // ═══════════════════════════════
+  // 움직임 & 상태
+  // ═══════════════════════════════
+
+  private randomMove() {
+    this.teamGroups.forEach((tg, teamId) => {
+      if (this.workingSet.has(teamId)) return;
+      if (Phaser.Math.Between(1, 10) > 3) return;
+      const m = tg.members[Phaser.Math.Between(0, tg.members.length - 1)];
+      m.char.play(`char_${m.charIdx}_walk_down`);
+      const mx = Phaser.Math.Between(-2, 2);
+      this.tweens.add({ targets: m.char, x: m.baseX + mx, duration: 350, ease: "Sine.easeInOut",
+        onComplete: () => {
+          m.char.play(`char_${m.charIdx}_idle`);
+          this.tweens.add({ targets: m.char, x: m.baseX, duration: 300, ease: "Sine.easeInOut" });
+        },
+      });
+    });
+  }
+
+  setWorking(teamId: string, working: boolean) {
+    const tg = this.teamGroups.get(teamId);
+    if (!tg) return;
+    if (working) this.workingSet.add(teamId); else this.workingSet.delete(teamId);
+    tg.members.forEach(m => m.char.play(working ? `char_${m.charIdx}_type` : `char_${m.charIdx}_idle`));
+  }
+
+  update() { }
+}
