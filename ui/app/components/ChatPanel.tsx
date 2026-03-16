@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Team } from "../config/teams";
 
-interface Message {
+export interface Message {
   type: "user" | "ai";
   content: string;
 }
@@ -12,11 +12,20 @@ interface Props {
   team: Team;
   onClose: () => void;
   onWorkingChange: (working: boolean) => void;
-  inline?: boolean; // true면 사이드 패널에 임베드
+  inline?: boolean;
+  messages: Message[];
+  onMessages: (msgs: Message[]) => void;
 }
 
-export default function ChatPanel({ team, onClose, onWorkingChange, inline }: Props) {
-  const [messages, setMessages] = useState<Message[]>([]);
+export default function ChatPanel({ team, onClose, onWorkingChange, inline, messages: initMessages, onMessages }: Props) {
+  const [messages, setMessagesInternal] = useState<Message[]>(initMessages);
+  const setMessages = useCallback((updater: Message[] | ((prev: Message[]) => Message[])) => {
+    setMessagesInternal(prev => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      onMessages(next);
+      return next;
+    });
+  }, [onMessages]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [connected, setConnected] = useState(false);
@@ -103,7 +112,7 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline }: Pr
             ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); send(); } }}
+            onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) { e.preventDefault(); send(); } }}
             placeholder={streaming ? "처리중..." : "명령 입력..."}
             disabled={streaming}
             className="flex-1 bg-[#1a1a2e] border border-[#3a3a5a] text-white px-2 py-1.5 text-[11px] rounded
@@ -146,7 +155,7 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline }: Pr
         </div>
         <div className="border-t border-[#2a2a5a] p-3 flex gap-2">
           <input ref={inputRef} value={input} onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); send(); } }}
+            onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) { e.preventDefault(); send(); } }}
             placeholder="명령 입력..." disabled={streaming}
             className="flex-1 bg-[#1a1a2e] border border-[#3a3a5a] text-white px-3 py-2 text-sm rounded" />
           <button onClick={send} disabled={streaming || !input.trim()}

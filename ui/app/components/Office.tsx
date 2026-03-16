@@ -2,12 +2,13 @@
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import { teams, Team } from "../config/teams";
-import ChatPanel from "./ChatPanel";
+import ChatPanel, { Message } from "./ChatPanel";
 import WeatherBoard from "./WeatherBoard";
 import type { OfficeGameHandle } from "../game/OfficeGame";
 
 export default function Office() {
   const [activeTeam, setActiveTeam] = useState<Team | null>(null);
+  const [chatHistory, setChatHistory] = useState<Record<string, Message[]>>({});
   const [GameComponent, setGameComponent] = useState<React.ComponentType<{
     onTeamClick: (id: string) => void;
     ref: React.Ref<OfficeGameHandle>;
@@ -80,6 +81,8 @@ export default function Office() {
                 onClose={() => setActiveTeam(null)}
                 onWorkingChange={(working) => handleWorkingChange(activeTeam.id, working)}
                 inline
+                messages={chatHistory[activeTeam.id] || []}
+                onMessages={(msgs) => setChatHistory(prev => ({ ...prev, [activeTeam.id]: msgs }))}
               />
             </div>
           </div>
