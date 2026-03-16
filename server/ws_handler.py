@@ -58,7 +58,7 @@ async def handle_chat(ws: WebSocket, team_id: str, project_path: str | None):
             await manager.send_json(team_id, {"type": "ai_start"})
 
             full_response = ""
-            async for chunk in run_claude(prompt, project_path, manager.history.get(team_id)):
+            async for chunk in run_claude(prompt, project_path, team_id):
                 full_response += chunk
                 await manager.send_json(team_id, {"type": "ai_chunk", "content": chunk})
 
