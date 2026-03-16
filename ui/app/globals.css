@@ -16,16 +16,29 @@ body {
   color: #e5e7eb;
   font-family: var(--font-main);
   overflow: hidden;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: manipulation;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 canvas {
   image-rendering: pixelated;
+  touch-action: none;
 }
 
 /* 스크롤바 */
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #3a3a5a; border-radius: 2px; }
+
+/* 입력란은 선택 허용 */
+input, textarea {
+  -webkit-user-select: text;
+  user-select: text;
+  touch-action: auto;
+}
 
 /* 모바일 대응 */
 @media (max-width: 768px) {

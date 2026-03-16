@@ -60,23 +60,22 @@ export default function Office() {
       </div>
 
       {/* ── 우측/하단 패널 ── */}
-      <aside className="w-full md:w-[300px] h-[45vh] md:h-full bg-[#12122a] border-t md:border-t-0 md:border-l border-[#2a2a5a] flex flex-col shrink-0">
+      <aside className="w-full md:w-[300px] h-[50vh] md:h-full bg-[#12122a] border-t md:border-t-0 md:border-l border-[#2a2a5a] flex flex-col shrink-0 overflow-hidden">
         {/* 에이전트 목록 */}
-        <div className="p-2.5 border-b border-[#2a2a5a]">
-          <h2 className="text-[10px] font-semibold text-gray-500 mb-1.5 uppercase tracking-wider">Agents</h2>
-          <div className="space-y-1">
+        <div className="p-2 border-b border-[#2a2a5a] overflow-x-auto">
+          <h2 className="text-[10px] font-semibold text-gray-500 mb-1 uppercase tracking-wider">Agents</h2>
+          <div className="flex md:flex-col gap-1 md:gap-1">
             {teams.map((team) => (
               <button
                 key={team.id}
                 onClick={() => setActiveTeam(team)}
-                className={`w-full text-left px-2.5 py-1.5 rounded text-[11px] transition-all flex items-center justify-between ${
+                className={`shrink-0 text-left px-3 py-2 rounded text-[12px] transition-all flex items-center gap-1.5 min-h-[36px] ${
                   activeTeam?.id === team.id
                     ? "bg-yellow-500/10 text-yellow-400 border border-yellow-500/20"
-                    : "text-gray-400 border border-transparent hover:bg-[#1a1a3a]"
+                    : "text-gray-400 border border-transparent hover:bg-[#1a1a3a] active:bg-[#2a2a4a]"
                 }`}
               >
                 <span>{team.emoji} {team.name}</span>
-                <span className="text-[8px] text-gray-600">{team.status}</span>
               </button>
             ))}
           </div>
