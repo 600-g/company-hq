@@ -24,11 +24,11 @@ interface TeamConfig {
 
 const ALL_FLOORS: Record<number, TeamConfig[]> = {
   1: [
-    { id: "trading-bot", name: "매매봇", emoji: "🤖", chars: [0, 3, 4, 5], gridX: 1, gridY: 3, gridW: 4, gridH: 5 },
-    { id: "date-map", name: "데이트지도", emoji: "🗺️", chars: [1, 5, 3, 0], gridX: 6, gridY: 3, gridW: 4, gridH: 5 },
-    { id: "claude-biseo", name: "클로드비서", emoji: "🤵", chars: [2, 4, 5, 1], gridX: 11, gridY: 3, gridW: 4, gridH: 5 },
-    { id: "ai900", name: "AI900", emoji: "📚", chars: [3, 0, 1, 2], gridX: 16, gridY: 3, gridW: 4, gridH: 5 },
-    { id: "cl600g", name: "CL600G", emoji: "⚡", chars: [4, 2, 0, 3], gridX: 3, gridY: 10, gridW: 4, gridH: 5 },
+    { id: "trading-bot", name: "매매봇", emoji: "🤖", chars: [0, 3, 4, 5], gridX: 1, gridY: 3, gridW: 4, gridH: 4 },
+    { id: "date-map", name: "데이트지도", emoji: "🗺️", chars: [1, 5, 3, 0], gridX: 6, gridY: 3, gridW: 4, gridH: 4 },
+    { id: "claude-biseo", name: "클로드비서", emoji: "🤵", chars: [2, 4, 5, 1], gridX: 11, gridY: 3, gridW: 4, gridH: 4 },
+    { id: "ai900", name: "AI900", emoji: "📚", chars: [3, 0, 1, 2], gridX: 16, gridY: 3, gridW: 4, gridH: 4 },
+    { id: "cl600g", name: "CL600G", emoji: "⚡", chars: [4, 2, 0, 3], gridX: 3, gridY: 9, gridW: 4, gridH: 4 },
   ],
   2: [],
   3: [],
@@ -531,7 +531,7 @@ export default class OfficeScene extends Phaser.Scene {
     // 2x2 등맞대기 — 그래픽스 모니터
     const S = 1.2;
     const gapX = 36;
-    const rowGap = 22;
+    const rowGap = 20; // 4칸에 맞게
 
     // 모니터 그리기 헬퍼
     const drawMonFront = (g: Phaser.GameObjects.Graphics) => {
@@ -558,29 +558,29 @@ export default class OfficeScene extends Phaser.Scene {
       const dx = (col === 0 ? -gapX / 2 : gapX / 2);
 
       if (isTop) {
-        // 윗줄: 모니터 → 책상 → 캐릭
-        const baseY = -rowGap / 2 - 6;
-        const mon = this.add.graphics();
+        // 윗줄: 모니터 → 책상 → 캐릭(앞)
+        const baseY = -rowGap / 2 - 2;
+        const mon = this.add.graphics().setDepth(1);
         drawMonFront(mon);
         mon.setPosition(dx, baseY - 6);
         container.add(mon);
-        container.add(this.add.image(dx, baseY + 4, "desk_front").setScale(S * 0.55, S * 0.7));
-        const char = this.add.sprite(dx, baseY + 18, `char_${charIdx}`, 0)
-          .setScale(S).play(`char_${charIdx}_idle`);
+        container.add(this.add.image(dx, baseY + 4, "desk_front").setScale(S * 0.55, S * 0.65).setDepth(2));
+        const char = this.add.sprite(dx, baseY + 16, `char_${charIdx}`, 0)
+          .setScale(S).setDepth(3).play(`char_${charIdx}_idle`);
         container.add(char);
-        members.push({ char, charIdx, baseX: dx, baseY: baseY + 18 });
+        members.push({ char, charIdx, baseX: dx, baseY: baseY + 16 });
       } else {
-        // 아랫줄: 캐릭 → 책상 → 모니터뒷면
-        const baseY = rowGap / 2 + 6;
-        const char = this.add.sprite(dx, baseY - 18, `char_${charIdx}`, 3 * 7)
-          .setScale(S);
+        // 아랫줄: 캐릭(뒤) → 책상 → 모니터뒷면
+        const baseY = rowGap / 2 + 2;
+        const char = this.add.sprite(dx, baseY - 16, `char_${charIdx}`, 3 * 7)
+          .setScale(S).setDepth(1);
         container.add(char);
-        container.add(this.add.image(dx, baseY - 4, "desk_front").setScale(S * 0.55, S * 0.7));
-        const mon = this.add.graphics();
+        container.add(this.add.image(dx, baseY - 4, "desk_front").setScale(S * 0.55, S * 0.65).setDepth(2));
+        const mon = this.add.graphics().setDepth(3);
         drawMonBack(mon);
         mon.setPosition(dx, baseY + 4);
         container.add(mon);
-        members.push({ char, charIdx, baseX: dx, baseY: baseY - 18 });
+        members.push({ char, charIdx, baseX: dx, baseY: baseY - 16 });
       }
     });
 
