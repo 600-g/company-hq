@@ -1,9 +1,16 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+};
+
 export const metadata: Metadata = {
-  title: "AI Company HQ — 두근의 AI 사무실",
-  description: "도트 타이쿤 스타일 AI 프로젝트 본부",
+  title: "(주)두근 컴퍼니",
+  description: "AI Company HQ — 시각화 터미널",
 };
 
 export default function RootLayout({
