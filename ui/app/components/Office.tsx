@@ -60,6 +60,32 @@ export default function Office() {
         </main>
       </div>
 
+      {/* ── 팝업 채팅 (사무실 위에 모달) ── */}
+      {activeTeam && (
+        <div className="absolute inset-0 z-30 flex items-center justify-center p-4 bg-black/30">
+          <div className="w-full max-w-md h-[70vh] md:h-[60vh] bg-[#0f0f1f] border border-[#3a3a5a] rounded-lg shadow-2xl flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-2.5 bg-[#1a1a3a] border-b border-[#2a2a5a]">
+              <div className="flex items-center gap-2">
+                <span className="text-lg">{activeTeam.emoji}</span>
+                <div>
+                  <span className="text-sm font-semibold text-white">{activeTeam.name}</span>
+                  <span className="text-[9px] text-gray-500 ml-2">{activeTeam.repo}</span>
+                </div>
+              </div>
+              <button onClick={() => setActiveTeam(null)} className="text-gray-400 hover:text-white text-lg px-1">✕</button>
+            </div>
+            <div className="flex-1 min-h-0">
+              <ChatPanel
+                team={activeTeam}
+                onClose={() => setActiveTeam(null)}
+                onWorkingChange={(working) => handleWorkingChange(activeTeam.id, working)}
+                inline
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── 우측/하단 패널 ── */}
       <aside className="w-full md:w-[300px] h-[50vh] md:h-full bg-[#12122a] border-t md:border-t-0 md:border-l border-[#2a2a5a] flex flex-col shrink-0 overflow-hidden">
         {/* 에이전트 목록 */}
@@ -82,29 +108,11 @@ export default function Office() {
           </div>
         </div>
 
-        {/* 채팅 영역 */}
-        <div className="flex-1 flex flex-col p-2.5 overflow-hidden min-h-0">
-          {activeTeam ? (
-            <div className="flex-1 flex flex-col min-h-0">
-              <div className="flex items-center gap-2 mb-2">
-                <span>{activeTeam.emoji}</span>
-                <div>
-                  <h3 className="text-xs font-semibold text-white">{activeTeam.name}</h3>
-                  <p className="text-[8px] text-gray-600">{activeTeam.repo}</p>
-                </div>
-              </div>
-              <ChatPanel
-                team={activeTeam}
-                onClose={() => setActiveTeam(null)}
-                onWorkingChange={(working) => handleWorkingChange(activeTeam.id, working)}
-                inline
-              />
-            </div>
-          ) : (
-            <div className="flex-1 flex items-center justify-center">
-              <p className="text-[10px] text-gray-600 text-center">팀을 선택하세요</p>
-            </div>
-          )}
+        {/* 안내 */}
+        <div className="flex-1 flex items-center justify-center p-2.5">
+          <p className="text-[10px] text-gray-600 text-center">
+            사무실에서 팀을 클릭하세요
+          </p>
         </div>
 
         {/* 날씨 게시판 */}

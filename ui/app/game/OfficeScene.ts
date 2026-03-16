@@ -34,7 +34,7 @@ const ALL_FLOORS: Record<number, TeamConfig[]> = {
   3: [],
 };
 
-interface MemberSprite { char: Phaser.GameObjects.Sprite; charIdx: number; baseX: number; baseY: number; }
+interface MemberSprite { char: Phaser.GameObjects.Sprite; charIdx: number; baseX: number; baseY: number; bubble?: Phaser.GameObjects.Graphics; }
 interface TeamGroup {
   container: Phaser.GameObjects.Container; members: MemberSprite[];
   label: Phaser.GameObjects.Text; highlight: Phaser.GameObjects.Rectangle;
@@ -758,8 +758,41 @@ export default class OfficeScene extends Phaser.Scene {
     const tg = this.teamGroups.get(teamId);
     if (!tg) return;
     if (working) this.workingSet.add(teamId); else this.workingSet.delete(teamId);
-    tg.members.forEach(m => m.char.play(working ? `char_${m.charIdx}_type` : `char_${m.charIdx}_idle`));
+
+    tg.members.forEach(m => {
+      m.char.play(working ? `char_${m.charIdx}_type` : `char_${m.charIdx}_idle`);
+
+      // 말풍선
+      if (working && !m.bubble) {
+        const b = this.add.graphics().setDepth(10);
+        b.fillStyle(0xffffff, 0.95);
+        b.fillRoundedRect(-14, -12, 28, 14, 3);
+        b.fillStyle(0xffffff, 0.95);
+        b.fillRect(-2, 2, 4, 4); // 꼬리
+        // "..." 점
+        b.fillStyle(0x555555, 1);
+        b.fillCircle(-5, -5, 1.5);
+        b.fillCircle(0, -5, 1.5);
+        b.fillCircle(5, -5, 1.5);
+        b.setPosition(m.char.x, m.char.y - 14);
+        tg.container.add(b);
+        m.bubble = b;
+      } else if (!working && m.bubble) {
+        m.bubble.destroy();
+        m.bubble = undefined;
+      }
+    });
   }
 
-  update() { }
+  update() {
+    // 말풍선 위치 업데이트 (캐릭터 따라)
+    this.workingSet.forEach(teamId => {
+      const tg = this.teamGroups.get(teamId);
+      tg?.members.forEach(m => {
+        if (m.bubble) {
+          m.bubble.setPosition(m.char.x, m.char.y - 14);
+        }
+      });
+    });
+  }
 }
