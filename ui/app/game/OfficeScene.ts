@@ -600,22 +600,20 @@ export default class OfficeScene extends Phaser.Scene {
       }
     });
 
-    // 화이트보드 명패 (팀 바로 아래)
-    const nameW = 80;
-    const nameH = 20;
-    const nameY = ph / 2 - 2;
+    // 화이트보드 명패
+    const nameY = ph / 2 + 2;
     const nameBg = this.add.graphics();
     nameBg.fillStyle(0xffffff, 0.95);
-    nameBg.fillRoundedRect(-nameW / 2, nameY - nameH / 2, nameW, nameH, 3);
-    nameBg.lineStyle(1, 0xbbbbbb, 0.8);
-    nameBg.strokeRoundedRect(-nameW / 2, nameY - nameH / 2, nameW, nameH, 3);
+    nameBg.fillRoundedRect(-42, nameY - 10, 84, 18, 2);
+    nameBg.lineStyle(1, 0xcccccc, 0.8);
+    nameBg.strokeRoundedRect(-42, nameY - 10, 84, 18, 2);
     nameBg.fillStyle(0x4a90d9, 1);
-    nameBg.fillRect(-nameW / 2, nameY - nameH / 2, nameW, 3);
+    nameBg.fillRect(-42, nameY - 10, 84, 2);
     container.add(nameBg);
 
-    const label = this.add.text(0, nameY + 1, `${t.emoji} ${t.name}`, {
-      fontSize: "13px", fontFamily: "'Pretendard Variable',Pretendard,-apple-system,sans-serif",
-      color: "#222222", resolution: window.devicePixelRatio * 2 || 4,
+    const label = this.add.text(0, nameY, `${t.emoji} ${t.name}`, {
+      fontSize: "12px", fontFamily: "Pretendard Variable, Pretendard, -apple-system, sans-serif",
+      color: "#222222", resolution: 6,
     }).setOrigin(0.5);
     container.add(label);
 

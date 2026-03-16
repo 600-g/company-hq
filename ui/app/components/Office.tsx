@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { teams, Team } from "../config/teams";
 import ChatPanel from "./ChatPanel";
+import WeatherBoard from "./WeatherBoard";
 import type { OfficeGameHandle } from "../game/OfficeGame";
 
 export default function Office() {
@@ -104,6 +105,11 @@ export default function Office() {
               <p className="text-[10px] text-gray-600 text-center">팀을 선택하세요</p>
             </div>
           )}
+        </div>
+
+        {/* 날씨 게시판 */}
+        <div className="p-2 border-t border-[#2a2a5a] hidden md:block">
+          <WeatherBoard />
         </div>
 
         <div className="px-2.5 py-1 border-t border-[#2a2a5a] text-[8px] text-gray-700 text-center">
