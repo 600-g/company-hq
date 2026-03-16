@@ -24,11 +24,11 @@ interface TeamConfig {
 
 const ALL_FLOORS: Record<number, TeamConfig[]> = {
   1: [
-    { id: "trading-bot", name: "매매봇", emoji: "🤖", chars: [0, 3, 4, 5], gridX: 2, gridY: 3, gridW: 3, gridH: 3 },
-    { id: "date-map", name: "데이트지도", emoji: "🗺️", chars: [1, 5, 3, 0], gridX: 6, gridY: 3, gridW: 3, gridH: 3 },
-    { id: "claude-biseo", name: "클로드비서", emoji: "🤵", chars: [2, 4, 5, 1], gridX: 10, gridY: 3, gridW: 3, gridH: 3 },
-    { id: "ai900", name: "AI900", emoji: "📚", chars: [3, 0, 1, 2], gridX: 14, gridY: 3, gridW: 3, gridH: 3 },
-    { id: "cl600g", name: "CL600G", emoji: "⚡", chars: [4, 2, 0, 3], gridX: 18, gridY: 3, gridW: 3, gridH: 3 },
+    { id: "trading-bot", name: "매매봇", emoji: "🤖", chars: [0, 3, 4, 5], gridX: 1, gridY: 3, gridW: 4, gridH: 4 },
+    { id: "date-map", name: "데이트지도", emoji: "🗺️", chars: [1, 5, 3, 0], gridX: 6, gridY: 3, gridW: 4, gridH: 4 },
+    { id: "claude-biseo", name: "클로드비서", emoji: "🤵", chars: [2, 4, 5, 1], gridX: 11, gridY: 3, gridW: 4, gridH: 4 },
+    { id: "ai900", name: "AI900", emoji: "📚", chars: [3, 0, 1, 2], gridX: 16, gridY: 3, gridW: 4, gridH: 4 },
+    { id: "cl600g", name: "CL600G", emoji: "⚡", chars: [4, 2, 0, 3], gridX: 3, gridY: 9, gridW: 4, gridH: 4 },
   ],
   2: [],
   3: [],
@@ -545,9 +545,9 @@ export default class OfficeScene extends Phaser.Scene {
     // 모든 에셋 동일 스케일, PC는 cropY로 모니터 부분만
     const members: MemberSprite[] = [];
     // 2x2 등맞대기 — 그래픽스 모니터
-    const S = 1.1;
-    const gapX = 30;
-    const rowGap = 16;
+    const S = 1.0;
+    const gapX = 34;
+    const rowGap = 24;
 
     // 모니터 그리기 헬퍼
     const drawMonFront = (g: Phaser.GameObjects.Graphics) => {
