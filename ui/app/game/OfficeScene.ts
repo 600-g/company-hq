@@ -463,17 +463,19 @@ export default class OfficeScene extends Phaser.Scene {
     // 문 사이 선
     g.fillStyle(0x3a3a4a, 1);
     g.fillRect(ex - 1, ey - eh / 2 + 4, 2, eh - 8);
-    // 상단 표시등
-    g.fillStyle(0x40d080, 0.8);
-    g.fillCircle(ex, ey - eh / 2 - 3, 3);
     // 프레임
     g.lineStyle(2, 0x444454, 1);
     g.strokeRect(ex - ew / 2, ey - eh / 2, ew, eh);
+    // 문 위 디스플레이 패널 (층 표시)
+    g.fillStyle(0x1a1a2a, 1);
+    g.fillRect(ex - 12, ey - eh / 2 + 2, 24, 12);
+    g.fillStyle(0x111118, 1);
+    g.fillRect(ex - 10, ey - eh / 2 + 3, 20, 10);
 
-    // 층 표시
-    this.floorLabel = this.add.text(ex, ey - eh / 2 - 10, `${this.currentFloor}F`, {
-      fontSize: "12px", fontFamily: "'Pretendard Variable',Pretendard,-apple-system,sans-serif",
-      color: "#40d080", resolution: window.devicePixelRatio * 2 || 4,
+    // 층 표시 (디스플레이 안)
+    this.floorLabel = this.add.text(ex, ey - eh / 2 + 8, `${this.currentFloor}F`, {
+      fontSize: "9px", fontFamily: "'Pretendard Variable',Pretendard,-apple-system,sans-serif",
+      color: "#40d080", resolution: 6,
     }).setOrigin(0.5).setDepth(151);
 
     // ▲▼ 버튼 (문 왼쪽, 크게 — 모바일 터치용)
