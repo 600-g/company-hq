@@ -29,8 +29,13 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline }: Pr
   }, []);
 
   useEffect(() => {
-    const host = typeof window !== "undefined" ? window.location.hostname : "localhost";
-    const ws = new WebSocket(`ws://${host}:8000/ws/chat/${team.id}`);
+    // 로컬이면 직접, 외부면 serveo 터널
+    const isLocal = typeof window !== "undefined" &&
+      (window.location.hostname === "localhost" || window.location.hostname === "192.168.0.20");
+    const wsUrl = isLocal
+      ? `ws://${window.location.hostname}:8000/ws/chat/${team.id}`
+      : `wss://a1eabbead02646d1-125-129-79-39.serveousercontent.com/ws/chat/${team.id}`;
+    const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
     ws.onopen = () => setConnected(true);
     ws.onclose = () => { setConnected(false); setStreaming(false); onWorkingChange(false); };
