@@ -580,12 +580,37 @@ export default class OfficeScene extends Phaser.Scene {
     t.chars.forEach((charIdx, i) => {
       if (i >= 4) return;
 
-      // 1인(CPO) — 캐릭터만, 크게 (2등신 미니미)
+      // 1인(CPO) — 코드로 정면 전신 미니미 그리기
       if (isSolo) {
-        const char = this.add.sprite(0, 2, `char_${charIdx}`, 0)
-          .setScale(S * 1.8).setDepth(3).play(`char_${charIdx}_idle`);
+        const cg = this.add.graphics().setDepth(3);
+        // 머리 (둥글게)
+        cg.fillStyle(0xfcd9a8, 1); cg.fillCircle(0, -10, 7);
+        // 머리카락
+        cg.fillStyle(0x333333, 1); cg.fillRect(-7, -17, 14, 5);
+        cg.fillRect(-7, -14, 3, 6); cg.fillRect(4, -14, 3, 6);
+        // 눈
+        cg.fillStyle(0x222222, 1); cg.fillRect(-4, -11, 2, 2); cg.fillRect(2, -11, 2, 2);
+        cg.fillStyle(0xffffff, 1); cg.fillRect(-4, -11, 1, 1); cg.fillRect(2, -11, 1, 1);
+        // 입
+        cg.fillStyle(0xe0a080, 1); cg.fillRect(-2, -7, 4, 1);
+        // 셔츠 (파란색)
+        cg.fillStyle(0x3366aa, 1); cg.fillRect(-6, -3, 12, 10);
+        cg.fillStyle(0x4477bb, 1); cg.fillRect(-5, -2, 10, 8);
+        // 넥타이
+        cg.fillStyle(0xcc3333, 1); cg.fillRect(-1, -2, 2, 7);
+        // 팔
+        cg.fillStyle(0xfcd9a8, 1); cg.fillRect(-8, -2, 3, 8); cg.fillRect(5, -2, 3, 8);
+        // 바지
+        cg.fillStyle(0x2a2a3a, 1); cg.fillRect(-5, 7, 4, 8); cg.fillRect(1, 7, 4, 8);
+        // 신발
+        cg.fillStyle(0x222222, 1); cg.fillRect(-6, 15, 5, 2); cg.fillRect(1, 15, 5, 2);
+        container.add(cg);
+
+        // 더미 sprite (애니메이션/참조용)
+        const char = this.add.sprite(0, 100, `char_${charIdx}`, 0)
+          .setScale(0.01).setAlpha(0);
         container.add(char);
-        members.push({ char, charIdx, baseX: 0, baseY: 2 });
+        members.push({ char, charIdx, baseX: 0, baseY: 0 });
         return;
       }
 
