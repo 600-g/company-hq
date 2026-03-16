@@ -160,9 +160,14 @@ export default class OfficeScene extends Phaser.Scene {
     // ── 사무실 디테일 장식 ──
     this.drawOfficeDetails();
 
-    // 팀 배치
+    // 팀 배치 (저장된 위치 있으면 사용)
     const teams = ALL_FLOORS[floor] || [];
+    const saved = this.loadPositions();
     teams.forEach(t => {
+      if (saved && saved[t.id]) {
+        t.gridX = saved[t.id].gx;
+        t.gridY = saved[t.id].gy;
+      }
       this.createTeamGroup(t);
       this.occupyGrid(t.gridX, t.gridY, t.gridW, t.gridH, true);
     });
@@ -690,6 +695,7 @@ export default class OfficeScene extends Phaser.Scene {
           x: sgx * TILE + (t.config.gridW * TILE) / 2,
           y: sgy * TILE + (t.config.gridH * TILE) / 2,
           duration: 120, ease: "Back.easeOut" });
+        this.savePositions();
       } else {
         this.occupyGrid(t.prevGridX, t.prevGridY, t.config.gridW, t.config.gridH, true);
         t.gridX = t.prevGridX; t.gridY = t.prevGridY;
@@ -703,6 +709,27 @@ export default class OfficeScene extends Phaser.Scene {
     t.container.setDepth(0);
     this.overlapRect?.setVisible(false);
     this.dragTarget = null;
+  }
+
+  // ═══════════════════════════════
+  // 위치 저장/로드 (localStorage)
+  // ═══════════════════════════════
+
+  private savePositions() {
+    const positions: Record<string, { gx: number; gy: number }> = {};
+    this.teamGroups.forEach((tg, id) => {
+      positions[id] = { gx: tg.gridX, gy: tg.gridY };
+    });
+    try {
+      localStorage.setItem(`hq-positions-${this.currentFloor}`, JSON.stringify(positions));
+    } catch {}
+  }
+
+  private loadPositions(): Record<string, { gx: number; gy: number }> | null {
+    try {
+      const data = localStorage.getItem(`hq-positions-${this.currentFloor}`);
+      return data ? JSON.parse(data) : null;
+    } catch { return null; }
   }
 
   // ═══════════════════════════════
