@@ -575,14 +575,23 @@ export default class OfficeScene extends Phaser.Scene {
       g.fillStyle(0x555555, 1); g.fillRect(-5, 13, 10, 2);
     };
 
-    // 1인 팀이면 중앙 배치
     const isSolo = t.chars.length === 1;
 
     t.chars.forEach((charIdx, i) => {
       if (i >= 4) return;
-      const isTop = isSolo ? true : i < 2;
-      const col = isSolo ? 0 : i % 2;
-      const dx = isSolo ? 0 : (col === 0 ? -gapX / 2 : gapX / 2);
+
+      // 1인(CPO)은 캐릭터만 (책상/모니터 없음)
+      if (isSolo) {
+        const char = this.add.sprite(0, 0, `char_${charIdx}`, 0)
+          .setScale(S * 1.2).setDepth(3).play(`char_${charIdx}_idle`);
+        container.add(char);
+        members.push({ char, charIdx, baseX: 0, baseY: 0 });
+        return;
+      }
+
+      const isTop = i < 2;
+      const col = i % 2;
+      const dx = col === 0 ? -gapX / 2 : gapX / 2;
 
       if (isTop) {
         // 윗줄: 모니터 → 책상 → 캐릭(앞)
