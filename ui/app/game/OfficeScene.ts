@@ -342,28 +342,28 @@ export default class OfficeScene extends Phaser.Scene {
     g.fillStyle(0xe0e0e8, 1);
     g.fillRect(doorX, corY, 40, 5);
 
-    // 소화기 (좌측 벽)
+    // 소화기 (복도 안 좌측)
     g.fillStyle(0xdd3333, 1);
-    g.fillRect(20, corY + 10, 6, 14);
+    g.fillRect(20, corY + 20, 6, 14);
     g.fillStyle(0xaa2222, 1);
-    g.fillRect(21, corY + 11, 4, 12);
+    g.fillRect(21, corY + 21, 4, 12);
     g.fillStyle(0x888888, 1);
-    g.fillRect(22, corY + 8, 2, 3);
+    g.fillRect(22, corY + 18, 2, 3);
 
-    // 비상구 표시 (우측 벽 위)
+    // 비상구 표시 (복도 안 중앙 위)
     g.fillStyle(0x22aa44, 0.8);
-    g.fillRoundedRect(WORLD_W / 2 - 50, corY + 8, 24, 10, 2);
+    g.fillRoundedRect(WORLD_W / 2 + 40, corY + 12, 24, 10, 2);
 
-    // 복도 조명 반사 (바닥에 원형 빛)
-    [120, 320, 520].forEach(lx => {
+    // 복도 조명 반사
+    [150, 350, 550].forEach(lx => {
       g.fillStyle(0xffffff, 0.04);
-      g.fillCircle(lx, corY + corH / 2, 20);
+      g.fillCircle(lx, corY + corH / 2 + 4, 18);
     });
 
     this.envGroup.add(g);
 
     // 비상구 텍스트
-    const exitLabel = this.add.text(WORLD_W / 2 - 38, corY + 10, "EXIT", {
+    const exitLabel = this.add.text(WORLD_W / 2 + 52, corY + 14, "EXIT", {
       fontSize: "6px", fontFamily: "'Pretendard Variable',sans-serif",
       color: "#ffffff", resolution: window.devicePixelRatio * 2 || 4,
     }).setOrigin(0.5);
@@ -384,40 +384,29 @@ export default class OfficeScene extends Phaser.Scene {
     this.envGroup.add(this.add.image(30, wallY + 35, "wall_cabinet").setScale(1.2));
     this.envGroup.add(this.add.image(30, wallY + 115, "wall_cabinet").setScale(1.2));
 
-    // ── 서버실 벽 옆 — 벽장 ──
-    this.envGroup.add(this.add.image(srvX - 28, wallY + 35, "wall_cabinet").setScale(1.2));
+    // ── 서버실 벽 옆 — 벽장 (벽에서 충분히 떨어지게) ──
+    this.envGroup.add(this.add.image(srvX - 40, wallY + 50, "wall_cabinet").setScale(1.2));
 
-    // ── 정수기 (좌측 하단, 복도 위) ──
+    // ── 정수기 (좌측 하단) ──
     this.envGroup.add(this.add.image(30, corY - 30, "water_cooler").setScale(SCALE));
 
-    // ── 소파 (서버실 아래 빈 공간) ──
-    const srHalf = Math.floor((ROWS - WALL_H - 3) / 2);
-    const sofaY = (WALL_H + srHalf) * TILE + 50;
-    this.envGroup.add(this.add.image(srvX + 2.5 * TILE, sofaY, "sofa").setScale(1.1));
-    // 소파 옆 화분
-    this.envGroup.add(this.add.image(srvX + 4.5 * TILE, sofaY - 20, "plant").setScale(SCALE));
+    // ── 창가 선인장 ──
+    this.envGroup.add(this.add.image(8 * TILE, wallY + 6, "cactus").setScale(SCALE));
+    this.envGroup.add(this.add.image(15 * TILE, wallY + 6, "cactus").setScale(SCALE));
 
-    // ── 창가 선인장 (통창 아래, 벽 안 겹치게) ──
-    this.envGroup.add(this.add.image(8 * TILE, wallY + 4, "cactus").setScale(SCALE));
-    this.envGroup.add(this.add.image(15 * TILE, wallY + 4, "cactus").setScale(SCALE));
-
-    // ── 복도 입구 옆 화분 (입구 안 막게, 양쪽에) ──
-    this.envGroup.add(this.add.image(WORLD_W / 2 - 60, corY - 14, "plant").setScale(SCALE));
-    this.envGroup.add(this.add.image(WORLD_W / 2 + 60, corY - 14, "plant").setScale(SCALE));
-
-    // ── 쓰레기통 (서버실 벽 아래) ──
-    this.envGroup.add(this.add.image(srvX - 28, corY - 14, "bin").setScale(SCALE));
+    // ── 쓰레기통 ──
+    this.envGroup.add(this.add.image(srvX - 40, corY - 16, "bin").setScale(SCALE));
 
     // ── 천장 조명 반사 ──
     [5, 11, 17].forEach(col => {
-      [5, 11].forEach(row => {
-        this.envGroup.add(this.add.image(col * TILE, row * TILE, "light_glow").setScale(2.5));
+      [6, 12].forEach(row => {
+        this.envGroup.add(this.add.image(col * TILE, row * TILE, "light_glow").setScale(2));
       });
     });
 
     // ── 걸레받이 ──
     const baseG = this.add.graphics();
-    baseG.fillStyle(0xc0c0c8, 0.4);
+    baseG.fillStyle(0xc0c0c8, 0.3);
     baseG.fillRect(0, WALL_H * TILE, srvX, 2);
     this.envGroup.add(baseG);
   }
@@ -434,10 +423,13 @@ export default class OfficeScene extends Phaser.Scene {
   // ═══════════════════════════════
 
   private drawElevator() {
-    const ex = WORLD_W - 50;
-    const ey = WORLD_H - 70;
-    const ew = 44;
-    const eh = 60;
+    // 복도 안 우측에 엘리베이터
+    const corY = (ROWS - 3) * TILE;
+    const corH = 3 * TILE;
+    const ex = WORLD_W - 40;
+    const ey = corY + corH / 2;
+    const ew = 50;
+    const eh = corH - 10;
 
     const g = this.add.graphics().setDepth(150);
     // 벽면
@@ -452,26 +444,26 @@ export default class OfficeScene extends Phaser.Scene {
     g.fillRect(ex - 1, ey - eh / 2 + 4, 2, eh - 8);
     // 상단 표시등
     g.fillStyle(0x40d080, 0.8);
-    g.fillCircle(ex, ey - eh / 2 - 4, 3);
+    g.fillCircle(ex, ey - eh / 2 - 3, 3);
     // 프레임
     g.lineStyle(2, 0x444454, 1);
     g.strokeRect(ex - ew / 2, ey - eh / 2, ew, eh);
 
     // 층 표시
-    this.floorLabel = this.add.text(ex, ey - eh / 2 - 12, `${this.currentFloor}F`, {
-      fontSize: "11px", fontFamily: "'Pretendard Variable',Pretendard,-apple-system,sans-serif",
+    this.floorLabel = this.add.text(ex, ey - eh / 2 - 10, `${this.currentFloor}F`, {
+      fontSize: "12px", fontFamily: "'Pretendard Variable',Pretendard,-apple-system,sans-serif",
       color: "#40d080", resolution: window.devicePixelRatio * 2 || 4,
     }).setOrigin(0.5).setDepth(151);
 
-    // ▲▼ 버튼 (문 옆)
-    const btnUp = this.add.text(ex + ew / 2 + 10, ey - 10, "▲", {
-      fontSize: "10px", color: "#aaa", backgroundColor: "#2a2a3a",
-      padding: { x: 4, y: 2 },
+    // ▲▼ 버튼 (문 왼쪽, 크게 — 모바일 터치용)
+    const btnUp = this.add.text(ex - ew / 2 - 20, ey - 14, "▲", {
+      fontSize: "18px", color: "#ccc", backgroundColor: "#333345",
+      padding: { x: 6, y: 4 },
     }).setOrigin(0.5).setDepth(151).setInteractive({ useHandCursor: true });
 
-    const btnDown = this.add.text(ex + ew / 2 + 10, ey + 10, "▼", {
-      fontSize: "10px", color: "#aaa", backgroundColor: "#2a2a3a",
-      padding: { x: 4, y: 2 },
+    const btnDown = this.add.text(ex - ew / 2 - 20, ey + 14, "▼", {
+      fontSize: "18px", color: "#ccc", backgroundColor: "#333345",
+      padding: { x: 6, y: 4 },
     }).setOrigin(0.5).setDepth(151).setInteractive({ useHandCursor: true });
 
     btnUp.on("pointerdown", () => this.changeFloor(this.currentFloor + 1));
