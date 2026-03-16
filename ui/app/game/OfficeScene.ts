@@ -24,6 +24,7 @@ interface TeamConfig {
 
 const ALL_FLOORS: Record<number, TeamConfig[]> = {
   1: [
+    { id: "cpo-claude", name: "CPO 클로드", emoji: "🧠", chars: [2], gridX: 10, gridY: 9, gridW: 2, gridH: 3 },
     { id: "trading-bot", name: "매매봇", emoji: "🤖", chars: [0, 3, 4, 5], gridX: 1, gridY: 3, gridW: 4, gridH: 4 },
     { id: "date-map", name: "데이트지도", emoji: "🗺️", chars: [1, 5, 3, 0], gridX: 6, gridY: 3, gridW: 4, gridH: 4 },
     { id: "claude-biseo", name: "클로드비서", emoji: "🤵", chars: [2, 4, 5, 1], gridX: 11, gridY: 3, gridW: 4, gridH: 4 },
@@ -574,11 +575,14 @@ export default class OfficeScene extends Phaser.Scene {
       g.fillStyle(0x555555, 1); g.fillRect(-5, 13, 10, 2);
     };
 
+    // 1인 팀이면 중앙 배치
+    const isSolo = t.chars.length === 1;
+
     t.chars.forEach((charIdx, i) => {
       if (i >= 4) return;
-      const isTop = i < 2;
-      const col = i % 2;
-      const dx = (col === 0 ? -gapX / 2 : gapX / 2);
+      const isTop = isSolo ? true : i < 2;
+      const col = isSolo ? 0 : i % 2;
+      const dx = isSolo ? 0 : (col === 0 ? -gapX / 2 : gapX / 2);
 
       if (isTop) {
         // 윗줄: 모니터 → 책상 → 캐릭(앞)

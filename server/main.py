@@ -15,6 +15,8 @@ PROJECTS_ROOT = os.path.expanduser(os.getenv("PROJECTS_ROOT", "~/Developer/my-co
 
 # 팀 목록 (teams.ts와 동기화)
 TEAMS = [
+    {"id": "cpo-claude", "name": "CPO 클로드", "emoji": "🧠", "repo": "company-hq",
+     "localPath": "~/Developer/my-company/company-hq", "status": "운영중", "model": "opus"},
     {"id": "trading-bot", "name": "매매봇", "emoji": "🤖", "repo": "upbit-auto-trading-bot",
      "localPath": "~/Developer/my-company/upbit-auto-trading-bot", "status": "운영중"},
     {"id": "date-map", "name": "데이트지도", "emoji": "🗺️", "repo": "date-map",

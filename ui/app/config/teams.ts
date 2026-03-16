@@ -9,6 +9,14 @@ export interface Team {
 
 export const teams: Team[] = [
   {
+    id: "cpo-claude",
+    name: "CPO 클로드",
+    emoji: "🧠",
+    repo: "company-hq",
+    localPath: "~/Developer/my-company/company-hq",
+    status: "운영중",
+  },
+  {
     id: "trading-bot",
     name: "매매봇",
     emoji: "🤖",
