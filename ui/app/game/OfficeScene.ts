@@ -24,7 +24,7 @@ interface TeamConfig {
 
 const ALL_FLOORS: Record<number, TeamConfig[]> = {
   1: [
-    { id: "cpo-claude", name: "CPO 클로드", emoji: "🧠", chars: [2], gridX: 10, gridY: 9, gridW: 2, gridH: 3 },
+    { id: "cpo-claude", name: "CPO 클로드", emoji: "🧠", chars: [2], gridX: 10, gridY: 9, gridW: 2, gridH: 4 },
     { id: "trading-bot", name: "매매봇", emoji: "🤖", chars: [0, 3, 4, 5], gridX: 1, gridY: 3, gridW: 4, gridH: 4 },
     { id: "date-map", name: "데이트지도", emoji: "🗺️", chars: [1, 5, 3, 0], gridX: 6, gridY: 3, gridW: 4, gridH: 4 },
     { id: "claude-biseo", name: "클로드비서", emoji: "🤵", chars: [2, 4, 5, 1], gridX: 11, gridY: 3, gridW: 4, gridH: 4 },
