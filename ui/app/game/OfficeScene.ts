@@ -300,7 +300,7 @@ export default class OfficeScene extends Phaser.Scene {
     this.envGroup.add(g);
     const srLabel = this.add.text(srX + srW / 2, srY + 10, "🖥 서버실", {
       fontSize: "10px", fontFamily: "'Pretendard Variable',Pretendard,sans-serif",
-      color: "#60d090", resolution: 3,
+      color: "#60d090", resolution: window.devicePixelRatio * 2 || 4,
     }).setOrigin(0.5);
     this.envGroup.add(srLabel);
 
@@ -365,7 +365,7 @@ export default class OfficeScene extends Phaser.Scene {
     // 비상구 텍스트
     const exitLabel = this.add.text(WORLD_W / 2 - 38, corY + 10, "EXIT", {
       fontSize: "6px", fontFamily: "'Pretendard Variable',sans-serif",
-      color: "#ffffff", resolution: 3,
+      color: "#ffffff", resolution: window.devicePixelRatio * 2 || 4,
     }).setOrigin(0.5);
     this.envGroup.add(exitLabel);
 
@@ -376,51 +376,49 @@ export default class OfficeScene extends Phaser.Scene {
   }
 
   private drawOfficeDetails() {
-    const wallY = WALL_H * TILE + 8; // 벽 아래 여유
+    const wallY = WALL_H * TILE + 12;
     const corY = (ROWS - 3) * TILE;
     const srvX = (COLS - 5) * TILE;
 
-    // ── 좌측 벽면 — 벽장 2개 ──
-    this.envGroup.add(this.add.image(24, wallY + 30, "wall_cabinet").setScale(1.3));
-    this.envGroup.add(this.add.image(24, wallY + 120, "wall_cabinet").setScale(1.3));
+    // ── 좌측 벽면 — 벽장 (벽 아래, 겹침 없게) ──
+    this.envGroup.add(this.add.image(30, wallY + 35, "wall_cabinet").setScale(1.2));
+    this.envGroup.add(this.add.image(30, wallY + 115, "wall_cabinet").setScale(1.2));
 
     // ── 서버실 벽 옆 — 벽장 ──
-    this.envGroup.add(this.add.image(srvX - 24, wallY + 30, "wall_cabinet").setScale(1.3));
-    this.envGroup.add(this.add.image(srvX - 24, wallY + 120, "wall_cabinet").setScale(1.3));
+    this.envGroup.add(this.add.image(srvX - 28, wallY + 35, "wall_cabinet").setScale(1.2));
 
-    // ── 정수기 (좌측 벽 하단) ──
-    this.envGroup.add(this.add.image(24, corY - 40, "water_cooler").setScale(SCALE));
+    // ── 정수기 (좌측 하단, 복도 위) ──
+    this.envGroup.add(this.add.image(30, corY - 30, "water_cooler").setScale(SCALE));
 
     // ── 소파 (서버실 아래 빈 공간) ──
     const srHalf = Math.floor((ROWS - WALL_H - 3) / 2);
-    const sofaY = (WALL_H + srHalf) * TILE + 40;
-    this.envGroup.add(this.add.image(srvX + 2.5 * TILE, sofaY, "sofa").setScale(1.2));
+    const sofaY = (WALL_H + srHalf) * TILE + 50;
+    this.envGroup.add(this.add.image(srvX + 2.5 * TILE, sofaY, "sofa").setScale(1.1));
+    // 소파 옆 화분
+    this.envGroup.add(this.add.image(srvX + 4.5 * TILE, sofaY - 20, "plant").setScale(SCALE));
 
-    // ── 화분 (모서리 4곳만) ──
-    this.envGroup.add(this.add.image(TILE, corY - 16, "large_plant").setScale(SCALE).setOrigin(0.5, 1));
-    this.envGroup.add(this.add.image(srvX - 20, corY - 16, "large_plant").setScale(SCALE).setOrigin(0.5, 1));
+    // ── 창가 선인장 (통창 아래, 벽 안 겹치게) ──
+    this.envGroup.add(this.add.image(8 * TILE, wallY + 4, "cactus").setScale(SCALE));
+    this.envGroup.add(this.add.image(15 * TILE, wallY + 4, "cactus").setScale(SCALE));
 
-    // ── 창가 선인장 ──
-    this.envGroup.add(this.add.image(7 * TILE, wallY - 2, "cactus").setScale(SCALE));
-    this.envGroup.add(this.add.image(14 * TILE, wallY - 2, "cactus").setScale(SCALE));
+    // ── 복도 입구 옆 화분 (입구 안 막게, 양쪽에) ──
+    this.envGroup.add(this.add.image(WORLD_W / 2 - 60, corY - 14, "plant").setScale(SCALE));
+    this.envGroup.add(this.add.image(WORLD_W / 2 + 60, corY - 14, "plant").setScale(SCALE));
 
-    // ── 쓰레기통 ──
-    this.envGroup.add(this.add.image(2 * TILE, corY - 14, "bin").setScale(SCALE));
-
-    // ── 러그 (팀 사이 바닥) ──
-    this.envGroup.add(this.add.image(WORLD_W / 3, (WALL_H + 4) * TILE + 40, "rug"));
+    // ── 쓰레기통 (서버실 벽 아래) ──
+    this.envGroup.add(this.add.image(srvX - 28, corY - 14, "bin").setScale(SCALE));
 
     // ── 천장 조명 반사 ──
-    [4, 10, 16].forEach(col => {
+    [5, 11, 17].forEach(col => {
       [5, 11].forEach(row => {
-        this.envGroup.add(this.add.image(col * TILE, row * TILE, "light_glow").setScale(2));
+        this.envGroup.add(this.add.image(col * TILE, row * TILE, "light_glow").setScale(2.5));
       });
     });
 
-    // ── 벽 하단 걸레받이 (바닥과 벽 경계) ──
+    // ── 걸레받이 ──
     const baseG = this.add.graphics();
-    baseG.fillStyle(0xb0b0b8, 0.5);
-    baseG.fillRect(0, WALL_H * TILE, srvX, 3); // 사무실 영역만
+    baseG.fillStyle(0xc0c0c8, 0.4);
+    baseG.fillRect(0, WALL_H * TILE, srvX, 2);
     this.envGroup.add(baseG);
   }
 
@@ -462,7 +460,7 @@ export default class OfficeScene extends Phaser.Scene {
     // 층 표시
     this.floorLabel = this.add.text(ex, ey - eh / 2 - 12, `${this.currentFloor}F`, {
       fontSize: "11px", fontFamily: "'Pretendard Variable',Pretendard,-apple-system,sans-serif",
-      color: "#40d080", resolution: 4,
+      color: "#40d080", resolution: window.devicePixelRatio * 2 || 4,
     }).setOrigin(0.5).setDepth(151);
 
     // ▲▼ 버튼 (문 옆)
@@ -604,7 +602,7 @@ export default class OfficeScene extends Phaser.Scene {
 
     const label = this.add.text(0, nameY + 1, `${t.emoji} ${t.name}`, {
       fontSize: "13px", fontFamily: "'Pretendard Variable',Pretendard,-apple-system,sans-serif",
-      color: "#222222", resolution: 4,
+      color: "#222222", resolution: window.devicePixelRatio * 2 || 4,
     }).setOrigin(0.5);
     container.add(label);
 

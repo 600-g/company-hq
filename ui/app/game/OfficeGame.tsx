@@ -47,16 +47,18 @@ const OfficeGame = forwardRef<OfficeGameHandle, Props>(({ onTeamClick }, ref) =>
       const scene = new OfficeScene();
       sceneRef.current = scene;
 
+      const dpr = window.devicePixelRatio || 1;
       const game = new Phaser.Game({
         type: Phaser.AUTO,
         parent: containerRef.current,
-        width: 832,  // COLS * TILE = 26 * 32
-        height: 576, // ROWS * TILE = 18 * 32
-        pixelArt: false, // 텍스트 선명하게 (스프라이트는 개별 설정)
+        width: 832 * dpr,
+        height: 576 * dpr,
+        pixelArt: false,
         backgroundColor: "#1a1a2e",
         scale: {
           mode: Phaser.Scale.FIT,
           autoCenter: Phaser.Scale.CENTER_BOTH,
+          zoom: 1 / dpr,
         },
         scene: scene,
       });
