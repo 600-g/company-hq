@@ -87,34 +87,8 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
         {/* 메시지 */}
         <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-2 min-h-0">
           {messages.length === 0 && (
-            <div className="py-4">
-              <p className="text-[10px] text-gray-600 text-center mb-3">자주 쓰는 명령</p>
-              <div className="flex flex-wrap gap-1.5 justify-center">
-                {[
-                  "현재 상태 알려줘",
-                  "최근 변경사항",
-                  "에러 확인",
-                  "git 상태",
-                  "코드 리뷰해줘",
-                  "배포해줘",
-                  "버그 수정해줘",
-                  "성능 개선",
-                ].map((cmd) => (
-                  <button
-                    key={cmd}
-                    onClick={() => {
-                      if (!wsRef.current || streaming) return;
-                      wsRef.current.send(JSON.stringify({ prompt: cmd }));
-                    }}
-                    disabled={streaming}
-                    className="text-[10px] px-2.5 py-1.5 bg-[#1a1a3a] border border-[#2a2a5a] text-gray-400
-                               rounded hover:bg-[#2a2a4a] hover:text-white active:bg-[#3a3a5a]
-                               disabled:opacity-30 transition-colors"
-                  >
-                    {cmd}
-                  </button>
-                ))}
-              </div>
+            <div className="py-6 text-center">
+              <p className="text-[10px] text-gray-600">명령을 입력하거나 아래 바로가기를 사용하세요</p>
             </div>
           )}
           {messages.map((msg, i) => (
@@ -131,8 +105,38 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
           ))}
         </div>
 
+        {/* 터미널 바로가기 */}
+        <div className="mt-1 flex flex-wrap gap-1 shrink-0">
+          {[
+            { label: "📂 파일 목록", cmd: "ls -la" },
+            { label: "🔄 Git 상태", cmd: "git status" },
+            { label: "📝 Git 로그", cmd: "git log --oneline -5" },
+            { label: "💾 Git 커밋", cmd: "git add -A && git commit -m 'update'" },
+            { label: "🚀 Git 푸시", cmd: "git push" },
+            { label: "📦 npm 설치", cmd: "npm install" },
+            { label: "🔨 빌드", cmd: "npm run build" },
+            { label: "🐛 에러 로그", cmd: "tail -20 *.log" },
+            { label: "💻 프로세스", cmd: "ps aux | head -10" },
+            { label: "📊 디스크", cmd: "df -h" },
+          ].map(({ label, cmd }) => (
+            <button
+              key={cmd}
+              onClick={() => {
+                if (!wsRef.current || streaming) return;
+                wsRef.current.send(JSON.stringify({ prompt: cmd }));
+              }}
+              disabled={streaming}
+              className="text-[9px] px-2 py-1 bg-[#1a1a2e] border border-[#2a2a4a] text-gray-500
+                         rounded hover:bg-[#2a2a3a] hover:text-gray-300 active:bg-[#3a3a4a]
+                         disabled:opacity-30 transition-colors"
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
         {/* 입력 */}
-        <div className="mt-2 flex gap-1.5">
+        <div className="mt-1.5 flex gap-1.5">
           <input
             ref={inputRef}
             value={input}

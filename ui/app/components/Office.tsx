@@ -64,7 +64,7 @@ export default function Office() {
       {/* ── 팝업 채팅 (사무실 위에 모달) ── */}
       {activeTeam && (
         <div className="absolute inset-0 z-30 flex items-center justify-center p-4 bg-black/30">
-          <div className="w-full max-w-md h-[70vh] md:h-[60vh] bg-[#0f0f1f] border border-[#3a3a5a] rounded-lg shadow-2xl flex flex-col overflow-hidden">
+          <div className="w-full max-w-lg h-[75vh] md:h-[70vh] bg-[#0f0f1f] border border-[#3a3a5a] rounded-lg shadow-2xl flex flex-col overflow-hidden">
             <div className="flex items-center justify-between px-4 py-2.5 bg-[#1a1a3a] border-b border-[#2a2a5a]">
               <div className="flex items-center gap-2">
                 <span className="text-lg">{activeTeam.emoji}</span>

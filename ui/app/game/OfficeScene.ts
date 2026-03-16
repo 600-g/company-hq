@@ -580,12 +580,12 @@ export default class OfficeScene extends Phaser.Scene {
     t.chars.forEach((charIdx, i) => {
       if (i >= 4) return;
 
-      // 1인(CPO)은 캐릭터만 (책상/모니터 없음)
+      // 1인(CPO) — 캐릭터만, 크게 (2등신 미니미)
       if (isSolo) {
-        const char = this.add.sprite(0, 0, `char_${charIdx}`, 0)
-          .setScale(S * 1.2).setDepth(3).play(`char_${charIdx}_idle`);
+        const char = this.add.sprite(0, 2, `char_${charIdx}`, 0)
+          .setScale(S * 1.8).setDepth(3).play(`char_${charIdx}_idle`);
         container.add(char);
-        members.push({ char, charIdx, baseX: 0, baseY: 0 });
+        members.push({ char, charIdx, baseX: 0, baseY: 2 });
         return;
       }
 
