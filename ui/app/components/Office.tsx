@@ -8,7 +8,20 @@ import type { OfficeGameHandle } from "../game/OfficeGame";
 
 export default function Office() {
   const [activeTeam, setActiveTeam] = useState<Team | null>(null);
-  const [chatHistory, setChatHistory] = useState<Record<string, Message[]>>({});
+  const [chatHistory, setChatHistory] = useState<Record<string, Message[]>>(() => {
+    if (typeof window === "undefined") return {};
+    try {
+      const saved = localStorage.getItem("hq-chat-history");
+      return saved ? JSON.parse(saved) : {};
+    } catch { return {}; }
+  });
+
+  // 대화 변경 시 localStorage 저장
+  useEffect(() => {
+    try {
+      localStorage.setItem("hq-chat-history", JSON.stringify(chatHistory));
+    } catch {}
+  }, [chatHistory]);
   const [GameComponent, setGameComponent] = useState<React.ComponentType<{
     onTeamClick: (id: string) => void;
     ref: React.Ref<OfficeGameHandle>;
