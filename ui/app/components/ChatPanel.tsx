@@ -92,14 +92,23 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
             </div>
           )}
           {messages.map((msg, i) => (
-            <div key={i} className={`text-[11px] px-2 py-1.5 ${
+            <div key={i} className={`group relative text-[11px] px-2 py-1.5 rounded ${
               msg.type === "user"
-                ? "bg-blue-600/20 text-blue-200 border-l-2 border-blue-500"
+                ? "bg-blue-600/15 text-blue-200 border-l-2 border-blue-500"
                 : "bg-[#1a2a1a] text-green-300 border-l-2 border-green-600 font-mono text-[10px]"
             }`}>
-              {msg.content}
+              <div className="whitespace-pre-wrap break-words">{msg.content}</div>
               {msg.type === "ai" && streaming && i === messages.length - 1 && (
                 <span className="inline-block w-1.5 h-3 bg-green-400 ml-0.5 animate-pulse" />
+              )}
+              {msg.content && !streaming && (
+                <button
+                  onClick={() => navigator.clipboard.writeText(msg.content)}
+                  className="absolute top-0.5 right-0.5 opacity-0 group-hover:opacity-100 text-[8px] px-1.5 py-0.5
+                             bg-[#2a2a4a] text-gray-400 rounded hover:text-white transition-opacity"
+                >
+                  복사
+                </button>
               )}
             </div>
           ))}
