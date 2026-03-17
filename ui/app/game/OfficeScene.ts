@@ -16,6 +16,8 @@ const WORLD_W = COLS * TILE;
 const WORLD_H = ROWS * TILE;
 const SCALE = 1.5;
 const WALL_H = 2; // 벽(통창) 높이 (칸)
+const DPR = typeof window !== "undefined" ? Math.min(window.devicePixelRatio || 1, 3) : 2;
+const FONT = "'Pretendard Variable', Pretendard, -apple-system, sans-serif";
 
 interface TeamConfig {
   id: string; name: string; emoji: string;
@@ -305,8 +307,8 @@ export default class OfficeScene extends Phaser.Scene {
     // "SERVER ROOM" 라벨
     this.envGroup.add(g);
     const srLabel = this.add.text(srX + srW / 2, srY + 10, "🖥 서버실", {
-      fontSize: "10px", fontFamily: "'Pretendard Variable',Pretendard,sans-serif",
-      color: "#60d090", resolution: window.devicePixelRatio * 2 || 4,
+      fontSize: "13px", fontFamily: FONT,
+      color: "#60d090", resolution: DPR * 2,
     }).setOrigin(0.5);
     this.envGroup.add(srLabel);
 
@@ -332,8 +334,8 @@ export default class OfficeScene extends Phaser.Scene {
     this.envGroup.add(monHit);
 
     const monLabel = this.add.text(monX, monY + 22, "점검", {
-      fontSize: "8px", fontFamily: "'Pretendard Variable',sans-serif",
-      color: "#60d090", resolution: 6,
+      fontSize: "11px", fontFamily: FONT,
+      color: "#60d090", resolution: DPR * 2,
     }).setOrigin(0.5);
     this.envGroup.add(monLabel);
 
@@ -403,8 +405,8 @@ export default class OfficeScene extends Phaser.Scene {
 
     // 비상구 텍스트
     const exitLabel = this.add.text(WORLD_W / 2 + 52, corY + 14, "EXIT", {
-      fontSize: "6px", fontFamily: "'Pretendard Variable',sans-serif",
-      color: "#ffffff", resolution: window.devicePixelRatio * 2 || 4,
+      fontSize: "10px", fontFamily: FONT,
+      color: "#ffffff", resolution: DPR * 2,
     }).setOrigin(0.5);
     this.envGroup.add(exitLabel);
 
@@ -502,8 +504,8 @@ export default class OfficeScene extends Phaser.Scene {
 
     // 층 표시 (디스플레이 안)
     this.floorLabel = this.add.text(ex, ey - eh / 2 + 8, `${this.currentFloor}F`, {
-      fontSize: "9px", fontFamily: "'Pretendard Variable',Pretendard,-apple-system,sans-serif",
-      color: "#40d080", resolution: 6,
+      fontSize: "12px", fontFamily: FONT,
+      color: "#40d080", resolution: DPR * 2,
     }).setOrigin(0.5).setDepth(151);
 
     // ▲▼ 버튼 (문 왼쪽, 크게 — 모바일 터치용)
@@ -684,8 +686,9 @@ export default class OfficeScene extends Phaser.Scene {
     container.add(nameBg);
 
     const label = this.add.text(0, nameY, `${t.emoji} ${t.name}`, {
-      fontSize: "12px", fontFamily: "Pretendard Variable, Pretendard, -apple-system, sans-serif",
-      color: "#222222", resolution: 6,
+      fontSize: "13px", fontFamily: FONT,
+      color: "#222222", resolution: DPR * 2,
+      stroke: "#ffffff", strokeThickness: 0.3,
     }).setOrigin(0.5);
     container.add(label);
 

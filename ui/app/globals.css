@@ -48,7 +48,7 @@ code, pre, .font-mono {
 [class*="text-[11px]"] { font-size: 12px !important; }
 
 canvas {
-  image-rendering: pixelated;
+  image-rendering: auto;
   touch-action: none;
 }
 

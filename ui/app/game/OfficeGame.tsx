@@ -47,16 +47,21 @@ const OfficeGame = forwardRef<OfficeGameHandle, Props>(({ onTeamClick }, ref) =>
       const scene = new OfficeScene();
       sceneRef.current = scene;
 
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
       const game = new Phaser.Game({
         type: Phaser.AUTO,
         parent: containerRef.current,
         width: 832,
         height: 576,
         pixelArt: false,
+        antialias: true,
+        antialiasGL: true,
+        roundPixels: false,
         backgroundColor: "#1a1a2e",
         scale: {
           mode: Phaser.Scale.FIT,
           autoCenter: Phaser.Scale.CENTER_BOTH,
+          zoom: dpr,
         },
         scene: scene,
       });
