@@ -1,8 +1,27 @@
 """WebSocket 핸들러 — 채팅 메시지를 받아 Claude CLI 결과를 스트리밍 전송"""
 
 import json
+from datetime import datetime
 from fastapi import WebSocket, WebSocketDisconnect
 from claude_runner import run_claude
+
+# ── 에이전트 실시간 상태 (대시보드용) ─────────────────
+AGENT_STATUS: dict[str, dict] = {}
+RECENT_ACTIVITY: list[dict] = []  # 최근 20개
+
+def _update_status(team_id: str, **kwargs):
+    if team_id not in AGENT_STATUS:
+        AGENT_STATUS[team_id] = {"working": False, "tool": None, "last_active": None, "last_prompt": ""}
+    AGENT_STATUS[team_id].update(kwargs)
+
+def _log_activity(team_id: str, content: str):
+    RECENT_ACTIVITY.append({
+        "time": datetime.now().strftime("%H:%M:%S"),
+        "team": team_id,
+        "content": content,
+    })
+    if len(RECENT_ACTIVITY) > 20:
+        RECENT_ACTIVITY.pop(0)
 
 
 class ConnectionManager:
@@ -56,16 +75,21 @@ async def handle_chat(ws: WebSocket, team_id: str, project_path: str | None):
 
             # Claude 응답 스트리밍
             await manager.send_json(team_id, {"type": "ai_start"})
+            _update_status(team_id, working=True, tool=None, last_active=datetime.now().strftime("%H:%M:%S"), last_prompt=prompt[:60])
+            _log_activity(team_id, f"📨 {prompt[:50]}")
 
             full_response = ""
             async for event in run_claude(prompt, project_path, team_id):
                 if event["kind"] == "status":
+                    _update_status(team_id, tool=event["content"])
+                    _log_activity(team_id, event["content"])
                     await manager.send_json(team_id, {"type": "status", "content": event["content"]})
                 else:
                     full_response += event["content"]
                     await manager.send_json(team_id, {"type": "ai_chunk", "content": event["content"]})
 
             manager.add_message(team_id, "ai", full_response)
+            _update_status(team_id, working=False, tool=None)
             await manager.send_json(team_id, {"type": "ai_end", "content": full_response})
 
     except WebSocketDisconnect:

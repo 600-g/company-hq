@@ -3,6 +3,7 @@
 import { useRef, useState, useCallback, useEffect } from "react";
 import { Team } from "../config/teams";
 import ChatPanel, { Message } from "./ChatPanel";
+import ServerDashboard from "./ServerDashboard";
 
 interface Props {
   team: Team;
@@ -107,10 +108,11 @@ export default function ChatWindow({
             <button onClick={onClose} className="text-gray-400 hover:text-white text-sm px-2 py-1">✕</button>
           </div>
           <div className="flex-1 min-h-0 overflow-hidden p-2 flex flex-col">
-            <ChatPanel
-              team={team} onClose={onClose} onWorkingChange={onWorkingChange}
-              inline messages={messages} onMessages={onMessages}
-            />
+            {team.id === "server-monitor"
+              ? <ServerDashboard onClose={onClose} />
+              : <ChatPanel team={team} onClose={onClose} onWorkingChange={onWorkingChange}
+                  inline messages={messages} onMessages={onMessages} />
+            }
           </div>
         </div>
       </div>
@@ -162,12 +164,13 @@ export default function ChatWindow({
         <button onClick={onClose} className="text-gray-400 hover:text-white text-sm px-1">✕</button>
       </div>
 
-      {/* ── 채팅 영역 ── */}
+      {/* ── 콘텐츠 영역 ── */}
       <div className="flex-1 min-h-0 overflow-hidden p-2 flex flex-col">
-        <ChatPanel
-          team={team} onClose={onClose} onWorkingChange={onWorkingChange}
-          inline messages={messages} onMessages={onMessages}
-        />
+        {team.id === "server-monitor"
+          ? <ServerDashboard onClose={onClose} />
+          : <ChatPanel team={team} onClose={onClose} onWorkingChange={onWorkingChange}
+              inline messages={messages} onMessages={onMessages} />
+        }
       </div>
     </div>
   );

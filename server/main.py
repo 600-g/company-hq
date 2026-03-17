@@ -1,13 +1,16 @@
 """AI Company 본부 — FastAPI 메인 서버 (포트 8000)"""
 
 import os
+import sys
 from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
-from ws_handler import handle_chat
+from ws_handler import handle_chat, AGENT_STATUS, RECENT_ACTIVITY
 from project_scanner import scan_all
 from github_manager import create_repo, list_repos
+from system_monitor import get_all as get_system
+from claude_runner import TEAM_SESSIONS, TEAM_MODELS
 
 load_dotenv()
 
@@ -82,6 +85,37 @@ async def add_team(body: dict):
 async def get_repos():
     """GitHub 레포 목록"""
     return list_repos()
+
+
+@app.get("/api/dashboard")
+async def get_dashboard():
+    """대시보드 전체 상태 반환"""
+    agents = []
+    for team in TEAMS:
+        tid = team["id"]
+        status = AGENT_STATUS.get(tid, {})
+        session = TEAM_SESSIONS.get(tid)
+        agents.append({
+            "id": tid,
+            "name": team["name"],
+            "emoji": team["emoji"],
+            "model": TEAM_MODELS.get(tid, "sonnet"),
+            "working": status.get("working", False),
+            "tool": status.get("tool"),
+            "last_active": status.get("last_active"),
+            "last_prompt": status.get("last_prompt", ""),
+            "session": session[:8] if session else None,
+        })
+
+    return {
+        "agents": agents,
+        "system": get_system(),
+        "activity": list(reversed(RECENT_ACTIVITY)),
+        "version": {
+            "server": "1.0.0",
+            "python": sys.version.split()[0],
+        },
+    }
 
 
 # ── WebSocket ─────────────────────────────────────────
