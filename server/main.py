@@ -10,7 +10,7 @@ from ws_handler import handle_chat, AGENT_STATUS, RECENT_ACTIVITY, _log_activity
 from project_scanner import scan_all
 from github_manager import create_repo, list_repos
 from system_monitor import get_all as get_system, get_process_stats
-from claude_runner import TEAM_SESSIONS, TEAM_MODELS, AGENT_PIDS, MODEL_IDS, get_claude_version, _save_sessions
+from claude_runner import TEAM_SESSIONS, TEAM_MODELS, AGENT_PIDS, MODEL_IDS, get_claude_version, _save_sessions, AGENT_TOKENS
 
 load_dotenv()
 
@@ -49,8 +49,28 @@ app.add_middleware(
 
 @app.get("/api/teams")
 async def get_teams():
-    """팀 목록 + 프로젝트 현황 반환"""
+    """팀 목록 + 프로젝트 현황(버전, 최근 커밋일 포함) 반환"""
     return scan_all(PROJECTS_ROOT, TEAMS)
+
+
+@app.get("/api/teams/info")
+async def get_teams_info():
+    """팀 목록 + 버전/업데이트일 간략 정보 (폴링용 경량 API)"""
+    from project_scanner import scan_project
+    result = []
+    for team in TEAMS:
+        local_path = os.path.expanduser(team.get("localPath", ""))
+        scan = scan_project(local_path)
+        result.append({
+            "id": team["id"],
+            "name": team["name"],
+            "emoji": team.get("emoji", ""),
+            "version": scan.get("version"),
+            "version_updated": scan.get("version_updated"),
+            "last_commit_date": scan.get("last_commit_date"),
+            "last_commit": scan.get("last_commit"),
+        })
+    return result
 
 
 @app.post("/api/teams")
@@ -116,6 +136,7 @@ async def get_dashboard():
             "last_prompt": status.get("last_prompt", ""),
             "session": session[:8] if session else None,
             "pid": pid,
+            "tokens": AGENT_TOKENS.get(tid, {"prompts": 0, "chars": 0}),
             "cpu": proc_stats["cpu"] if proc_stats else None,
             "memory_mb": proc_stats["memory_mb"] if proc_stats else None,
         })

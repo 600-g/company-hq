@@ -82,3 +82,7 @@ input, textarea {
 @media (min-width: 769px) {
   .mobile-only { display: none !important; }
 }
+
+/* 스크롤바 숨기기 (모바일 가로 스크롤 바) */
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }

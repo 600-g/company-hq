@@ -6,9 +6,10 @@ export interface Team {
   localPath: string;
   status: string;
   siteUrl?: string;
+  githubUrl?: string;
 }
 
-export const teams: Team[] = [
+export const defaultTeams: Team[] = [
   {
     id: "server-monitor",
     name: "서버실",
@@ -16,7 +17,8 @@ export const teams: Team[] = [
     repo: "company-hq",
     localPath: "~/Developer/my-company/company-hq",
     status: "운영중",
-    siteUrl: "https://github.com/600-g/company-hq",
+    siteUrl: "https://600g.net",
+    githubUrl: "https://github.com/600-g/company-hq",
   },
   {
     id: "cpo-claude",
@@ -25,7 +27,7 @@ export const teams: Team[] = [
     repo: "company-hq",
     localPath: "~/Developer/my-company/company-hq",
     status: "운영중",
-    siteUrl: "https://github.com/600-g/company-hq",
+    githubUrl: "https://github.com/600-g/company-hq",
   },
   {
     id: "trading-bot",
@@ -34,7 +36,7 @@ export const teams: Team[] = [
     repo: "upbit-auto-trading-bot",
     localPath: "~/Developer/my-company/upbit-auto-trading-bot",
     status: "운영중",
-    siteUrl: "https://github.com/600-g/upbit-auto-trading-bot",
+    githubUrl: "https://github.com/600-g/upbit-auto-trading-bot",
   },
   {
     id: "date-map",
@@ -43,7 +45,7 @@ export const teams: Team[] = [
     repo: "date-map",
     localPath: "~/Developer/my-company/date-map",
     status: "운영중",
-    siteUrl: "https://github.com/600-g/date-map",
+    githubUrl: "https://github.com/600-g/date-map",
   },
   {
     id: "claude-biseo",
@@ -52,7 +54,7 @@ export const teams: Team[] = [
     repo: "claude-biseo-v1.0",
     localPath: "~/Developer/my-company/claude-biseo-v1.0",
     status: "운영중",
-    siteUrl: "https://github.com/600-g/claude-biseo-v1.0",
+    githubUrl: "https://github.com/600-g/claude-biseo-v1.0",
   },
   {
     id: "ai900",
@@ -61,7 +63,8 @@ export const teams: Team[] = [
     repo: "ai900",
     localPath: "~/Developer/my-company/ai900",
     status: "운영중",
-    siteUrl: "https://github.com/600-g/ai900",
+    siteUrl: "https://ai900.600g.net",
+    githubUrl: "https://github.com/600-g/ai900",
   },
   {
     id: "cl600g",
@@ -70,6 +73,9 @@ export const teams: Team[] = [
     repo: "cl600g",
     localPath: "~/Developer/my-company/cl600g",
     status: "운영중",
-    siteUrl: "https://github.com/600-g/cl600g",
+    githubUrl: "https://github.com/600-g/cl600g",
   },
 ];
+
+// 하위 호환: 기존 `teams` import 유지
+export const teams = defaultTeams;

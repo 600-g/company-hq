@@ -25,25 +25,34 @@ def _log_activity(team_id: str, content: str):
 
 
 class ConnectionManager:
-    """활성 WebSocket 연결 + 대화 기록 관리"""
+    """활성 WebSocket 연결 + 대화 기록 관리 (팀당 다중 연결 지원)"""
 
     def __init__(self):
-        self.active: dict[str, WebSocket] = {}
+        self.active: dict[str, list[WebSocket]] = {}  # team_id -> [ws, ...]
         self.history: dict[str, list] = {}  # team_id -> 대화 기록
 
     async def connect(self, team_id: str, ws: WebSocket):
         await ws.accept()
-        self.active[team_id] = ws
+        if team_id not in self.active:
+            self.active[team_id] = []
+        self.active[team_id].append(ws)
         if team_id not in self.history:
             self.history[team_id] = []
 
-    def disconnect(self, team_id: str):
-        self.active.pop(team_id, None)
+    def disconnect(self, team_id: str, ws: WebSocket):
+        conns = self.active.get(team_id, [])
+        if ws in conns:
+            conns.remove(ws)
+        if not conns:
+            self.active.pop(team_id, None)
 
-    async def send_json(self, team_id: str, data: dict):
-        ws = self.active.get(team_id)
-        if ws:
-            await ws.send_json(data)
+    async def send_json(self, team_id: str, data: dict, sender_ws: WebSocket | None = None):
+        """team_id의 모든 연결에 전송 (sender 포함)"""
+        for ws in self.active.get(team_id, []):
+            try:
+                await ws.send_json(data)
+            except Exception:
+                pass
 
     def add_message(self, team_id: str, msg_type: str, content: str):
         if team_id not in self.history:
@@ -58,7 +67,7 @@ manager = ConnectionManager()
 
 
 async def handle_chat(ws: WebSocket, team_id: str, project_path: str | None):
-    """WebSocket 연결 하나를 처리한다."""
+    """WebSocket 연결 하나를 처리한다. 각 팀은 독립적으로 병렬 실행된다."""
     await manager.connect(team_id, ws)
     try:
         while True:
@@ -93,4 +102,4 @@ async def handle_chat(ws: WebSocket, team_id: str, project_path: str | None):
             await manager.send_json(team_id, {"type": "ai_end", "content": full_response})
 
     except WebSocketDisconnect:
-        manager.disconnect(team_id)
+        manager.disconnect(team_id, ws)

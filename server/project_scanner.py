@@ -1,8 +1,31 @@
-"""프로젝트 현황 스캐너 — 각 팀 레포의 최근 커밋, 상태 등을 수집"""
+"""프로젝트 현황 스캐너 — 각 팀 레포의 최근 커밋, 상태, 버전 등을 수집"""
 
 import os
+import re
 from datetime import datetime, timezone
 from git import Repo, InvalidGitRepositoryError
+
+
+def _parse_claude_md_version(local_path: str) -> dict:
+    """CLAUDE.md에서 버전과 업데이트 날짜를 파싱한다."""
+    result = {"version": None, "updated": None}
+    claude_md = os.path.join(local_path, "CLAUDE.md")
+    if not os.path.isfile(claude_md):
+        return result
+    try:
+        with open(claude_md, "r", encoding="utf-8") as f:
+            head = f.read(2000)  # 앞부분만
+        # 버전: v1.2 형태
+        m = re.search(r"버전:\s*(v[\d.]+)", head)
+        if m:
+            result["version"] = m.group(1)
+        # 업데이트 날짜
+        m = re.search(r"업데이트:\s*(\d{4}-\d{2}-\d{2})", head)
+        if m:
+            result["updated"] = m.group(1)
+    except Exception:
+        pass
+    return result
 
 
 def scan_project(local_path: str) -> dict:
@@ -17,6 +40,8 @@ def scan_project(local_path: str) -> dict:
         "branch": None,
         "dirty": False,
         "commit_count_30d": 0,
+        "version": None,
+        "version_updated": None,
     }
 
     if not info["exists"]:
@@ -50,6 +75,11 @@ def scan_project(local_path: str) -> dict:
         info["commit_count_30d"] = count
     except Exception:
         pass
+
+    # CLAUDE.md 버전 파싱
+    ver = _parse_claude_md_version(path)
+    info["version"] = ver["version"]
+    info["version_updated"] = ver["updated"]
 
     return info
 
