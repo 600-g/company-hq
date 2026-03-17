@@ -23,9 +23,10 @@ const MIN_H = 300;
 export default function ChatWindow({
   team, messages, onMessages, onClose, onWorkingChange, onFocus, zIndex, initialX, initialY
 }: Props) {
+  const isDashboard = team.id === "server-monitor";
   const [isMobile, setIsMobile] = useState(false);
   const [pos, setPos] = useState({ x: initialX, y: initialY });
-  const [size, setSize] = useState({ w: 380, h: 440 });
+  const [size, setSize] = useState({ w: isDashboard ? 420 : 380, h: isDashboard ? 560 : 440 });
   const [dragging, setDragging] = useState(false);
   const [resizing, setResizing] = useState<string | null>(null);
   const dragOffset = useRef({ x: 0, y: 0 });

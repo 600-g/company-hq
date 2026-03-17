@@ -253,16 +253,18 @@ export default function ServerDashboard({ onClose }: { onClose: () => void }) {
         {data && (
           <section>
             <h3 className="text-[9px] text-gray-600 uppercase tracking-wider mb-1.5">시스템 리소스</h3>
-            <div className="space-y-1.5 bg-[#1a1a2e] border border-[#2a2a4a] rounded p-2">
+            <div className="space-y-2 bg-[#1a1a2e] border border-[#2a2a4a] rounded p-2.5">
               {([
                 { label: "CPU",    value: data.system.cpu    },
                 { label: "메모리", value: data.system.memory },
                 { label: "디스크", value: data.system.disk   },
               ] as { label: string; value: number }[]).map(({ label, value }) => (
-                <div key={label} className="flex items-center gap-2">
-                  <span className="w-8 text-gray-500 shrink-0">{label}</span>
-                  <div className="flex-1"><ProgressBar value={value} color={metricColor(value)} /></div>
-                  <span className={`w-9 text-right font-mono shrink-0 ${metricText(value)}`}>{value}%</span>
+                <div key={label}>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[10px] text-gray-400">{label}</span>
+                    <span className={`text-[10px] font-mono font-semibold ${metricText(value)}`}>{value}%</span>
+                  </div>
+                  <ProgressBar value={value} color={metricColor(value)} />
                 </div>
               ))}
             </div>

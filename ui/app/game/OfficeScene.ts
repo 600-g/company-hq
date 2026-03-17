@@ -833,18 +833,27 @@ export default class OfficeScene extends Phaser.Scene {
       // 말풍선
       if (working && !m.bubble) {
         const b = this.add.graphics().setDepth(10);
-        b.fillStyle(0xffffff, 0.95);
-        b.fillRoundedRect(-14, -12, 28, 14, 3);
-        b.fillStyle(0xffffff, 0.95);
-        b.fillRect(-2, 2, 4, 4); // 꼬리
-        // "..." 점
-        b.fillStyle(0x555555, 1);
-        b.fillCircle(-5, -5, 1.5);
-        b.fillCircle(0, -5, 1.5);
-        b.fillCircle(5, -5, 1.5);
-        b.setPosition(m.char.x, m.char.y - 14);
+        // 말풍선 배경
+        b.fillStyle(0xfffbe6, 1);
+        b.fillRoundedRect(-18, -16, 36, 18, 4);
+        b.lineStyle(1.5, 0xf5c842, 0.9);
+        b.strokeRoundedRect(-18, -16, 36, 18, 4);
+        // 꼬리
+        b.fillStyle(0xfffbe6, 1);
+        b.fillTriangle(-3, 2, 3, 2, 0, 7);
+        b.lineStyle(1, 0xf5c842, 0.7);
+        b.lineBetween(-3, 2, 0, 7);
+        b.lineBetween(3, 2, 0, 7);
+        // 점 3개 (노란 배경에 어두운 점)
+        b.fillStyle(0x333333, 1);
+        b.fillCircle(-6, -7, 2);
+        b.fillCircle(0, -7, 2);
+        b.fillCircle(6, -7, 2);
+        b.setPosition(m.char.x, m.char.y - 16);
         tg.container.add(b);
         m.bubble = b;
+        // 애니메이션 (살짝 튀는 효과)
+        this.tweens.add({ targets: b, scaleX: 1.1, scaleY: 1.1, duration: 200, yoyo: true, ease: "Sine.easeOut" });
       } else if (!working && m.bubble) {
         m.bubble.destroy();
         m.bubble = undefined;
