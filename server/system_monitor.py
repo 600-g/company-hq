@@ -55,6 +55,19 @@ def get_disk_percent(path: str = "/") -> float:
         return 0.0
 
 
+def get_process_stats(pid: int) -> dict | None:
+    """특정 PID의 CPU/메모리 사용량"""
+    try:
+        import psutil
+        p = psutil.Process(pid)
+        return {
+            "cpu": round(p.cpu_percent(interval=0.1), 1),
+            "memory_mb": round(p.memory_info().rss / 1024 / 1024, 1),
+        }
+    except Exception:
+        return None
+
+
 def get_all() -> dict:
     return {
         "cpu": get_cpu_percent(),

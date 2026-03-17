@@ -6,11 +6,11 @@ from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
-from ws_handler import handle_chat, AGENT_STATUS, RECENT_ACTIVITY
+from ws_handler import handle_chat, AGENT_STATUS, RECENT_ACTIVITY, _log_activity
 from project_scanner import scan_all
 from github_manager import create_repo, list_repos
-from system_monitor import get_all as get_system
-from claude_runner import TEAM_SESSIONS, TEAM_MODELS
+from system_monitor import get_all as get_system, get_process_stats
+from claude_runner import TEAM_SESSIONS, TEAM_MODELS, AGENT_PIDS, MODEL_IDS, get_claude_version, _save_sessions
 
 load_dotenv()
 
@@ -93,18 +93,31 @@ async def get_dashboard():
     agents = []
     for team in TEAMS:
         tid = team["id"]
+        if tid == "server-monitor":
+            continue  # 서버실 자신은 에이전트 목록에서 제외
         status = AGENT_STATUS.get(tid, {})
         session = TEAM_SESSIONS.get(tid)
+        model_key = TEAM_MODELS.get(tid, "sonnet")
+        model_id = MODEL_IDS.get(model_key, model_key)
+
+        # 실행 중인 subprocess 리소스
+        pid = AGENT_PIDS.get(tid)
+        proc_stats = get_process_stats(pid) if pid else None
+
         agents.append({
             "id": tid,
             "name": team["name"],
             "emoji": team["emoji"],
-            "model": TEAM_MODELS.get(tid, "sonnet"),
+            "model_key": model_key,
+            "model_id": model_id,
             "working": status.get("working", False),
             "tool": status.get("tool"),
             "last_active": status.get("last_active"),
             "last_prompt": status.get("last_prompt", ""),
             "session": session[:8] if session else None,
+            "pid": pid,
+            "cpu": proc_stats["cpu"] if proc_stats else None,
+            "memory_mb": proc_stats["memory_mb"] if proc_stats else None,
         })
 
     return {
@@ -114,8 +127,35 @@ async def get_dashboard():
         "version": {
             "server": "1.0.0",
             "python": sys.version.split()[0],
+            "claude_cli": get_claude_version(),
         },
     }
+
+
+@app.post("/api/agents/{team_id}/restart")
+async def restart_agent(team_id: str):
+    """에이전트 세션 초기화 (재부팅)"""
+    import signal
+
+    # 실행 중인 프로세스 종료
+    pid = AGENT_PIDS.get(team_id)
+    if pid:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except Exception:
+            pass
+        AGENT_PIDS.pop(team_id, None)
+
+    # 세션 초기화
+    if team_id in TEAM_SESSIONS:
+        del TEAM_SESSIONS[team_id]
+        _save_sessions(TEAM_SESSIONS)
+
+    # 상태 초기화
+    AGENT_STATUS[team_id] = {"working": False, "tool": None, "last_active": None, "last_prompt": ""}
+    _log_activity(team_id, "🔄 재부팅됨 (세션 초기화)")
+
+    return {"ok": True, "team_id": team_id}
 
 
 # ── WebSocket ─────────────────────────────────────────

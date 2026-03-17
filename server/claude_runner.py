@@ -65,6 +65,28 @@ TEAM_SYSTEM_PROMPTS: dict[str, str] = {
     ),
 }
 
+# ── Claude CLI 버전 (서버 시작 시 1회) ────────────────
+import subprocess as _sp
+_CLAUDE_VERSION = "unknown"
+try:
+    _r = _sp.run(["claude", "--version"], capture_output=True, text=True, timeout=5)
+    _CLAUDE_VERSION = _r.stdout.strip().split("\n")[0]
+except Exception:
+    pass
+
+# 모델 ID 매핑
+MODEL_IDS: dict[str, str] = {
+    "opus":   "claude-opus-4-6",
+    "sonnet": "claude-sonnet-4-6",
+    "haiku":  "claude-haiku-4-5",
+}
+
+def get_claude_version() -> str:
+    return _CLAUDE_VERSION
+
+# ── 실행 중인 subprocess PID 추적 ─────────────────────
+AGENT_PIDS: dict[str, int] = {}  # team_id -> PID (실행 중일 때만)
+
 DEFAULT_SYSTEM_PROMPT = (
     "당신은 두근컴퍼니의 AI 에이전트입니다. "
     "담당 프로젝트의 개발, 분석, 운영 작업을 수행합니다. "
@@ -135,6 +157,7 @@ async def run_claude(prompt: str, project_path: str | None = None, team_id: str 
         cwd=cwd,
         env=env,
     )
+    AGENT_PIDS[team_id] = proc.pid
 
     buf = b""
     while True:
@@ -164,6 +187,7 @@ async def run_claude(prompt: str, project_path: str | None = None, team_id: str 
         yield {"kind": "text", "content": text}
 
     await proc.wait()
+    AGENT_PIDS.pop(team_id, None)
     logger.info("[%s] 응답 완료 (exit=%d)", team_id, proc.returncode or 0)
 
     if proc.returncode != 0:
