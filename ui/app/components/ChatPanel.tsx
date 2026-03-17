@@ -84,18 +84,15 @@ function MarkdownMessage({ content }: { content: string }) {
 }
 
 // ── WebSocket URL ─────────────────────────────────────
-const WS_STORAGE_KEY = "hq-ws-base-url";
-
 function getWsUrl(teamId: string): string {
   if (typeof window === "undefined") return "";
   const h = window.location.hostname;
   const isLocal = h === "localhost" || h.startsWith("192.168.");
-  if (isLocal) return `ws://${h}:8000/ws/chat/${teamId}`;
-  const saved = localStorage.getItem(WS_STORAGE_KEY) || "";
-  return saved ? `${saved}/ws/chat/${teamId}` : "";
+  const base = isLocal ? `ws://${h}:8000` : `wss://600g.net`;
+  return `${base}/ws/chat/${teamId}`;
 }
 
-export function getWsStorageKey() { return WS_STORAGE_KEY; }
+export function getWsStorageKey() { return "hq-ws-base-url"; }
 
 // ─────────────────────────────────────────────────────
 
