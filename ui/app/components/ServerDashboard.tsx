@@ -2,6 +2,37 @@
 
 import { useState, useEffect, useCallback } from "react";
 
+// ── 커스텀 확인 다이얼로그 ─────────────────────────────
+function ConfirmDialog({
+  message, onConfirm, onCancel,
+}: { message: string; onConfirm: () => void; onCancel: () => void }) {
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60"
+      onClick={onCancel}>
+      <div
+        className="bg-[#0f0f1f] border border-[#3a3a5a] rounded-lg p-4 w-64 shadow-2xl"
+        onClick={e => e.stopPropagation()}
+      >
+        <p className="text-[11px] text-gray-300 mb-4 leading-relaxed">{message}</p>
+        <div className="flex gap-2">
+          <button
+            onClick={onConfirm}
+            className="flex-1 bg-red-500/80 hover:bg-red-500 text-white py-1.5 text-[10px] font-bold rounded transition-colors"
+          >
+            초기화
+          </button>
+          <button
+            onClick={onCancel}
+            className="flex-1 bg-[#2a2a3a] hover:bg-[#3a3a4a] text-gray-400 py-1.5 text-[10px] rounded transition-colors"
+          >
+            취소
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 interface AgentInfo {
   id: string;
   name: string;
@@ -58,9 +89,9 @@ function metricText(v: number) {
 // ── 에이전트 카드 ──────────────────────────────────────
 function AgentCard({ agent, onRestart }: { agent: AgentInfo; onRestart: (id: string) => void }) {
   const [restarting, setRestarting] = useState(false);
+  const [confirming, setConfirming] = useState(false);
 
   const handleRestart = async () => {
-    if (!confirm(`${agent.name} 세션을 초기화(재부팅)할까요?`)) return;
     setRestarting(true);
     try {
       await fetch(`${getApiBase()}/api/agents/${agent.id}/restart`, { method: "POST" });
@@ -71,6 +102,14 @@ function AgentCard({ agent, onRestart }: { agent: AgentInfo; onRestart: (id: str
   };
 
   return (
+    <>
+    {confirming && (
+      <ConfirmDialog
+        message={`${agent.emoji} ${agent.name} 세션을 초기화할까요?\n진행 중인 작업이 중단됩니다.`}
+        onConfirm={() => { setConfirming(false); handleRestart(); }}
+        onCancel={() => setConfirming(false)}
+      />
+    )}
     <div className={`p-2 rounded border transition-colors ${
       agent.working ? "bg-yellow-500/5 border-yellow-500/30" : "bg-[#1a1a2e] border-[#2a2a4a]"
     }`}>
@@ -93,10 +132,10 @@ function AgentCard({ agent, onRestart }: { agent: AgentInfo; onRestart: (id: str
             </span>
           )}
           <button
-            onClick={handleRestart}
+            onClick={() => setConfirming(true)}
             disabled={restarting}
             className="text-[8px] px-1.5 py-0.5 bg-[#2a2a3a] border border-[#3a3a5a] text-gray-500 rounded
-                       hover:text-yellow-400 hover:border-yellow-500/40 disabled:opacity-30 transition-colors ml-1"
+                       hover:text-red-400 hover:border-red-500/40 disabled:opacity-30 transition-colors ml-1"
             title="세션 초기화"
           >
             {restarting ? "…" : "↺"}
@@ -147,6 +186,7 @@ function AgentCard({ agent, onRestart }: { agent: AgentInfo; onRestart: (id: str
         <div className="text-[7px] text-gray-700 mt-1">{agent.last_active}</div>
       )}
     </div>
+    </>
   );
 }
 
