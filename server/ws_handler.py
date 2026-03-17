@@ -1,9 +1,33 @@
-"""WebSocket 핸들러 — 채팅 메시지를 받아 Claude CLI 결과를 스트리밍 전송"""
+"""WebSocket 핸들러 — 채팅 메시지를 받아 Claude CLI 결과를 스트리밍 전송 + 대화 영구 저장"""
 
 import json
 from datetime import datetime
+from pathlib import Path
 from fastapi import WebSocket, WebSocketDisconnect
 from claude_runner import run_claude
+
+# ── 대화 기록 영구 저장 ─────────────────────────────
+_CHAT_DIR = Path(__file__).parent / "chat_history"
+_CHAT_DIR.mkdir(exist_ok=True)
+_MAX_MESSAGES = 100  # 팀당 최대 저장 메시지 수
+
+def _chat_path(team_id: str) -> Path:
+    return _CHAT_DIR / f"{team_id}.json"
+
+def _load_chat(team_id: str) -> list[dict]:
+    p = _chat_path(team_id)
+    if p.exists():
+        try:
+            return json.loads(p.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    return []
+
+def _save_chat(team_id: str, messages: list[dict]):
+    # 최근 N개만 유지
+    trimmed = messages[-_MAX_MESSAGES:]
+    _chat_path(team_id).write_text(json.dumps(trimmed, ensure_ascii=False, indent=None), encoding="utf-8")
+
 
 # ── 에이전트 실시간 상태 (대시보드용) ─────────────────
 AGENT_STATUS: dict[str, dict] = {}
@@ -29,15 +53,16 @@ class ConnectionManager:
 
     def __init__(self):
         self.active: dict[str, list[WebSocket]] = {}  # team_id -> [ws, ...]
-        self.history: dict[str, list] = {}  # team_id -> 대화 기록
+        self.history: dict[str, list] = {}  # team_id -> 대화 기록 (메모리 캐시)
 
     async def connect(self, team_id: str, ws: WebSocket):
         await ws.accept()
         if team_id not in self.active:
             self.active[team_id] = []
         self.active[team_id].append(ws)
+        # 디스크에서 기록 로드
         if team_id not in self.history:
-            self.history[team_id] = []
+            self.history[team_id] = _load_chat(team_id)
 
     def disconnect(self, team_id: str, ws: WebSocket):
         conns = self.active.get(team_id, [])
@@ -56,11 +81,22 @@ class ConnectionManager:
 
     def add_message(self, team_id: str, msg_type: str, content: str):
         if team_id not in self.history:
-            self.history[team_id] = []
+            self.history[team_id] = _load_chat(team_id)
         self.history[team_id].append({"type": msg_type, "content": content})
-        # 최근 20개만 유지
-        if len(self.history[team_id]) > 20:
-            self.history[team_id] = self.history[team_id][-20:]
+        # 최근 N개만 유지
+        if len(self.history[team_id]) > _MAX_MESSAGES:
+            self.history[team_id] = self.history[team_id][-_MAX_MESSAGES:]
+        # 디스크에 저장
+        _save_chat(team_id, self.history[team_id])
+
+    def get_history(self, team_id: str) -> list[dict]:
+        if team_id not in self.history:
+            self.history[team_id] = _load_chat(team_id)
+        return self.history[team_id]
+
+    def clear_history(self, team_id: str):
+        self.history[team_id] = []
+        _save_chat(team_id, [])
 
 
 manager = ConnectionManager()
@@ -69,11 +105,26 @@ manager = ConnectionManager()
 async def handle_chat(ws: WebSocket, team_id: str, project_path: str | None):
     """WebSocket 연결 하나를 처리한다. 각 팀은 독립적으로 병렬 실행된다."""
     await manager.connect(team_id, ws)
+
+    # 접속 시 과거 대화 전송 (동기화)
+    history = manager.get_history(team_id)
+    if history:
+        try:
+            await ws.send_json({"type": "history_sync", "messages": history})
+        except Exception:
+            pass
+
     try:
         while True:
             raw = await ws.receive_text()
             msg = json.loads(raw)
             prompt = msg.get("prompt", "")
+
+            # 대화 지우기 요청
+            if msg.get("action") == "clear_history":
+                manager.clear_history(team_id)
+                await manager.send_json(team_id, {"type": "history_cleared"})
+                continue
 
             if not prompt:
                 continue

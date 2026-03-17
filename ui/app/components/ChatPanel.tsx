@@ -145,6 +145,18 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
     ws.onclose = () => { setConnected(false); setStreaming(false); onWorkingChange(false); }
     ws.onmessage = (e) => {
       const data = JSON.parse(e.data);
+      if (data.type === "history_sync") {
+        // 서버에서 과거 대화 수신 → 로컬에 없으면 동기화
+        const serverMsgs: Message[] = data.messages || [];
+        if (serverMsgs.length > 0) {
+          setMessages(prev => prev.length === 0 ? serverMsgs : prev);
+        }
+        return;
+      }
+      if (data.type === "history_cleared") {
+        setMessages([]);
+        return;
+      }
       if (data.type === "user") {
         setMessages(prev => [...prev, { type: "user", content: data.content }]);
       } else if (data.type === "status") {
@@ -201,7 +213,10 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
         <div className="flex items-center gap-2 mb-2">
           <div className={`w-1.5 h-1.5 rounded-full ${connected ? "bg-green-400" : "bg-red-500"}`} />
           <span className="text-[9px] text-gray-500">{connected ? "연결됨" : "연결중..."}</span>
-          <button onClick={onClose} className="ml-auto text-[9px] text-gray-500 hover:text-gray-300">✕ 닫기</button>
+          <button
+            onClick={() => { setMessages([]); onMessages([]); wsRef.current?.send(JSON.stringify({ action: "clear_history" })); }}
+            className="ml-auto text-[9px] text-gray-500 hover:text-gray-300"
+          >🗑 대화 지우기</button>
         </div>
 
         {/* 메시지 */}
@@ -300,16 +315,10 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
         {/* 바로가기 */}
         <div className="mt-1 flex flex-wrap gap-1 shrink-0">
           {[
-            { label: "📂 파일 목록", cmd: "ls -la" },
-            { label: "🔄 Git 상태", cmd: "git status" },
-            { label: "📝 Git 로그", cmd: "git log --oneline -5" },
-            { label: "💾 커밋", cmd: "git add -A && git commit -m 'update'" },
-            { label: "🚀 푸시", cmd: "git push" },
-            { label: "🔨 빌드", cmd: "npm run build" },
-            { label: "🐛 에러 로그", cmd: "tail -20 *.log" },
-            { label: "💻 프로세스", cmd: "ps aux | head -10" },
-            { label: "📦 설치", cmd: "npm install" },
-            { label: "📊 디스크", cmd: "df -h" },
+            { label: "📋 현황 요약", cmd: "지금 프로젝트 상태 간단히 요약해줘" },
+            { label: "🐛 에러 확인", cmd: "최근 에러 로그 확인해줘" },
+            { label: "🔨 빌드 & 배포", cmd: "빌드하고 배포해줘" },
+            { label: "🔄 최근 변경", cmd: "최근 변경사항 알려줘" },
           ].map(({ label, cmd }) => (
             <button
               key={cmd}
