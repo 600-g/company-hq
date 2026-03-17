@@ -152,16 +152,25 @@ export default function ChatWindow({
 
       {/* ── 타이틀바 (드래그) ── */}
       <div
-        className="flex items-center justify-between px-3 py-2 bg-[#1a1a3a] border-b border-[#2a2a5a] cursor-move select-none shrink-0"
+        className={`flex items-center justify-between px-3 py-2 border-b cursor-move select-none shrink-0 ${
+          team.id === "server-monitor"
+            ? "bg-[#0d1a0d] border-[#1a3a1a]"
+            : "bg-[#1a1a3a] border-[#2a2a5a]"
+        }`}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
       >
         <div className="flex items-center gap-2">
           <span className="text-base">{team.emoji}</span>
-          <span className="text-xs font-semibold text-white">{team.name}</span>
+          <span className={`text-xs font-semibold tracking-wide ${
+            team.id === "server-monitor" ? "text-green-400" : "text-white"
+          }`}>{team.name}</span>
+          {team.id === "server-monitor" && (
+            <span className="text-[9px] text-green-600 font-mono border border-green-800 px-1 rounded">LIVE</span>
+          )}
         </div>
-        <button onClick={onClose} className="text-gray-400 hover:text-white text-sm px-1">✕</button>
+        <button onClick={onClose} className="text-gray-500 hover:text-gray-200 text-sm px-1 transition-colors">✕</button>
       </div>
 
       {/* ── 콘텐츠 영역 ── */}
