@@ -109,6 +109,14 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
   const [streaming, setStreaming] = useState(false);
   const [connected, setConnected] = useState(false);
   const [toolStatus, setToolStatus] = useState<string>("");
+  // ── 진행 추적 ──
+  const [toolLog, setToolLog] = useState<string[]>([]);          // 이번 작업 툴 목록
+  const [elapsed, setElapsed] = useState(0);                      // 경과 초
+  const [lastDone, setLastDone] = useState<{ sec: number; tools: number } | null>(null); // 완료 정보
+  const [showToolLog, setShowToolLog] = useState(false);
+  const startTimeRef = useRef<number>(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   const wsRef = useRef<WebSocket | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -117,29 +125,62 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, []);
 
+  // 브라우저 알림
+  const notify = useCallback((title: string, body: string) => {
+    if (document.hasFocus()) return;
+    if (Notification.permission === "granted") {
+      new Notification(title, { body, icon: "/favicon.ico" });
+    } else if (Notification.permission === "default") {
+      Notification.requestPermission().then(p => {
+        if (p === "granted") new Notification(title, { body });
+      });
+    }
+  }, []);
+
   useEffect(() => {
     const wsUrl = getWsUrl(team.id);
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
-    ws.onopen = () => setConnected(true);
-    ws.onclose = () => { setConnected(false); setStreaming(false); onWorkingChange(false); };
+    ws.onopen = () => { setConnected(true); Notification.requestPermission(); }
+    ws.onclose = () => { setConnected(false); setStreaming(false); onWorkingChange(false); }
     ws.onmessage = (e) => {
       const data = JSON.parse(e.data);
-      if (data.type === "user") setMessages(prev => [...prev, { type: "user", content: data.content }]);
-      else if (data.type === "status") { setToolStatus(data.content); }
-      else if (data.type === "ai_start") { setStreaming(true); setToolStatus(""); onWorkingChange(true); setMessages(prev => [...prev, { type: "ai", content: "" }]); }
-      else if (data.type === "ai_chunk") {
+      if (data.type === "user") {
+        setMessages(prev => [...prev, { type: "user", content: data.content }]);
+      } else if (data.type === "status") {
+        setToolStatus(data.content);
+        setToolLog(prev => [...prev, data.content]);
+      } else if (data.type === "ai_start") {
+        setStreaming(true);
+        setToolStatus("");
+        setToolLog([]);
+        setLastDone(null);
+        setElapsed(0);
+        startTimeRef.current = Date.now();
+        timerRef.current = setInterval(() => {
+          setElapsed(Math.floor((Date.now() - startTimeRef.current) / 1000));
+        }, 1000);
+        onWorkingChange(true);
+        setMessages(prev => [...prev, { type: "ai", content: "" }]);
+      } else if (data.type === "ai_chunk") {
         setMessages(prev => {
           const u = [...prev]; const l = u[u.length - 1];
           if (l?.type === "ai") u[u.length - 1] = { ...l, content: l.content + data.content };
           return u;
         });
+      } else if (data.type === "ai_end") {
+        if (timerRef.current) clearInterval(timerRef.current);
+        const sec = Math.floor((Date.now() - startTimeRef.current) / 1000);
+        setStreaming(false);
+        setToolStatus("");
+        setLastDone(prev => ({ sec, tools: (prev?.tools ?? 0) + toolLog.length }));
+        onWorkingChange(false);
+        notify(`${team.emoji} ${team.name} 완료`, `작업 완료 (${sec}초)`);
       }
-      else if (data.type === "ai_end") { setStreaming(false); setToolStatus(""); onWorkingChange(false); }
     };
     inputRef.current?.focus();
-    return () => { ws.close(); };
-  }, [team.id, onWorkingChange]);
+    return () => { ws.close(); if (timerRef.current) clearInterval(timerRef.current); };
+  }, [team.id, onWorkingChange, notify]);
 
   useEffect(() => { scrollToBottom(); }, [messages, scrollToBottom]);
 
@@ -148,6 +189,9 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
     wsRef.current.send(JSON.stringify({ prompt: input.trim() }));
     setInput("");
   };
+
+  // ── 경과시간 포맷 ──
+  const fmtTime = (s: number) => s >= 60 ? `${Math.floor(s / 60)}분 ${s % 60}초` : `${s}초`;
 
   // ── 인라인 모드 ──────────────────────────────────────
   if (inline) {
@@ -197,17 +241,58 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
               </div>
             </div>
           ))}
+          {/* 작업 진행 패널 */}
           {streaming && (
-            <div className="flex items-center gap-2 px-2 py-2 text-[10px] text-gray-500">
-              <div className="flex gap-1 shrink-0">
-                <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-                <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-                <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+            <div className="bg-[#0f1a0f] border border-green-900/40 rounded p-2 space-y-1.5">
+              {/* 헤더 */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <div className="flex gap-0.5">
+                    <span className="w-1 h-1 bg-green-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+                    <span className="w-1 h-1 bg-green-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+                    <span className="w-1 h-1 bg-green-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+                  </div>
+                  <span className="text-[10px] text-green-400/70">작업중</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {toolLog.length > 0 && (
+                    <button onClick={() => setShowToolLog(v => !v)}
+                      className="text-[8px] text-gray-600 hover:text-gray-400 transition-colors">
+                      {showToolLog ? "▲" : "▼"} {toolLog.length}개 작업
+                    </button>
+                  )}
+                  <span className="text-[9px] text-gray-600 font-mono">{fmtTime(elapsed)}</span>
+                </div>
               </div>
-              {toolStatus
-                ? <span className="text-yellow-400/80 truncate">{toolStatus}</span>
-                : <span>생각중...</span>
-              }
+              {/* 현재 툴 */}
+              {toolStatus && (
+                <div className="text-[10px] text-yellow-300/80 truncate pl-1 border-l border-yellow-600/30">
+                  {toolStatus}
+                </div>
+              )}
+              {/* 툴 타임라인 (펼침) */}
+              {showToolLog && toolLog.length > 0 && (
+                <div className="max-h-24 overflow-y-auto space-y-0.5 pt-1 border-t border-green-900/30">
+                  {toolLog.map((t, i) => (
+                    <div key={i} className="flex items-center gap-1.5 text-[8px] text-gray-500">
+                      <span className="text-green-800 shrink-0">✓</span>
+                      <span className="truncate">{t}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 완료 배지 */}
+          {!streaming && lastDone && (
+            <div className="flex items-center gap-2 px-2 py-1.5 bg-green-500/10 border border-green-600/20 rounded text-[10px]">
+              <span className="text-green-400">✅</span>
+              <span className="text-green-400/80">완료</span>
+              <span className="text-gray-600 ml-auto font-mono">{fmtTime(lastDone.sec)}</span>
+              {lastDone.tools > 0 && (
+                <span className="text-gray-700">툴 {lastDone.tools}회</span>
+              )}
             </div>
           )}
         </div>
