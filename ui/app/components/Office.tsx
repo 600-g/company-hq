@@ -2,12 +2,50 @@
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import { teams, Team } from "../config/teams";
-import { Message } from "./ChatPanel";
+import { Message, getWsStorageKey } from "./ChatPanel";
 import ChatWindow from "./ChatWindow";
 import WeatherBoard from "./WeatherBoard";
 import type { OfficeGameHandle } from "../game/OfficeGame";
 
+const WS_KEY = "hq-ws-base-url";
+
+function ServerUrlModal({ onClose }: { onClose: () => void }) {
+  const [val, setVal] = useState(() =>
+    typeof window !== "undefined" ? localStorage.getItem(WS_KEY) || "" : ""
+  );
+  const save = () => {
+    const url = val.trim().replace(/\/$/, "");
+    localStorage.setItem(WS_KEY, url);
+    onClose();
+    window.location.reload();
+  };
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70" onClick={onClose}>
+      <div className="bg-[#0f0f1f] border border-[#3a3a5a] rounded-lg p-5 w-80 shadow-2xl" onClick={e => e.stopPropagation()}>
+        <h3 className="text-sm font-bold text-yellow-400 mb-1">서버 URL 설정</h3>
+        <p className="text-[10px] text-gray-500 mb-3">
+          터널 실행 후 나오는 URL 입력<br/>
+          예) <span className="text-gray-400">https://abc123.lhr.rocks</span>
+        </p>
+        <input
+          autoFocus
+          value={val}
+          onChange={e => setVal(e.target.value)}
+          onKeyDown={e => e.key === "Enter" && save()}
+          placeholder="https://..."
+          className="w-full bg-[#1a1a2e] border border-[#3a3a5a] text-white px-3 py-2 text-xs rounded mb-3 focus:outline-none focus:border-yellow-400/50"
+        />
+        <div className="flex gap-2">
+          <button onClick={save} className="flex-1 bg-yellow-500 text-black py-1.5 text-xs font-bold rounded hover:bg-yellow-400">저장</button>
+          <button onClick={onClose} className="flex-1 bg-[#2a2a3a] text-gray-400 py-1.5 text-xs rounded hover:bg-[#3a3a4a]">취소</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Office() {
+  const [showUrlModal, setShowUrlModal] = useState(false);
   const [openWindows, setOpenWindows] = useState<string[]>([]); // 열린 팀 id 목록
   const [focusedWindow, setFocusedWindow] = useState<string>("");
   const [chatHistory, setChatHistory] = useState<Record<string, Message[]>>(() => {
@@ -51,6 +89,7 @@ export default function Office() {
 
   return (
     <div className="h-screen flex flex-col md:flex-row overflow-hidden bg-[#1a1a2e]">
+      {showUrlModal && <ServerUrlModal onClose={() => setShowUrlModal(false)} />}
       {/* ── 사무실 영역 ── */}
       <div className="flex-1 flex flex-col min-w-0 min-h-0">
         {/* HUD */}
@@ -67,6 +106,13 @@ export default function Office() {
             <div className="bg-[#1a1a3a] border border-[#2a2a5a] px-2 py-0.5 rounded hidden sm:block">
               에이전트 {teams.length}
             </div>
+            <button
+              onClick={() => setShowUrlModal(true)}
+              className="bg-[#1a1a3a] border border-[#2a2a5a] px-2 py-0.5 rounded hover:border-yellow-400/50 hover:text-yellow-400 transition-colors"
+              title="서버 URL 설정"
+            >
+              ⚙
+            </button>
           </div>
         </header>
 

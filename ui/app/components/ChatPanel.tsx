@@ -84,17 +84,18 @@ function MarkdownMessage({ content }: { content: string }) {
 }
 
 // ── WebSocket URL ─────────────────────────────────────
-const SERVEO_SUBDOMAIN = "doogeun-hq"; // ssh -R doogeun-hq:80:localhost:8000 serveo.net
+const WS_STORAGE_KEY = "hq-ws-base-url";
 
 function getWsUrl(teamId: string): string {
   if (typeof window === "undefined") return "";
   const h = window.location.hostname;
   const isLocal = h === "localhost" || h.startsWith("192.168.");
-  const base = isLocal
-    ? `ws://${h}:8000`
-    : `wss://${SERVEO_SUBDOMAIN}.serveo.net`;
-  return `${base}/ws/chat/${teamId}`;
+  if (isLocal) return `ws://${h}:8000/ws/chat/${teamId}`;
+  const saved = localStorage.getItem(WS_STORAGE_KEY) || "";
+  return saved ? `${saved}/ws/chat/${teamId}` : "";
 }
+
+export function getWsStorageKey() { return WS_STORAGE_KEY; }
 
 // ─────────────────────────────────────────────────────
 
