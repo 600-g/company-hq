@@ -88,7 +88,7 @@ function getWsUrl(teamId: string): string {
   if (typeof window === "undefined") return "";
   const h = window.location.hostname;
   const isLocal = h === "localhost" || h.startsWith("192.168.");
-  const base = isLocal ? `ws://${h}:8000` : `wss://600g.net`;
+  const base = isLocal ? `ws://${h}:8000` : `wss://api.600g.net`;
   return `${base}/ws/chat/${teamId}`;
 }
 
