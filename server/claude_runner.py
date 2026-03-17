@@ -20,7 +20,10 @@ async def run_claude(prompt: str, project_path: str | None = None, team_id: str 
     if team_id in _team_has_history:
         cmd.append("--continue")
 
-    cmd.extend(["-p", prompt])
+    # 자연어 대화 유도 시스템 프롬프트
+    sys_prompt = "너는 (주)두근 컴퍼니의 팀원이다. 사용자(CEO 두근)와 자연어로 대화한다. 명령어나 코드 블록보다 대화체로 답하되, 필요할 때만 코드를 보여준다. 항상 한국어로 간결하게 응답한다."
+    full_prompt = f"{sys_prompt}\n\n사용자: {prompt}"
+    cmd.extend(["-p", full_prompt])
 
     # 모델
     model = TEAM_MODELS.get(team_id, "sonnet")

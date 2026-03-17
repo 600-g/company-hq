@@ -5,9 +5,19 @@ export interface Team {
   repo: string;
   localPath: string;
   status: string;
+  siteUrl?: string;
 }
 
 export const teams: Team[] = [
+  {
+    id: "server-monitor",
+    name: "서버실",
+    emoji: "🖥",
+    repo: "company-hq",
+    localPath: "~/Developer/my-company/company-hq",
+    status: "운영중",
+    siteUrl: "https://github.com/600-g/company-hq",
+  },
   {
     id: "cpo-claude",
     name: "CPO 클로드",
@@ -15,6 +25,7 @@ export const teams: Team[] = [
     repo: "company-hq",
     localPath: "~/Developer/my-company/company-hq",
     status: "운영중",
+    siteUrl: "https://github.com/600-g/company-hq",
   },
   {
     id: "trading-bot",
@@ -23,6 +34,7 @@ export const teams: Team[] = [
     repo: "upbit-auto-trading-bot",
     localPath: "~/Developer/my-company/upbit-auto-trading-bot",
     status: "운영중",
+    siteUrl: "https://github.com/600-g/upbit-auto-trading-bot",
   },
   {
     id: "date-map",
@@ -31,6 +43,7 @@ export const teams: Team[] = [
     repo: "date-map",
     localPath: "~/Developer/my-company/date-map",
     status: "운영중",
+    siteUrl: "https://github.com/600-g/date-map",
   },
   {
     id: "claude-biseo",
@@ -39,6 +52,7 @@ export const teams: Team[] = [
     repo: "claude-biseo-v1.0",
     localPath: "~/Developer/my-company/claude-biseo-v1.0",
     status: "운영중",
+    siteUrl: "https://github.com/600-g/claude-biseo-v1.0",
   },
   {
     id: "ai900",
@@ -47,6 +61,7 @@ export const teams: Team[] = [
     repo: "ai900",
     localPath: "~/Developer/my-company/ai900",
     status: "운영중",
+    siteUrl: "https://github.com/600-g/ai900",
   },
   {
     id: "cl600g",
@@ -55,5 +70,6 @@ export const teams: Team[] = [
     repo: "cl600g",
     localPath: "~/Developer/my-company/cl600g",
     status: "운영중",
+    siteUrl: "https://github.com/600-g/cl600g",
   },
 ];

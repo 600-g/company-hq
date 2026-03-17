@@ -101,17 +101,35 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
               {msg.type === "ai" && streaming && i === messages.length - 1 && (
                 <span className="inline-block w-1.5 h-3 bg-green-400 ml-0.5 animate-pulse" />
               )}
-              {msg.content && !streaming && (
-                <button
-                  onClick={() => navigator.clipboard.writeText(msg.content)}
-                  className="absolute top-0.5 right-0.5 opacity-0 group-hover:opacity-100 text-[8px] px-1.5 py-0.5
-                             bg-[#2a2a4a] text-gray-400 rounded hover:text-white transition-opacity"
-                >
-                  복사
-                </button>
-              )}
+              {/* 읽음 표시 + 복사 */}
+              <div className="flex items-center justify-between mt-0.5">
+                {msg.type === "user" && !streaming && (
+                  <span className="text-[8px] text-blue-400/50">✓ 읽음</span>
+                )}
+                {msg.type === "ai" && !streaming && <span />}
+                {msg.content && !streaming && (
+                  <button
+                    onClick={() => navigator.clipboard.writeText(msg.content)}
+                    className="opacity-0 group-hover:opacity-100 text-[8px] px-1.5 py-0.5
+                               bg-[#2a2a4a] text-gray-400 rounded hover:text-white transition-opacity"
+                  >
+                    복사
+                  </button>
+                )}
+              </div>
             </div>
           ))}
+          {/* 로딩/생각중 표시 */}
+          {streaming && (
+            <div className="flex items-center gap-2 px-2 py-2 text-[10px] text-gray-500">
+              <div className="flex gap-1">
+                <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+                <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+                <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+              </div>
+              <span>생각중...</span>
+            </div>
+          )}
         </div>
 
         {/* 터미널 바로가기 */}

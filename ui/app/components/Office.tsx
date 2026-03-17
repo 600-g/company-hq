@@ -35,7 +35,13 @@ export default function Office() {
   }, []);
 
   const handleTeamClick = useCallback((teamId: string) => {
-    setOpenWindows(prev => prev.includes(teamId) ? prev : [...prev, teamId]);
+    setOpenWindows(prev => {
+      if (prev.includes(teamId)) {
+        // 이미 열려있으면 닫기
+        return prev.filter(id => id !== teamId);
+      }
+      return [...prev, teamId];
+    });
     setFocusedWindow(teamId);
   }, []);
 
@@ -76,10 +82,14 @@ export default function Office() {
         </main>
       </div>
 
-      {/* ── 채팅 윈도우들 (여러 개 동시, 드래그 가능) ── */}
+      {/* ── 채팅 윈도우들 (팀 위치 기반) ── */}
       {openWindows.map((teamId, idx) => {
         const team = teams.find(t => t.id === teamId);
         if (!team) return null;
+        const teamIdx = teams.indexOf(team);
+        // PC: 팀 위치 근처에 뜨기 (대략 계산)
+        const baseX = 120 + (teamIdx % 4) * 160;
+        const baseY = 40 + Math.floor(teamIdx / 4) * 180;
         return (
           <ChatWindow
             key={teamId}
@@ -90,8 +100,8 @@ export default function Office() {
             onWorkingChange={(working) => handleWorkingChange(teamId, working)}
             onFocus={() => setFocusedWindow(teamId)}
             zIndex={focusedWindow === teamId ? openWindows.length + 1 : idx + 1}
-            initialX={80 + idx * 30}
-            initialY={60 + idx * 30}
+            initialX={baseX}
+            initialY={baseY}
           />
         );
       })}
@@ -103,17 +113,34 @@ export default function Office() {
           <h2 className="text-[10px] font-semibold text-gray-500 mb-1 uppercase tracking-wider">Agents</h2>
           <div className="flex md:flex-col gap-1 md:gap-1">
             {teams.map((team) => (
-              <button
-                key={team.id}
-                onClick={() => handleTeamClick(team.id)}
-                className={`shrink-0 text-left px-3 py-2 rounded text-[12px] transition-all flex items-center gap-1.5 min-h-[36px] ${
-                  openWindows.includes(team.id)
-                    ? "bg-yellow-500/10 text-yellow-400 border border-yellow-500/20"
-                    : "text-gray-400 border border-transparent hover:bg-[#1a1a3a] active:bg-[#2a2a4a]"
-                }`}
-              >
-                <span>{team.emoji} {team.name}</span>
-              </button>
+              <div key={team.id} className="flex items-center gap-1">
+                <button
+                  onClick={() => handleTeamClick(team.id)}
+                  className={`shrink-0 flex-1 text-left px-3 py-2 rounded text-[12px] transition-all flex items-center gap-1.5 min-h-[36px] ${
+                    openWindows.includes(team.id)
+                      ? "bg-yellow-500/10 text-yellow-400 border border-yellow-500/20"
+                      : "text-gray-400 border border-transparent hover:bg-[#1a1a3a] active:bg-[#2a2a4a]"
+                  }`}
+                >
+                  <span>{team.emoji} {team.name}</span>
+                </button>
+                {team.siteUrl && (
+                  <a
+                    href={team.siteUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="shrink-0 w-7 h-7 flex items-center justify-center rounded text-gray-500 hover:text-yellow-400 hover:bg-[#1a1a3a] transition-all"
+                    title={`${team.name} 사이트 열기`}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                      <polyline points="15 3 21 3 21 9" />
+                      <line x1="10" y1="14" x2="21" y2="3" />
+                    </svg>
+                  </a>
+                )}
+              </div>
             ))}
           </div>
         </div>

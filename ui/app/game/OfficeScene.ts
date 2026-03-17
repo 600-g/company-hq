@@ -310,6 +310,33 @@ export default class OfficeScene extends Phaser.Scene {
     }).setOrigin(0.5);
     this.envGroup.add(srLabel);
 
+    // 서버실 모니터 (클릭 가능)
+    const monX = srX + srW - 30;
+    const monY = srY + 30;
+    const monG = this.add.graphics();
+    monG.fillStyle(0x222233, 1); monG.fillRect(monX - 16, monY - 12, 32, 24);
+    monG.fillStyle(0x1a2a40, 1); monG.fillRect(monX - 14, monY - 10, 28, 18);
+    monG.fillStyle(0x50d070, 0.8); monG.fillRect(monX - 12, monY - 8, 10, 1);
+    monG.fillStyle(0x60a0e0, 0.7); monG.fillRect(monX - 12, monY - 5, 16, 1);
+    monG.fillStyle(0x50d070, 0.6); monG.fillRect(monX - 12, monY - 2, 8, 1);
+    monG.fillStyle(0xd0a050, 0.5); monG.fillRect(monX - 12, monY + 1, 12, 1);
+    monG.fillStyle(0x333344, 1); monG.fillRect(monX - 2, monY + 12, 4, 3);
+    monG.fillStyle(0x444455, 1); monG.fillRect(monX - 8, monY + 15, 16, 2);
+    this.envGroup.add(monG);
+
+    // 모니터 클릭 영역
+    const monHit = this.add.zone(monX, monY, 36, 28).setInteractive({ useHandCursor: true });
+    monHit.on("pointerdown", () => {
+      this.onTeamClick?.("server-monitor");
+    });
+    this.envGroup.add(monHit);
+
+    const monLabel = this.add.text(monX, monY + 22, "점검", {
+      fontSize: "8px", fontFamily: "'Pretendard Variable',sans-serif",
+      color: "#60d090", resolution: 6,
+    }).setOrigin(0.5);
+    this.envGroup.add(monLabel);
+
     // 서버실 영역 점유 (반토막)
     const srRows = Math.floor((ROWS - WALL_H - 3) / 2);
     for (let y = WALL_H; y < WALL_H + srRows; y++)
