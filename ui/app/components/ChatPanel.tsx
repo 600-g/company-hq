@@ -108,6 +108,7 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [connected, setConnected] = useState(false);
+  const [toolStatus, setToolStatus] = useState<string>("");
   const wsRef = useRef<WebSocket | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -125,7 +126,8 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
     ws.onmessage = (e) => {
       const data = JSON.parse(e.data);
       if (data.type === "user") setMessages(prev => [...prev, { type: "user", content: data.content }]);
-      else if (data.type === "ai_start") { setStreaming(true); onWorkingChange(true); setMessages(prev => [...prev, { type: "ai", content: "" }]); }
+      else if (data.type === "status") { setToolStatus(data.content); }
+      else if (data.type === "ai_start") { setStreaming(true); setToolStatus(""); onWorkingChange(true); setMessages(prev => [...prev, { type: "ai", content: "" }]); }
       else if (data.type === "ai_chunk") {
         setMessages(prev => {
           const u = [...prev]; const l = u[u.length - 1];
@@ -133,7 +135,7 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
           return u;
         });
       }
-      else if (data.type === "ai_end") { setStreaming(false); onWorkingChange(false); }
+      else if (data.type === "ai_end") { setStreaming(false); setToolStatus(""); onWorkingChange(false); }
     };
     inputRef.current?.focus();
     return () => { ws.close(); };
@@ -197,12 +199,15 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
           ))}
           {streaming && (
             <div className="flex items-center gap-2 px-2 py-2 text-[10px] text-gray-500">
-              <div className="flex gap-1">
+              <div className="flex gap-1 shrink-0">
                 <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
                 <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
                 <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
               </div>
-              <span>생각중...</span>
+              {toolStatus
+                ? <span className="text-yellow-400/80 truncate">{toolStatus}</span>
+                : <span>생각중...</span>
+              }
             </div>
           )}
         </div>

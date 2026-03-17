@@ -203,8 +203,15 @@ export default function Office() {
           <WeatherBoard />
         </div>
 
-        <div className="px-2.5 py-1 border-t border-[#2a2a5a] text-[8px] text-gray-700 text-center">
-          Claude Code CLI · $0
+        <div
+          className="px-2.5 py-1 border-t border-[#2a2a5a] text-[8px] text-gray-700 text-center select-none cursor-default"
+          onDoubleClick={() => {
+            if (typeof caches !== "undefined") caches.keys().then(ks => ks.forEach(k => caches.delete(k)));
+            window.location.reload();
+          }}
+          title="더블클릭: 새로고침 및 업데이트 반영"
+        >
+          Claude Code CLI · $0 · <span className="text-gray-500">v0.1.0</span>
         </div>
       </aside>
     </div>

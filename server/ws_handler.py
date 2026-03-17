@@ -54,13 +54,16 @@ async def handle_chat(ws: WebSocket, team_id: str, project_path: str | None):
             await manager.send_json(team_id, {"type": "user", "content": prompt})
             manager.add_message(team_id, "user", prompt)
 
-            # Claude 응답 스트리밍 (대화 기록 포함)
+            # Claude 응답 스트리밍
             await manager.send_json(team_id, {"type": "ai_start"})
 
             full_response = ""
-            async for chunk in run_claude(prompt, project_path, team_id):
-                full_response += chunk
-                await manager.send_json(team_id, {"type": "ai_chunk", "content": chunk})
+            async for event in run_claude(prompt, project_path, team_id):
+                if event["kind"] == "status":
+                    await manager.send_json(team_id, {"type": "status", "content": event["content"]})
+                else:
+                    full_response += event["content"]
+                    await manager.send_json(team_id, {"type": "ai_chunk", "content": event["content"]})
 
             manager.add_message(team_id, "ai", full_response)
             await manager.send_json(team_id, {"type": "ai_end", "content": full_response})

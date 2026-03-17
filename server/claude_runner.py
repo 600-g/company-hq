@@ -2,9 +2,27 @@
 
 import asyncio
 import json
+import logging
 import os
+import re
 import uuid
+from datetime import datetime
 from pathlib import Path
+
+# ── 로그 설정 ──────────────────────────────────────────
+LOG_DIR = Path(__file__).parent / "logs"
+LOG_DIR.mkdir(exist_ok=True)
+LOG_FILE = LOG_DIR / "company-hq.log"
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[
+        logging.FileHandler(LOG_FILE, encoding="utf-8"),
+        logging.StreamHandler(),
+    ],
+)
+logger = logging.getLogger("company-hq")
 
 # ── 세션 영구 저장 ─────────────────────────────────────
 _SESSIONS_FILE = Path(__file__).parent / "team_sessions.json"
@@ -53,9 +71,38 @@ DEFAULT_SYSTEM_PROMPT = (
     "한국어로 소통하세요."
 )
 
+# ── 툴 상태 파싱 ───────────────────────────────────────
+_TOOL_EMOJI = {
+    "Bash": "💻", "bash": "💻",
+    "Read": "📖", "Write": "✏️", "Edit": "✏️",
+    "Glob": "📁", "Grep": "🔍",
+    "WebFetch": "🌐", "WebSearch": "🔍",
+    "TodoWrite": "📝", "TodoRead": "📝",
+    "Task": "🤖", "Agent": "🤖",
+}
+
+# Claude CLI 출력에서 툴 사용 패턴: ⏺ ToolName(...) 또는 ● ToolName(...)
+_TOOL_RE = re.compile(r"[⏺●]\s+(\w+)\((.{0,80})\)")
+
+def _parse_status(text: str) -> str | None:
+    """텍스트에서 툴 사용 상태 추출"""
+    m = _TOOL_RE.search(text)
+    if not m:
+        return None
+    tool = m.group(1)
+    args = m.group(2).strip()
+    emoji = _TOOL_EMOJI.get(tool, "⚙️")
+    # args가 너무 길면 자름
+    if len(args) > 50:
+        args = args[:47] + "..."
+    return f"{emoji} {tool}({args})"
+
 
 async def run_claude(prompt: str, project_path: str | None = None, team_id: str = ""):
-    """Claude Code CLI 실행 — 세션 영구 유지"""
+    """Claude Code CLI 실행 — 세션 영구 유지
+
+    Yields: dict {"kind": "text"|"status", "content": str}
+    """
     cmd = ["claude", "--dangerously-skip-permissions"]
 
     # ── 세션 유지 ──
@@ -79,6 +126,8 @@ async def run_claude(prompt: str, project_path: str | None = None, team_id: str 
     env = os.environ.copy()
     cwd = os.path.expanduser(project_path) if project_path else None
 
+    logger.info("[%s] 프롬프트 수신: %s", team_id, prompt[:100])
+
     proc = await asyncio.create_subprocess_exec(
         *cmd,
         stdout=asyncio.subprocess.PIPE,
@@ -87,18 +136,39 @@ async def run_claude(prompt: str, project_path: str | None = None, team_id: str 
         env=env,
     )
 
+    buf = b""
     while True:
         chunk = await proc.stdout.read(256)
         if not chunk:
+            if buf:
+                text = buf.decode("utf-8", errors="replace")
+                if text.strip():
+                    yield {"kind": "text", "content": text}
             break
-        text = chunk.decode("utf-8", errors="replace")
-        if text.strip():
-            yield text
+        buf += chunk
+        try:
+            text = buf.decode("utf-8")
+            buf = b""
+        except UnicodeDecodeError:
+            continue
+
+        if not text.strip():
+            continue
+
+        # 툴 사용 상태 감지
+        status = _parse_status(text)
+        if status:
+            logger.info("[%s] 툴 사용: %s", team_id, status)
+            yield {"kind": "status", "content": status}
+
+        yield {"kind": "text", "content": text}
 
     await proc.wait()
+    logger.info("[%s] 응답 완료 (exit=%d)", team_id, proc.returncode or 0)
 
     if proc.returncode != 0:
         stderr = await proc.stderr.read()
         err_msg = stderr.decode("utf-8", errors="replace").strip()
         if err_msg:
-            yield f"\n⚠️ 오류: {err_msg}"
+            logger.error("[%s] 오류: %s", team_id, err_msg)
+            yield {"kind": "text", "content": f"\n⚠️ 오류: {err_msg}"}
