@@ -80,5 +80,11 @@ export default function Home() {
     return <LoginPage onLogin={(u) => setUser(u)} />;
   }
 
-  return <Office />;
+  const handleLogout = () => {
+    localStorage.removeItem("hq-auth-token");
+    localStorage.removeItem("hq-auth-user");
+    setUser(null);
+  };
+
+  return <Office user={user} onLogout={handleLogout} />;
 }
