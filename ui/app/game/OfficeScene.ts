@@ -308,46 +308,115 @@ export default class OfficeScene extends Phaser.Scene {
       }
     });
 
-    // ── 계절별 나무 (스프라이트 이미지, 고정 배치) ─────────────
+    // ── 계절별 나무 (동그라미 겹침 수관, 고정 배치) ─────────────
     const nightT = isNight || hr < 6.5 || hr >= 20.5;
     const sR = (a: number, b: number) =>
       (((a * 1664525 + b * 1013904223) | 0) >>> 1) / 0x7fffffff;
 
-    // 계절 키 결정
-    const seasonKey = mon >= 3 && mon <= 5 ? "spring"
-      : mon >= 6 && mon <= 8 ? "summer"
-      : mon >= 9 && mon <= 11 ? "autumn" : "winter";
+    const treeG = this.add.graphics().setDepth(4);
+    this.envGroup.add(treeG);
 
-    // 고정 나무 배치 — 시드 기반으로 항상 동일한 풍경
-    // 위치/크기/종류가 고정. 빈 곳, 쌍둥이, 상록수 섞임도 시드 결정
-    interface TreeDef { x: number; sizeKey: string; useEvergreen: boolean }
-    const treeDefs: TreeDef[] = [];
-    {
-      const positions = [18, 52, 98, 148, 210, 265, 330, 390, 455, 520, 575, 630, 695, 748, 800];
-      positions.forEach(px => {
-        const sv = sR(px, 3);
-        const sizeKey = sv < 0.3 ? "sm" : sv < 0.65 ? "md" : "lg";
-        // 12% 빈 자리
-        if (sR(px, 55) < 0.12) return;
-        // 20% 확률로 상록수
-        const useEvergreen = sR(px, 90) > 0.8;
-        treeDefs.push({ x: px, sizeKey, useEvergreen });
-        // 18% 확률로 바로 옆에 작은 나무 추가
-        if (sR(px, 88) > 0.82) {
-          treeDefs.push({ x: px + 16, sizeKey: "sm", useEvergreen: sR(px, 91) > 0.7 });
+    // 계절별 색상 (그림자, 메인1, 메인2, 하이라이트)
+    const leafColors = mon >= 3 && mon <= 5
+      ? [0xc87098, 0xe090b0, 0xe8a0c0, 0xf0b8d0, 0xf5c8d8] // 봄 벚꽃
+      : mon >= 6 && mon <= 8
+      ? [0x145010, 0x1a6818, 0x288020, 0x349828, 0x40a830] // 여름
+      : mon >= 9 && mon <= 11
+      ? [0xa03010, 0xc85018, 0xd07020, 0xd89028, 0xe0a838] // 가을
+      : []; // 겨울은 별도
+    const evColors = [0x0c3810, 0x184818, 0x206020, 0x287828, 0x308830]; // 상록수
+
+    // 고정 위치 (시드 기반, 항상 동일)
+    const positions = [18, 55, 100, 150, 215, 268, 335, 395, 458, 525, 578, 638, 698, 752, 805];
+    const ty = wh - 3;
+
+    positions.forEach(tx => {
+      // 12% 빈 자리
+      if (sR(tx, 55) < 0.12) return;
+
+      const sz = sR(tx, 3); // 0~1
+      const tH = 14 + (sz * 18 | 0); // 줄기 높이 14~32
+      const tW = sz > 0.6 ? 3 : 2;
+      const isEv = sR(tx, 90) > 0.8; // 20% 상록수
+      const cols = isEv ? evColors : leafColors;
+
+      // ── 줄기 ──
+      const trunkCol = nightT ? 0x151010 : 0x4a3018;
+      const trunkHi = nightT ? 0x1a1414 : 0x5a4020;
+      treeG.fillStyle(trunkCol, 0.95);
+      treeG.fillRect(tx - (tW >> 1), ty - tH, tW, tH);
+      treeG.fillStyle(trunkHi, 0.4);
+      treeG.fillRect(tx - (tW >> 1), ty - tH, 1, tH);
+      // 밑동
+      treeG.fillStyle(trunkCol, 0.8);
+      treeG.fillRect(tx - tW, ty - 1, tW * 2 + 1, 1);
+
+      // ── 겨울: 앙상한 가지 ──
+      if (mon === 12 || mon <= 2) {
+        const brC = nightT ? 0x111010 : 0x3a3030;
+        const bCount = 3 + (sz * 3 | 0);
+        treeG.fillStyle(brC, 0.8);
+        for (let b = 0; b < bCount; b++) {
+          const side = sR(tx, b * 3 + 40) > 0.5 ? 1 : -1;
+          const bLen = 4 + (sR(tx, b * 3 + 41) * 7 | 0);
+          const by = ty - tH + 2 + (b * ((tH * 0.6) / bCount) | 0);
+          const bx = side > 0 ? tx + 1 : tx - bLen;
+          treeG.fillRect(bx, by, bLen, 1);
+          // 가지 끝 살짝 위로
+          if (bLen > 5) treeG.fillRect(side > 0 ? bx + bLen - 1 : bx, by - 1, 1, 1);
         }
-      });
-    }
+        // 눈
+        if (sR(tx, 55) > 0.35) {
+          treeG.fillStyle(0xddeeff, 0.45);
+          treeG.fillRect(tx - 3, ty - tH + 3, 3, 1);
+          treeG.fillRect(tx + 2, ty - tH + 6, 2, 1);
+        }
+        return;
+      }
 
-    const ty = wh - 2;
-    treeDefs.forEach(({ x: tx, sizeKey, useEvergreen }) => {
-      const season = useEvergreen ? "evergreen" : seasonKey;
-      const texKey = `tree_${season}_${sizeKey}`;
-      const tex = this.textures.get(texKey);
-      if (!tex || tex.key === "__MISSING") return;
-      const img = this.add.image(tx, ty, texKey).setOrigin(0.5, 1).setDepth(4);
-      if (nightT) img.setTint(0x1a1a2a).setAlpha(0.7);
-      this.envGroup.add(img);
+      // ── 수관: 동그라미 5~7개 겹침 ──
+      const canopyBase = ty - tH - 2;
+      const canopyR = 4 + (sz * 6 | 0); // 반지름 4~10
+      const circleCount = 4 + (sz * 3 | 0); // 4~7개
+
+      for (let c = 0; c < circleCount; c++) {
+        // 각 원의 위치를 시드로 고정 (매번 같은 모양)
+        const cx = tx + ((sR(tx, c * 5 + 10) - 0.5) * canopyR * 1.6) | 0;
+        const cy = canopyBase - ((sR(tx, c * 5 + 11) * canopyR * 1.2) | 0);
+        const cr = canopyR * (0.55 + sR(tx, c * 5 + 12) * 0.5);
+
+        if (nightT) {
+          // 야간: 어두운 실루엣
+          treeG.fillStyle(0x0a0e08, 0.8);
+          treeG.fillCircle(cx, cy, cr);
+          treeG.fillStyle(cols[c % cols.length] || 0x1a3018, 0.06);
+          treeG.fillCircle(cx, cy, cr);
+        } else {
+          // 그림자층 (약간 아래, 어두운 색)
+          treeG.fillStyle(cols[0], 0.5);
+          treeG.fillCircle(cx + 1, cy + 1, cr);
+          // 메인
+          treeG.fillStyle(cols[1 + (c % (cols.length - 1))], 0.85);
+          treeG.fillCircle(cx, cy, cr);
+          // 하이라이트 (상단 좌측)
+          treeG.fillStyle(cols[cols.length - 1], 0.35);
+          treeG.fillCircle(cx - cr * 0.25, cy - cr * 0.3, cr * 0.5);
+        }
+      }
+
+      // 봄: 꽃잎 점
+      if (mon >= 3 && mon <= 5 && !nightT && sR(tx, 12) > 0.3) {
+        const petals = 2 + (sR(tx, 13) * 3 | 0);
+        for (let p = 0; p < petals; p++) {
+          const px = tx + ((sR(tx, p * 7 + 20) - 0.5) * canopyR * 2) | 0;
+          const py = canopyBase - (sR(tx, p * 7 + 21) * canopyR) | 0;
+          treeG.fillStyle(0xffdde8, 0.7);
+          treeG.fillCircle(px, py, 1);
+        }
+      }
+
+      // 쌍둥이: 18% 확률로 바로 옆에 작은 나무
+      // (별도 그리지 않고, positions에서 이미 간격이 가까운 곳이 자연스럽게 쌍둥이 역할)
     });
 
     // ── 안개 오버레이 ─────────────────────────────────────────────
