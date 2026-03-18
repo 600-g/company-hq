@@ -337,9 +337,9 @@ export default class OfficeScene extends Phaser.Scene {
       const cols = isEv ? evCols : seasonCols;
       const isWinter = mon === 12 || mon <= 2;
 
-      // 나무 전체 크기
-      const treeH = 20 + (sz * 28 | 0); // 20~48
-      const treeW = 10 + (sz * 16 | 0); // 10~26 (반폭 기준)
+      // 나무 전체 크기 (약간 축소)
+      const treeH = 16 + (sz * 22 | 0); // 16~38
+      const treeW = 8 + (sz * 13 | 0);  // 8~21 (반폭 기준)
       const trunkH = 4 + (sz * 3 | 0);  // 줄기 보이는 부분 4~7
       const trunkW = sz > 0.6 ? 3 : 2;
 
