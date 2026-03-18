@@ -1,7 +1,8 @@
-"""GitHub 레포 자동 관리 — 신규 레포 생성, 클론, teams 설정 연동"""
+"""GitHub 레포 자동 관리 — 신규 레포 생성, 클론, CLAUDE.md 자동 생성"""
 
 import os
 import subprocess
+from datetime import datetime
 from github import Github, GithubException
 from dotenv import load_dotenv
 
@@ -11,6 +12,261 @@ GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
 GITHUB_USERNAME = os.getenv("GITHUB_USERNAME", "600-g")
 PROJECTS_ROOT = os.path.expanduser(os.getenv("PROJECTS_ROOT", "~/Developer/my-company"))
 
+# ── 프로젝트 타입별 템플릿 ─────────────────────────────
+PROJECT_TYPES = {
+    "webapp": {
+        "label": "웹앱",
+        "tech": "Next.js 14, TypeScript, Tailwind CSS",
+        "structure": "app/ (페이지), components/ (컴포넌트), lib/ (유틸), api/ (서버)",
+        "skills": [
+            "프론트엔드 UI/UX 구현 및 개선",
+            "API 엔드포인트 설계 및 구현",
+            "반응형 디자인, 접근성 관리",
+            "SEO 최적화, 성능 튜닝",
+            "배포 (Vercel/로컬)",
+        ],
+        "tools": "Next.js App Router, Tailwind, fetch/axios",
+    },
+    "bot": {
+        "label": "봇/자동화",
+        "tech": "Python 3.12, asyncio, 외부 API 연동",
+        "structure": "main.py (진입점), strategy/ (전략), utils/ (유틸), config/ (설정)",
+        "skills": [
+            "자동화 스크립트 작성 및 스케줄링",
+            "외부 API 연동 (거래소, 메신저, 크롤링 등)",
+            "전략 로직 분석 및 개선",
+            "에러 핸들링, 재시도 로직",
+            "로그 분석 및 성능 모니터링",
+        ],
+        "tools": "Python asyncio, requests/httpx, APScheduler",
+    },
+    "game": {
+        "label": "게임/인터랙티브",
+        "tech": "TypeScript, Phaser.js / Canvas API, 픽셀아트",
+        "structure": "scenes/ (씬), sprites/ (스프라이트), assets/ (리소스), systems/ (게임시스템)",
+        "skills": [
+            "게임 로직 설계 및 구현",
+            "스프라이트/애니메이션 관리",
+            "물리엔진, 충돌 감지",
+            "레벨 디자인, 밸런싱",
+            "사운드/이펙트 연출",
+        ],
+        "tools": "Phaser.js, Tiled Map Editor, Aseprite",
+    },
+    "api": {
+        "label": "API 서버",
+        "tech": "Python FastAPI, SQLAlchemy/Prisma, PostgreSQL",
+        "structure": "routes/ (엔드포인트), models/ (DB모델), services/ (비즈니스로직), schemas/ (검증)",
+        "skills": [
+            "RESTful API 설계 및 구현",
+            "DB 스키마 설계, 마이그레이션",
+            "인증/인가 (JWT, OAuth)",
+            "입력 검증, 에러 핸들링",
+            "API 문서화 (OpenAPI/Swagger)",
+        ],
+        "tools": "FastAPI, SQLAlchemy, Alembic, Pydantic",
+    },
+    "mobile": {
+        "label": "모바일 앱",
+        "tech": "React Native / Flutter, TypeScript/Dart",
+        "structure": "screens/ (화면), components/ (공통), navigation/ (라우팅), services/ (API)",
+        "skills": [
+            "크로스플랫폼 UI 구현",
+            "네이티브 모듈 연동",
+            "상태관리 (Zustand/Riverpod)",
+            "푸시 알림, 딥링크",
+            "앱스토어 배포",
+        ],
+        "tools": "React Native CLI, Expo, 또는 Flutter SDK",
+    },
+    "data": {
+        "label": "데이터/분석",
+        "tech": "Python, Pandas, Jupyter, Matplotlib/Plotly",
+        "structure": "notebooks/ (분석), scripts/ (ETL), data/ (원본), reports/ (결과)",
+        "skills": [
+            "데이터 수집, 정제, 변환 (ETL)",
+            "탐색적 데이터 분석 (EDA)",
+            "시각화 및 대시보드 제작",
+            "통계 분석, 예측 모델링",
+            "보고서 자동 생성",
+        ],
+        "tools": "Pandas, NumPy, Matplotlib, Plotly, Jupyter",
+    },
+    "tool": {
+        "label": "CLI/도구",
+        "tech": "Python / Node.js, Click/Commander",
+        "structure": "cli.py (진입점), commands/ (서브커맨드), utils/ (유틸)",
+        "skills": [
+            "CLI 인터페이스 설계",
+            "파일 시스템 처리",
+            "외부 서비스 연동",
+            "설정 관리 (dotenv, YAML)",
+            "패키지 배포 (pip/npm)",
+        ],
+        "tools": "Click/Typer (Python), Commander (Node)",
+    },
+    "general": {
+        "label": "범용",
+        "tech": "프로젝트 요구사항에 맞춰 선택",
+        "structure": "src/ (소스), tests/ (테스트), docs/ (문서)",
+        "skills": [
+            "요구사항 분석 및 설계",
+            "코드 구현 및 리팩토링",
+            "테스트 작성 및 품질 관리",
+            "문서화",
+            "배포 및 운영",
+        ],
+        "tools": "프로젝트에 적합한 도구 선택",
+    },
+}
+
+
+def _generate_claude_md(
+    name: str,
+    description: str,
+    project_type: str,
+    emoji: str,
+) -> str:
+    """프로젝트 타입에 맞는 풍부한 CLAUDE.md를 생성한다."""
+    t = PROJECT_TYPES.get(project_type, PROJECT_TYPES["general"])
+    today = datetime.now().strftime("%Y-%m-%d")
+
+    skills_md = "\n".join(f"- {s}" for s in t["skills"])
+
+    return f"""# CLAUDE.md — {name}
+> 두근컴퍼니 | 생성일: {today} | 타입: {t['label']}
+
+---
+
+## 역할 정의
+
+너는 두근컴퍼니의 **{name} 담당 PM(프로젝트 매니저)** 이다.
+
+- **프로젝트 설명**: {description or '(미정 — 두근이 구체화 예정)'}
+- **담당 범위**: 이 프로젝트의 설계, 개발, 테스트, 배포, 운영 전체
+- **보고 라인**: CPO(company-hq) → 두근(Owner)
+- 두근은 개발 초보이므로 **모든 설명은 쉽게**, 선택지는 장단점과 함께 제시
+- 전문 용어는 항상 쉽게 풀어서 설명
+
+---
+
+## 프로젝트 정보
+
+| 항목 | 내용 |
+|------|------|
+| 이름 | {emoji} {name} |
+| GitHub | `600-g/{name}` |
+| 로컬 경로 | `~/Developer/my-company/{name}` |
+| 기술 스택 | {t['tech']} |
+| 프로젝트 타입 | {t['label']} |
+
+---
+
+## 디렉토리 구조 (권장)
+
+```
+{name}/
+├── {t['structure'].replace(', ', chr(10) + '├── ')}
+├── CLAUDE.md        ← 이 파일
+├── README.md
+└── .gitignore
+```
+
+---
+
+## 핵심 역량
+
+이 에이전트가 수행할 수 있는 작업:
+
+{skills_md}
+
+---
+
+## 도구 & 기술
+
+{t['tools']}
+
+---
+
+## 작업 규칙
+
+### 1. QA 보고 (필수)
+작업 전 반드시 보고:
+```
+🔍 현재 문제: [한 줄]
+🔧 수정 계획: [한 줄] / 수정 파일: [목록]
+⏱️ 예상 시간: [10분/30분/1시간]
+진행할까요?
+```
+
+### 2. 에러 대응
+```
+에러 발생 → 가설 3개 → 높은 확률 순 시도
+├→ 성공 → 커밋 & 보고
+└→ 3회 실패 → 두근에게 선택지 2개+ 제시 후 대기
+```
+
+### 3. Git 규칙
+- 커밋 메시지: 한글, conventional commits (`feat:`, `fix:`, `refactor:` 등)
+- 한 번에 최대 3개 파일만 수정
+- 기존 기능 영향 시 사전 고지
+
+### 4. 코드 품질
+- 함수 50줄 이내, 파일 800줄 이내
+- 에러 핸들링 필수
+- 하드코딩 금지 (상수/환경변수 사용)
+- 보안: 시크릿 하드코딩 절대 금지
+
+---
+
+## AI 연동
+
+Claude API 호출 사용하지 않음. 모든 AI 처리는 Claude Code CLI로 실행.
+
+---
+
+## 비용 원칙
+
+모든 도구 무료 티어 사용. 유료 발생 시 반드시 사전 고지.
+
+---
+
+## [변경 로그]
+
+| 날짜 | 버전 | 변경 내용 |
+|------|------|----------|
+| {today} | v1.0 | 최초 생성 (자동) |
+"""
+
+
+def _generate_system_prompt(
+    name: str,
+    description: str,
+    project_type: str,
+) -> str:
+    """프로젝트에 맞는 풍부한 시스템프롬프트를 생성한다."""
+    t = PROJECT_TYPES.get(project_type, PROJECT_TYPES["general"])
+    skills_str = ", ".join(t["skills"][:3])
+
+    return (
+        f"너는 두근컴퍼니의 '{name}' 담당 PM이야.\n\n"
+        f"【프로젝트】 {description or '두근이 구체화 예정'}\n"
+        f"【타입】 {t['label']} | 【기술】 {t['tech']}\n"
+        f"【역량】 {skills_str}\n\n"
+        f"【행동 원칙】\n"
+        f"- 이 프로젝트의 설계·개발·테스트·배포·운영 전체 담당\n"
+        f"- 두근은 개발 초보 → 쉽게 설명, 선택지는 장단점과 함께\n"
+        f"- 80% 확신이면 실행 후 보고, 되묻지 않음\n"
+        f"- 수정 요청 → 코드 수정 → 결과 보고 (무응답 절대 금지)\n"
+        f"- 에러 3회 실패 시 선택지 2개+ 제시 후 대기\n\n"
+        f"【필수 응답 규칙】\n"
+        f"- 프로젝트 폴더의 CLAUDE.md를 최우선으로 따르세요.\n"
+        f"- ⚠️ 절대 무응답 금지! 어떤 작업이든 반드시 텍스트로 결과를 알려주세요.\n"
+        f"- 작업 완료 시: '✅ (뭘 했는지 한 줄 요약)'\n"
+        f"- 에러 발생 시: '❌ (에러 내용)'\n"
+        f"- 한국어로 자연스럽게 대화하세요.\n"
+    )
+
 
 def get_github() -> Github:
     if not GITHUB_TOKEN:
@@ -18,8 +274,14 @@ def get_github() -> Github:
     return Github(GITHUB_TOKEN)
 
 
-def create_repo(name: str, description: str = "", private: bool = False) -> dict:
-    """GitHub에 새 레포를 만들고 로컬에 클론한다."""
+def create_repo(
+    name: str,
+    description: str = "",
+    private: bool = False,
+    project_type: str = "general",
+    emoji: str = "🆕",
+) -> dict:
+    """GitHub에 새 레포를 만들고 로컬에 클론 + CLAUDE.md 자동 생성."""
     g = get_github()
     user = g.get_user()
 
@@ -44,10 +306,32 @@ def create_repo(name: str, description: str = "", private: bool = False) -> dict
             capture_output=True,
         )
 
+    # CLAUDE.md 자동 생성
+    claude_md_path = os.path.join(local_path, "CLAUDE.md")
+    if not os.path.isfile(claude_md_path):
+        claude_md = _generate_claude_md(name, description, project_type, emoji)
+        with open(claude_md_path, "w", encoding="utf-8") as f:
+            f.write(claude_md)
+
+        # git commit
+        subprocess.run(
+            ["git", "add", "CLAUDE.md"],
+            cwd=local_path, capture_output=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", f"feat: CLAUDE.md 자동 생성 ({project_type})"],
+            cwd=local_path, capture_output=True,
+        )
+
+    # 시스템프롬프트 생성
+    system_prompt = _generate_system_prompt(name, description, project_type)
+
     return {
         "ok": True,
         "repo_url": repo.html_url,
         "local_path": local_path,
+        "system_prompt": system_prompt,
+        "project_type": project_type,
     }
 
 
