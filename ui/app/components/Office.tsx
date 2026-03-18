@@ -25,10 +25,22 @@ interface TeamInfo {
 }
 
 // ── 신규 에이전트 추가 모달 ──────────────────────────
+const PROJECT_TYPE_OPTIONS = [
+  { id: "webapp", label: "🌐 웹앱", desc: "Next.js, React 등 웹 서비스" },
+  { id: "bot", label: "🤖 봇/자동화", desc: "트레이딩봇, 크롤러, 자동화" },
+  { id: "game", label: "🎮 게임", desc: "Phaser, Canvas, 인터랙티브" },
+  { id: "api", label: "⚡ API 서버", desc: "FastAPI, Express 백엔드" },
+  { id: "mobile", label: "📱 모바일", desc: "React Native, Flutter" },
+  { id: "data", label: "📊 데이터/분석", desc: "Pandas, Jupyter, 시각화" },
+  { id: "tool", label: "🔧 CLI/도구", desc: "명령줄 도구, 유틸리티" },
+  { id: "general", label: "📦 범용", desc: "기타 프로젝트" },
+];
+
 function AddTeamModal({ onClose, onCreated }: { onClose: () => void; onCreated: (team: Team) => void }) {
   const [name, setName] = useState("");
   const [emoji, setEmoji] = useState("🆕");
   const [desc, setDesc] = useState("");
+  const [projectType, setProjectType] = useState("general");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -45,6 +57,7 @@ function AddTeamModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
           repo: name.trim().toLowerCase().replace(/\s+/g, "-"),
           emoji,
           description: desc.trim(),
+          project_type: projectType,
         }),
       });
       const data = await res.json();
@@ -68,9 +81,10 @@ function AddTeamModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70" onClick={onClose}>
-      <div className="bg-[#0f0f1f] border border-[#3a3a5a] rounded-lg p-5 w-80 shadow-2xl" onClick={e => e.stopPropagation()}>
-        <h3 className="text-sm font-bold text-yellow-400 mb-3">+ 새 팀 추가</h3>
+      <div className="bg-[#0f0f1f] border border-[#3a3a5a] rounded-lg p-5 w-[340px] shadow-2xl" onClick={e => e.stopPropagation()}>
+        <h3 className="text-sm font-bold text-yellow-400 mb-3">+ 새 에이전트 추가</h3>
         <div className="space-y-2.5">
+          {/* 이름 + 이모지 */}
           <div className="flex gap-2">
             <div className="w-16">
               <label className="text-[9px] text-gray-500 block mb-0.5">이모지</label>
@@ -78,26 +92,50 @@ function AddTeamModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
                 className="w-full bg-[#1a1a2e] border border-[#3a3a5a] text-white text-center px-1 py-1.5 text-lg rounded focus:outline-none focus:border-yellow-400/50" />
             </div>
             <div className="flex-1">
-              <label className="text-[9px] text-gray-500 block mb-0.5">팀 이름</label>
+              <label className="text-[9px] text-gray-500 block mb-0.5">프로젝트 이름</label>
               <input autoFocus value={name} onChange={e => setName(e.target.value)}
                 onKeyDown={e => e.key === "Enter" && !loading && submit()}
                 placeholder="예) 웹크롤러"
                 className="w-full bg-[#1a1a2e] border border-[#3a3a5a] text-white px-2 py-1.5 text-xs rounded focus:outline-none focus:border-yellow-400/50" />
             </div>
           </div>
+
+          {/* 프로젝트 타입 선택 */}
           <div>
-            <label className="text-[9px] text-gray-500 block mb-0.5">설명 (선택)</label>
+            <label className="text-[9px] text-gray-500 block mb-1">프로젝트 타입</label>
+            <div className="grid grid-cols-4 gap-1">
+              {PROJECT_TYPE_OPTIONS.map(opt => (
+                <button key={opt.id} onClick={() => setProjectType(opt.id)}
+                  className={`text-[10px] py-1.5 px-1 rounded border transition-colors ${
+                    projectType === opt.id
+                      ? "border-yellow-400 bg-yellow-400/10 text-yellow-300"
+                      : "border-[#3a3a5a] bg-[#1a1a2e] text-gray-400 hover:border-gray-500"
+                  }`}
+                  title={opt.desc}>
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <p className="text-[8px] text-gray-600 mt-0.5">
+              {PROJECT_TYPE_OPTIONS.find(o => o.id === projectType)?.desc}
+            </p>
+          </div>
+
+          {/* 설명 */}
+          <div>
+            <label className="text-[9px] text-gray-500 block mb-0.5">한 줄 설명</label>
             <input value={desc} onChange={e => setDesc(e.target.value)}
-              placeholder="프로젝트 한 줄 설명"
+              placeholder="예) 네이버 뉴스 자동 크롤링 및 요약"
               className="w-full bg-[#1a1a2e] border border-[#3a3a5a] text-white px-2 py-1.5 text-xs rounded focus:outline-none focus:border-yellow-400/50" />
           </div>
+
           {error && <p className="text-[10px] text-red-400">{error}</p>}
-          <p className="text-[8px] text-gray-600">GitHub 레포 자동 생성 + 로컬 클론 + CLAUDE.md 생성</p>
+          <p className="text-[8px] text-gray-600">자동: GitHub 레포 + 로컬 클론 + CLAUDE.md + 시스템프롬프트</p>
         </div>
         <div className="flex gap-2 mt-3">
           <button onClick={submit} disabled={loading}
             className="flex-1 bg-yellow-500 text-black py-1.5 text-xs font-bold rounded hover:bg-yellow-400 disabled:opacity-50">
-            {loading ? "생성중..." : "추가"}
+            {loading ? "🔄 생성중..." : "에이전트 생성"}
           </button>
           <button onClick={onClose} className="flex-1 bg-[#2a2a3a] text-gray-400 py-1.5 text-xs rounded hover:bg-[#3a3a4a]">취소</button>
         </div>
@@ -215,7 +253,13 @@ export default function Office() {
         {/* HUD */}
         <header className="bg-[#0e0e20]/90 border-b border-[#2a2a5a] px-3 py-1.5 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2">
-            <span className="text-base cursor-pointer" onClick={() => window.location.reload()}>🏢</span>
+            <span className="text-base cursor-pointer" onClick={() => window.location.reload()}
+              onDoubleClick={async (e) => {
+                e.stopPropagation();
+                if (typeof caches !== "undefined") { const ks = await caches.keys(); await Promise.all(ks.map(k => caches.delete(k))); }
+                if (navigator.serviceWorker) { const regs = await navigator.serviceWorker.getRegistrations(); await Promise.all(regs.map(r => r.unregister())); }
+                window.location.href = window.location.pathname + "?v=" + Date.now();
+              }}>🏢</span>
             <h1 className="text-xs font-semibold text-yellow-400 cursor-pointer" onClick={() => window.location.reload()}>(주)두근 컴퍼니</h1>
           </div>
           <div className="flex items-center gap-1.5 text-[9px] text-gray-400">
