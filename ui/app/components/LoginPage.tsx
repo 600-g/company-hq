@@ -1,18 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 interface AuthUser {
   user_id: string;
   nickname: string;
   role: string;
-  permissions: {
-    level: number;
-    label: string;
-    can_code: boolean;
-    can_create_team: boolean;
-    can_manage: boolean;
-  };
+  permissions: { level: number; label: string; can_code: boolean; can_create_team: boolean; can_manage: boolean };
   token: string;
 }
 
@@ -23,300 +17,189 @@ function getApiBase(): string {
   return isLocal ? `http://${h}:8000` : "https://api.600g.net";
 }
 
+// 계절/시간대 감지
+function getSeasonTime() {
+  const now = new Date();
+  const mon = now.getMonth() + 1;
+  const hr = now.getHours();
+  const season = mon >= 3 && mon <= 5 ? "spring" : mon >= 6 && mon <= 8 ? "summer" : mon >= 9 && mon <= 11 ? "autumn" : "winter";
+  const time = hr >= 6 && hr < 17 ? "day" : hr >= 17 && hr < 20 ? "sunset" : "night";
+  return { season, time };
+}
+
 export default function LoginPage({ onLogin }: { onLogin: (user: AuthUser) => void }) {
-  const [mode, setMode] = useState<"owner" | "invite">("invite");
-  const [showOwnerPopup, setShowOwnerPopup] = useState(false);
-  const [showPw, setShowPw] = useState(false);
   const [nickname, setNickname] = useState("");
   const [code, setCode] = useState("");
   const [ownerPw, setOwnerPw] = useState("");
+  const [showOwnerPopup, setShowOwnerPopup] = useState(false);
+  const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const submit = async () => {
-    setLoading(true);
-    setError("");
+  const { season, time } = getSeasonTime();
+  // 로그인 배경: 밤이면 night, 아니면 계절
+  const loginBg = time === "night" ? "/assets/gen/login_night.png" : `/assets/gen/login_${season}.png`;
+
+  const submitInvite = async () => {
+    if (!nickname.trim() || !code.trim()) { setError("닉네임과 초대코드를 입력하세요"); return; }
+    setLoading(true); setError("");
     try {
-      let res: Response;
-      if (mode === "owner") {
-        if (!ownerPw.trim()) { setError("비밀번호를 입력하세요"); setLoading(false); return; }
-        res = await fetch(`${getApiBase()}/api/auth/owner`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ password: ownerPw.trim() }),
-        });
-      } else {
-        if (!nickname.trim() || !code.trim()) { setError("닉네임과 초대코드를 입력하세요"); setLoading(false); return; }
-        res = await fetch(`${getApiBase()}/api/auth/register`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ nickname: nickname.trim(), code: code.trim() }),
-        });
-      }
+      const res = await fetch(`${getApiBase()}/api/auth/register`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nickname: nickname.trim(), code: code.trim() }),
+      });
       const data = await res.json();
-      if (!data.ok) { setError(data.error || "로그인 실패"); setLoading(false); return; }
+      if (!data.ok) { setError(data.error || "등록 실패"); setLoading(false); return; }
       localStorage.setItem("hq-auth-token", data.token);
-      localStorage.setItem("hq-auth-user", JSON.stringify({
-        user_id: data.user_id,
-        nickname: data.nickname,
-        role: data.role,
-        permissions: data.permissions,
-      }));
+      localStorage.setItem("hq-auth-user", JSON.stringify({ user_id: data.user_id, nickname: data.nickname, role: data.role, permissions: data.permissions }));
       onLogin(data);
-    } catch {
-      setError("서버 연결 실패");
-      setLoading(false);
-    }
+    } catch { setError("서버 연결 실패"); setLoading(false); }
   };
 
-  // 건물 데이터 (좌→우, 높이%, 폭px)
-  const buildings = [
-    { h: 35, w: 40 }, { h: 55, w: 32 }, { h: 42, w: 36 }, { h: 65, w: 28 },
-    { h: 48, w: 34 }, { h: 72, w: 30 }, { h: 38, w: 38 },
-    // 메인 빌딩은 별도 렌더
-    { h: 50, w: 36 }, { h: 68, w: 30 }, { h: 44, w: 34 },
-    { h: 58, w: 32 }, { h: 40, w: 38 }, { h: 62, w: 28 }, { h: 36, w: 40 },
-  ];
+  const submitOwner = async () => {
+    if (!ownerPw.trim()) return;
+    setLoading(true); setError("");
+    try {
+      const res = await fetch(`${getApiBase()}/api/auth/owner`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: ownerPw.trim() }),
+      });
+      const data = await res.json();
+      if (!data.ok) { setError(data.error || "실패"); setLoading(false); return; }
+      localStorage.setItem("hq-auth-token", data.token);
+      localStorage.setItem("hq-auth-user", JSON.stringify({ user_id: data.user_id, nickname: data.nickname, role: data.role, permissions: data.permissions }));
+      onLogin(data);
+    } catch { setError("서버 연결 실패"); setLoading(false); }
+  };
 
-  // 사람 애니메이션 데이터
-  const people = [
-    { x: 12, speed: 18, delay: 0 },
-    { x: 30, speed: 22, delay: 3 },
-    { x: 55, speed: 15, delay: 7 },
-    { x: 75, speed: 20, delay: 1 },
-    { x: 88, speed: 17, delay: 5 },
-  ];
+  // 날씨 가져오기
+  const [weather, setWeather] = useState<string>("clear");
+  useEffect(() => {
+    fetch("https://api.open-meteo.com/v1/forecast?latitude=37.5665&longitude=126.978&current=weather_code&timezone=Asia/Seoul")
+      .then(r => r.json())
+      .then(d => {
+        const wc = d.current?.weather_code ?? 0;
+        if (wc >= 51 && wc <= 82) setWeather("rain");
+        else if (wc >= 71 && wc <= 77) setWeather("snow");
+        else if (wc >= 95) setWeather("thunder");
+        else setWeather("clear");
+      }).catch(() => {});
+  }, []);
 
   return (
-    <div className="h-screen bg-[#0a1020] flex items-end justify-center relative overflow-hidden">
-      {/* ── 하늘 ── */}
-      <div className="absolute inset-0" style={{
-        background: "linear-gradient(180deg, #060d1a 0%, #0e1a30 25%, #1a2848 50%, #1e3050 75%, #1a2040 100%)"
-      }} />
-
-      {/* 별 */}
-      {[...Array(50)].map((_, i) => (
-        <div key={i} className="absolute bg-white rounded-full"
-          style={{
-            width: i % 7 === 0 ? "2px" : "1px",
-            height: i % 7 === 0 ? "2px" : "1px",
-            left: `${(i * 31 + 7) % 100}%`,
-            top: `${(i * 19 + 3) % 35}%`,
-            opacity: 0.2 + (i % 6) * 0.12,
-          }} />
-      ))}
-
-      {/* 달 */}
-      <div className="absolute top-[8%] right-[15%] w-8 h-8 rounded-full bg-[#f0e8cc] shadow-[0_0_20px_#f0e8cc40,0_0_60px_#f0e8cc15]" />
-
-      {/* ── 뒤쪽 빌딩 (어두운, 작은) ── */}
-      <div className="absolute bottom-[15%] left-0 right-0 flex items-end justify-center gap-[1px] px-2">
-        {[28, 45, 35, 52, 30, 48, 38, 55, 32, 50, 28, 42, 36, 50, 32, 46, 30, 40, 34, 48].map((h, i) => (
-          <div key={`bg-${i}`} className="flex-1 max-w-[40px] relative" style={{
-            height: `${h * 0.8}%`,
-            backgroundColor: "#080c16",
-            borderRadius: "1px 1px 0 0",
-          }}>
-            {[...Array(Math.floor(h / 10))].map((_, j) => (
-              <div key={j} className="absolute" style={{
-                left: "20%", right: "20%",
-                top: `${10 + j * (100 / Math.max(Math.floor(h / 10), 1))}%`,
-                height: "3px",
-                backgroundColor: (i + j) % 4 === 0 ? "#f0df6012" : "#f0df6006",
-              }} />
-            ))}
-          </div>
-        ))}
+    <div className="h-screen relative overflow-hidden">
+      {/* ── 배경 이미지 (계절/시간대별) ── */}
+      <div className="absolute inset-0">
+        <img src={loginBg} alt="" className="w-full h-full object-cover" />
+        {/* 어두운 오버레이 (밤) */}
+        {time === "night" && <div className="absolute inset-0 bg-black/20" />}
+        {time === "sunset" && <div className="absolute inset-0 bg-orange-900/10" />}
       </div>
 
-      {/* ── 앞쪽 빌딩 (밝은, 큰) ── */}
-      <div className="absolute bottom-[8%] left-0 right-0 flex items-end gap-[2px] px-1">
-        {buildings.slice(0, 7).map((b, i) => (
-          <div key={`l-${i}`} className="flex-1 relative" style={{
-            height: `${b.h}%`,
-            backgroundColor: "#0c1020",
-            borderRadius: "2px 2px 0 0",
-            borderTop: "1px solid #1a2040",
-            borderLeft: "1px solid #151a30",
-            borderRight: "1px solid #151a30",
-          }}>
-            {/* 창문 그리드 */}
-            <div className="absolute inset-x-[4px] top-[8px] bottom-[4px] grid grid-cols-2 gap-y-[6px] gap-x-[3px]">
-              {[...Array(Math.floor(b.h / 8))].map((_, j) => (
-                <div key={j} className="rounded-[0.5px]" style={{
-                  height: "5px",
-                  backgroundColor: (i * 3 + j) % 5 === 0 ? "#f0df6022" : (i + j) % 3 === 0 ? "#4080c018" : "#0a0e18",
-                }} />
-              ))}
-            </div>
-          </div>
-        ))}
+      {/* ── 움직이는 구름 ── */}
+      <style>{`
+        @keyframes cloudDrift { from { transform: translateX(-100%); } to { transform: translateX(100vw); } }
+        @keyframes cloudDrift2 { from { transform: translateX(100vw); } to { transform: translateX(-100%); } }
+        @keyframes treeSway { 0%,100% { transform: rotate(0deg); } 50% { transform: rotate(1.5deg); } }
+        @keyframes treeSwayR { 0%,100% { transform: rotate(0deg); } 50% { transform: rotate(-1.2deg); } }
+        @keyframes walkRight { from { transform: translateX(-30px); } to { transform: translateX(calc(100vw + 30px)); } }
+        @keyframes walkLeft { from { transform: translateX(calc(100vw + 30px)); } to { transform: translateX(-30px); } }
+        @keyframes rainFall { from { transform: translateY(-10px); } to { transform: translateY(100vh); } }
+        @keyframes snowFall { 0% { transform: translateY(-10px) translateX(0); } 50% { transform: translateY(50vh) translateX(15px); } 100% { transform: translateY(100vh) translateX(-5px); } }
+        @keyframes fadeInUp { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+      `}</style>
 
-        {/* ── 메인 빌딩 (두근컴퍼니) ── */}
-        <div className="flex-[2] relative mx-1" style={{
-          height: "55%",
-          backgroundColor: "#10152a",
-          borderRadius: "3px 3px 0 0",
-          border: "1px solid #2a3055",
-          borderBottom: "none",
-        }}>
-          {/* 간판 */}
-          <div className="absolute top-2 left-1/2 -translate-x-1/2 bg-[#1a2040] border border-[#3a4060] rounded px-3 py-1">
-            <p className="text-[9px] text-yellow-400 font-bold whitespace-nowrap">(주)두근 컴퍼니</p>
+      {weather === "clear" && (
+        <>
+          <div className="absolute top-[5%] opacity-30" style={{ animation: "cloudDrift 60s linear infinite" }}>
+            <img src="/assets/gen/clouds.png" alt="" className="h-[60px] w-auto" />
           </div>
-          {/* 창문 */}
-          <div className="absolute inset-x-[6px] top-[28px] bottom-[30px] grid grid-cols-3 gap-[4px]">
-            {[...Array(15)].map((_, j) => (
-              <div key={j} className="rounded-[1px]" style={{
-                backgroundColor: j % 4 === 0 ? "#f0df6028" : j % 3 === 1 ? "#4080c020" : "#0e1428",
-              }} />
-            ))}
+          <div className="absolute top-[12%] opacity-20" style={{ animation: "cloudDrift2 80s linear 10s infinite" }}>
+            <img src="/assets/gen/clouds.png" alt="" className="h-[40px] w-auto" />
           </div>
-          {/* 입구 */}
-          <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[36px] h-[26px] bg-[#080c18] border-t border-x border-[#3a4060] rounded-t-sm">
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="w-[1px] h-full bg-[#2a3050]" />
-            </div>
-            {/* 입구 불빛 */}
-            <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-3 h-1 bg-yellow-400/30 rounded-full blur-[2px]" />
-          </div>
+        </>
+      )}
+
+      {/* ── 비 효과 ── */}
+      {weather === "rain" && (
+        <div className="absolute inset-0 pointer-events-none overflow-hidden">
+          {[...Array(40)].map((_, i) => (
+            <div key={i} className="absolute w-[1px] bg-blue-300/30" style={{
+              left: `${(i * 2.5) % 100}%`,
+              height: `${12 + (i % 5) * 4}px`,
+              animation: `rainFall ${0.5 + (i % 4) * 0.15}s linear ${i * 0.05}s infinite`,
+            }} />
+          ))}
+          <div className="absolute inset-0 bg-blue-900/15" />
         </div>
+      )}
 
-        {buildings.slice(7).map((b, i) => (
-          <div key={`r-${i}`} className="flex-1 relative" style={{
-            height: `${b.h}%`,
-            backgroundColor: "#0c1020",
-            borderRadius: "2px 2px 0 0",
-            borderTop: "1px solid #1a2040",
-            borderLeft: "1px solid #151a30",
-            borderRight: "1px solid #151a30",
-          }}>
-            <div className="absolute inset-x-[4px] top-[8px] bottom-[4px] grid grid-cols-2 gap-y-[6px] gap-x-[3px]">
-              {[...Array(Math.floor(b.h / 8))].map((_, j) => (
-                <div key={j} className="rounded-[0.5px]" style={{
-                  height: "5px",
-                  backgroundColor: (i * 5 + j) % 5 === 0 ? "#f0df6022" : (i + j) % 3 === 0 ? "#4080c018" : "#0a0e18",
-                }} />
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* ── 도로 ── */}
-      <div className="absolute bottom-0 left-0 right-0 h-[8%] bg-[#101420]">
-        {/* 인도 */}
-        <div className="absolute top-0 left-0 right-0 h-[30%] bg-[#181e30]" />
-        {/* 도로 중앙선 */}
-        <div className="absolute top-[55%] left-0 right-0 h-[2px] flex gap-3">
-          {[...Array(20)].map((_, i) => (
-            <div key={i} className="flex-1 bg-[#f0df6018] rounded" />
+      {/* ── 눈 효과 ── */}
+      {weather === "snow" && (
+        <div className="absolute inset-0 pointer-events-none overflow-hidden">
+          {[...Array(30)].map((_, i) => (
+            <div key={i} className="absolute rounded-full bg-white/60" style={{
+              left: `${(i * 3.3) % 100}%`,
+              width: `${2 + (i % 3)}px`,
+              height: `${2 + (i % 3)}px`,
+              animation: `snowFall ${3 + (i % 5)}s linear ${i * 0.2}s infinite`,
+            }} />
           ))}
         </div>
-        {/* 가로등 */}
-        {[15, 40, 65, 90].map((x, i) => (
-          <div key={i} className="absolute" style={{ left: `${x}%`, bottom: "100%" }}>
-            <div className="w-[2px] h-[24px] bg-[#2a3050] mx-auto" />
-            <div className="w-[8px] h-[3px] bg-[#3a4060] rounded-full mx-auto -mt-[1px]" />
-            <div className="w-[6px] h-[4px] bg-yellow-400/20 rounded-full mx-auto blur-[3px]" />
-          </div>
-        ))}
-      </div>
+      )}
 
-      {/* ── 나무 ── */}
-      {[8, 22, 47, 63, 78, 93].map((x, i) => (
-        <div key={`tree-${i}`} className="absolute" style={{ left: `${x}%`, bottom: "8%" }}>
-          <div className="relative">
-            {/* 줄기 */}
-            <div className="w-[3px] h-[10px] bg-[#2a1a10] mx-auto" />
-            {/* 수관 (겹친 원) */}
-            <div className="absolute -top-[14px] left-1/2 -translate-x-1/2">
-              <div className="w-[12px] h-[10px] bg-[#0c2010] rounded-full absolute -left-[2px] top-[2px]" />
-              <div className="w-[14px] h-[12px] bg-[#0e2812] rounded-full absolute -left-[3px] -top-[2px]" />
-              <div className="w-[10px] h-[9px] bg-[#102a14] rounded-full absolute left-[2px] -top-[1px]" />
-            </div>
-          </div>
-        </div>
-      ))}
+      {/* ── 나무 흔들림 (배경 위 오버레이) ── */}
+      {/* CSS로 배경 이미지 위 특정 영역에 sway 효과 */}
 
-      {/* ── 걸어다니는 사람들 ── */}
-      <style>{`
-        @keyframes walkRight { from { transform: translateX(-20px); } to { transform: translateX(calc(100vw + 20px)); } }
-        @keyframes walkLeft { from { transform: translateX(calc(100vw + 20px)); } to { transform: translateX(-20px); } }
-      `}</style>
-      {people.map((p, i) => (
-        <div key={`person-${i}`} className="absolute" style={{
-          bottom: `${8.5 + (i % 2) * 0.8}%`,
-          animation: `${i % 2 === 0 ? "walkRight" : "walkLeft"} ${p.speed}s linear ${p.delay}s infinite`,
-        }}>
-          {/* 머리 */}
-          <div className="w-[4px] h-[4px] bg-[#d0b890] rounded-full mx-auto" />
-          {/* 몸 */}
-          <div className="w-[4px] h-[6px] mx-auto" style={{
-            backgroundColor: ["#3a5080", "#804040", "#406040", "#605040", "#404080"][i],
-          }} />
-          {/* 다리 */}
-          <div className="flex gap-[1px] justify-center">
-            <div className="w-[1px] h-[3px] bg-[#1a1a2a]" />
-            <div className="w-[1px] h-[3px] bg-[#1a1a2a]" />
-          </div>
-        </div>
-      ))}
-
-      {/* ── 로그인 카드 (건물 위에 오버레이) ── */}
-      <div className="absolute inset-0 flex items-center justify-center z-10">
-        <div className="bg-[#0a0e1a]/90 border border-[#2a3050] rounded-xl p-6 w-[300px] shadow-2xl backdrop-blur-md">
+      {/* ── 로그인 카드 ── */}
+      <div className="absolute inset-0 flex items-center justify-center z-10" style={{ animation: "fadeInUp 0.5s ease" }}>
+        <div className="bg-black/60 backdrop-blur-md border border-white/10 rounded-2xl p-6 w-[300px] shadow-2xl">
           <div className="text-center mb-5">
-            <h1 className="text-sm font-bold text-yellow-400 cursor-default select-none"
-              onDoubleClick={() => setShowOwnerPopup(true)}>(주)두근 컴퍼니</h1>
-            <p className="text-[10px] text-gray-500 mt-1">초대코드로 입장하세요</p>
+            <h1 className="text-base font-bold text-white cursor-default select-none"
+              onDoubleClick={() => setShowOwnerPopup(true)}>
+              (주)두근 컴퍼니
+            </h1>
+            <p className="text-[10px] text-white/50 mt-1">초대코드로 입장하세요</p>
           </div>
 
           <div className="space-y-3">
             <div>
-              <label className="text-[9px] text-gray-500 block mb-1">닉네임</label>
+              <label className="text-[9px] text-white/40 block mb-1">닉네임</label>
               <input autoFocus value={nickname} onChange={e => setNickname(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && !loading && submit()}
+                onKeyDown={e => e.key === "Enter" && !loading && submitInvite()}
                 placeholder="사무실에서 쓸 이름"
-                className="w-full bg-[#101828] border border-[#2a3050] text-white px-3 py-2 text-xs rounded-lg
-                           placeholder-gray-600 focus:outline-none focus:border-yellow-400/50" />
+                className="w-full bg-white/10 border border-white/15 text-white px-3 py-2 text-xs rounded-lg
+                           placeholder-white/25 focus:outline-none focus:border-yellow-400/50 backdrop-blur-sm" />
             </div>
             <div>
-              <label className="text-[9px] text-gray-500 block mb-1">초대코드</label>
+              <label className="text-[9px] text-white/40 block mb-1">초대코드</label>
               <input value={code} onChange={e => setCode(e.target.value.toUpperCase())}
-                onKeyDown={e => e.key === "Enter" && !loading && submit()}
+                onKeyDown={e => e.key === "Enter" && !loading && submitInvite()}
                 placeholder="8자리 코드" maxLength={8}
-                className="w-full bg-[#101828] border border-[#2a3050] text-white px-3 py-2 text-xs rounded-lg
-                           placeholder-gray-600 focus:outline-none focus:border-yellow-400/50 font-mono tracking-widest text-center" />
+                className="w-full bg-white/10 border border-white/15 text-white px-3 py-2 text-xs rounded-lg
+                           placeholder-white/25 focus:outline-none focus:border-yellow-400/50 font-mono tracking-widest text-center backdrop-blur-sm" />
             </div>
             {error && <p className="text-[10px] text-red-400 text-center">{error}</p>}
-            <button onClick={submit} disabled={loading}
-              className="w-full bg-yellow-500 text-black py-2.5 text-xs font-bold rounded-lg
-                         hover:bg-yellow-400 disabled:opacity-50 transition-colors">
+            <button onClick={submitInvite} disabled={loading}
+              className="w-full bg-white/90 text-black py-2.5 text-xs font-bold rounded-lg
+                         hover:bg-white disabled:opacity-50 transition-colors">
               {loading ? "입장중..." : "입장하기"}
             </button>
           </div>
-          <p className="text-[8px] text-gray-700 text-center mt-4">초대코드가 없으면 관리자에게 문의하세요</p>
+          <p className="text-[8px] text-white/20 text-center mt-4">초대코드가 없으면 관리자에게 문의하세요</p>
 
-          {/* 오너 비밀번호 팝업 (회사명 더블클릭 시) */}
+          {/* 오너 비밀번호 팝업 */}
           {showOwnerPopup && (
             <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60" onClick={() => setShowOwnerPopup(false)}>
-              <div className="bg-[#0a0e1a] border border-[#2a3050] rounded-lg p-4 w-[240px] shadow-2xl" onClick={e => e.stopPropagation()}>
+              <div className="bg-[#0a0e1a]/95 border border-white/10 rounded-xl p-4 w-[240px] shadow-2xl backdrop-blur-md" onClick={e => e.stopPropagation()}>
                 <input autoFocus type={showPw ? "text" : "password"} value={ownerPw} onChange={e => setOwnerPw(e.target.value)}
-                  onKeyDown={async e => {
-                    if (e.key === "Escape") setShowOwnerPopup(false);
-                    if (e.key === "Enter" && !loading) {
-                      // 직접 오너 로그인 실행
-                      e.preventDefault();
-                      (document.querySelector("[data-owner-submit]") as HTMLButtonElement)?.click();
-                    }
-                  }}
+                  onKeyDown={e => { if (e.key === "Escape") setShowOwnerPopup(false); if (e.key === "Enter") submitOwner(); }}
                   placeholder="비밀번호"
-                  className="w-full bg-[#101828] border border-[#2a3050] text-white px-3 py-2 text-xs rounded-lg
-                             placeholder-gray-600 focus:outline-none focus:border-yellow-400/50 text-center" />
+                  className="w-full bg-white/10 border border-white/15 text-white px-3 py-2 text-xs rounded-lg
+                             placeholder-white/25 focus:outline-none focus:border-yellow-400/50 text-center" />
                 <div className="flex gap-2 mt-2">
                   <button onClick={() => setShowPw(v => !v)}
-                    className="px-2 py-1.5 bg-[#1a2040] text-gray-400 rounded-lg hover:text-white transition-colors">
+                    className="px-2 py-1.5 bg-white/5 text-white/40 rounded-lg hover:text-white transition-colors">
                     {showPw ? (
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
@@ -330,25 +213,8 @@ export default function LoginPage({ onLogin }: { onLogin: (user: AuthUser) => vo
                       </svg>
                     )}
                   </button>
-                  <button data-owner-submit onClick={async () => {
-                    setLoading(true); setError("");
-                    try {
-                      const res = await fetch(`${getApiBase()}/api/auth/owner`, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ password: ownerPw.trim() }),
-                      });
-                      const data = await res.json();
-                      if (!data.ok) { setError(data.error || "실패"); setLoading(false); return; }
-                      localStorage.setItem("hq-auth-token", data.token);
-                      localStorage.setItem("hq-auth-user", JSON.stringify({
-                        user_id: data.user_id, nickname: data.nickname,
-                        role: data.role, permissions: data.permissions,
-                      }));
-                      onLogin(data);
-                    } catch { setError("서버 연결 실패"); setLoading(false); }
-                  }} disabled={loading}
-                    className="flex-1 bg-[#2a3050] text-gray-300 py-1.5 text-[10px] rounded-lg hover:bg-[#3a4060] transition-colors">
+                  <button onClick={submitOwner} disabled={loading}
+                    className="flex-1 bg-white/10 text-white/70 py-1.5 text-[10px] rounded-lg hover:bg-white/20 transition-colors">
                     {loading ? "..." : "확인"}
                   </button>
                 </div>
