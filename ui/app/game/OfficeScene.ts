@@ -340,7 +340,7 @@ export default class OfficeScene extends Phaser.Scene {
       // 나무 전체 크기 (약간 축소)
       const treeH = 16 + (sz * 22 | 0); // 16~38
       const treeW = 8 + (sz * 13 | 0);  // 8~21 (반폭 기준)
-      const trunkH = 4 + (sz * 3 | 0);  // 줄기 보이는 부분 4~7
+      const trunkH = 6 + (sz * 4 | 0);  // 줄기 보이는 부분 6~10
       const trunkW = sz > 0.6 ? 3 : 2;
 
       // ── 줄기 ──

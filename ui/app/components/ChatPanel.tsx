@@ -120,6 +120,9 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
   const wsRef = useRef<WebSocket | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // 콜백 ref — useEffect deps에 넣지 않아도 항상 최신 참조
+  const onWorkingChangeRef = useRef(onWorkingChange);
+  onWorkingChangeRef.current = onWorkingChange;
 
   const scrollToBottom = useCallback(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -158,7 +161,7 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
       ws.onclose = () => {
         setConnected(false);
         setStreaming(false);
-        onWorkingChange(false);
+        onWorkingChangeRef.current(false);
         wsRef.current = null;
         // 자동 재연결
         if (!dead) {
@@ -201,7 +204,7 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
           timerRef.current = setInterval(() => {
             setElapsed(Math.floor((Date.now() - startTimeRef.current) / 1000));
           }, 1000);
-          onWorkingChange(true);
+          onWorkingChangeRef.current(true);
           setMessages(prev => [...prev, { type: "ai", content: "" }]);
         } else if (data.type === "ai_chunk") {
           setMessages(prev => {
@@ -215,7 +218,7 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
           setStreaming(false);
           setToolStatus("");
           setLastDone(prev => ({ sec, tools: (prev?.tools ?? 0) + toolLog.length }));
-          onWorkingChange(false);
+          onWorkingChangeRef.current(false);
           notify(`${team.emoji} ${team.name} 완료`, `작업 완료 (${sec}초)`);
         }
       };
@@ -230,7 +233,8 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
       if (timerRef.current) clearInterval(timerRef.current);
       ws?.close();
     };
-  }, [team.id, onWorkingChange, notify]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- onWorkingChange/notify는 ref로 안정화
+  }, [team.id]);
 
   useEffect(() => { scrollToBottom(); }, [messages, scrollToBottom]);
 
