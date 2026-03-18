@@ -13,7 +13,7 @@ from system_monitor import get_all as get_system, get_process_stats
 from claude_runner import TEAM_SESSIONS, TEAM_MODELS, AGENT_PIDS, MODEL_IDS, get_claude_version, _save_sessions, AGENT_TOKENS
 from auth import (
     register_user, verify_token, create_invite_code,
-    get_all_codes, get_all_users, ensure_owner_code, ROLES,
+    get_all_codes, get_all_users, ensure_owner_code, ROLES, owner_login,
 )
 
 load_dotenv()
@@ -53,6 +53,16 @@ app.add_middleware(
 
 
 # ── 인증 API ─────────────────────────────────────────
+
+@app.post("/api/auth/owner")
+async def auth_owner(body: dict):
+    """오너 비밀번호 로그인"""
+    password = body.get("password", "")
+    result = owner_login(password)
+    if not result:
+        return {"ok": False, "error": "비밀번호가 틀렸습니다."}
+    return {"ok": True, **result}
+
 
 @app.post("/api/auth/register")
 async def auth_register(body: dict):

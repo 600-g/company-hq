@@ -24,31 +24,35 @@ function getApiBase(): string {
 }
 
 export default function LoginPage({ onLogin }: { onLogin: (user: AuthUser) => void }) {
+  const [mode, setMode] = useState<"owner" | "invite">("owner");
   const [nickname, setNickname] = useState("");
   const [code, setCode] = useState("");
+  const [ownerPw, setOwnerPw] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   const submit = async () => {
-    if (!nickname.trim() || !code.trim()) {
-      setError("닉네임과 초대코드를 입력하세요");
-      return;
-    }
     setLoading(true);
     setError("");
     try {
-      const res = await fetch(`${getApiBase()}/api/auth/register`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nickname: nickname.trim(), code: code.trim() }),
-      });
-      const data = await res.json();
-      if (!data.ok) {
-        setError(data.error || "등록 실패");
-        setLoading(false);
-        return;
+      let res: Response;
+      if (mode === "owner") {
+        if (!ownerPw.trim()) { setError("비밀번호를 입력하세요"); setLoading(false); return; }
+        res = await fetch(`${getApiBase()}/api/auth/owner`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ password: ownerPw.trim() }),
+        });
+      } else {
+        if (!nickname.trim() || !code.trim()) { setError("닉네임과 초대코드를 입력하세요"); setLoading(false); return; }
+        res = await fetch(`${getApiBase()}/api/auth/register`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ nickname: nickname.trim(), code: code.trim() }),
+        });
       }
-      // 토큰 저장
+      const data = await res.json();
+      if (!data.ok) { setError(data.error || "로그인 실패"); setLoading(false); return; }
       localStorage.setItem("hq-auth-token", data.token);
       localStorage.setItem("hq-auth-user", JSON.stringify({
         user_id: data.user_id,
@@ -260,28 +264,52 @@ export default function LoginPage({ onLogin }: { onLogin: (user: AuthUser) => vo
       {/* ── 로그인 카드 (건물 위에 오버레이) ── */}
       <div className="absolute inset-0 flex items-center justify-center z-10">
         <div className="bg-[#0a0e1a]/90 border border-[#2a3050] rounded-xl p-6 w-[300px] shadow-2xl backdrop-blur-md">
-          <div className="text-center mb-5">
+          <div className="text-center mb-4">
             <h1 className="text-sm font-bold text-yellow-400">(주)두근 컴퍼니</h1>
-            <p className="text-[10px] text-gray-500 mt-1">초대코드로 입장하세요</p>
+          </div>
+
+          {/* 탭 */}
+          <div className="flex mb-4 border-b border-[#2a3050]">
+            <button onClick={() => { setMode("owner"); setError(""); }}
+              className={`flex-1 pb-2 text-[10px] transition-colors ${mode === "owner" ? "text-yellow-400 border-b-2 border-yellow-400" : "text-gray-600"}`}>
+              오너 로그인
+            </button>
+            <button onClick={() => { setMode("invite"); setError(""); }}
+              className={`flex-1 pb-2 text-[10px] transition-colors ${mode === "invite" ? "text-yellow-400 border-b-2 border-yellow-400" : "text-gray-600"}`}>
+              초대코드
+            </button>
           </div>
 
           <div className="space-y-3">
-            <div>
-              <label className="text-[9px] text-gray-500 block mb-1">닉네임</label>
-              <input autoFocus value={nickname} onChange={e => setNickname(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && !loading && submit()}
-                placeholder="사무실에서 쓸 이름"
-                className="w-full bg-[#101828] border border-[#2a3050] text-white px-3 py-2 text-xs rounded-lg
-                           placeholder-gray-600 focus:outline-none focus:border-yellow-400/50" />
-            </div>
-            <div>
-              <label className="text-[9px] text-gray-500 block mb-1">초대코드</label>
-              <input value={code} onChange={e => setCode(e.target.value.toUpperCase())}
-                onKeyDown={e => e.key === "Enter" && !loading && submit()}
-                placeholder="8자리 코드" maxLength={8}
-                className="w-full bg-[#101828] border border-[#2a3050] text-white px-3 py-2 text-xs rounded-lg
-                           placeholder-gray-600 focus:outline-none focus:border-yellow-400/50 font-mono tracking-widest text-center" />
-            </div>
+            {mode === "owner" ? (
+              <div>
+                <label className="text-[9px] text-gray-500 block mb-1">비밀번호</label>
+                <input autoFocus type="password" value={ownerPw} onChange={e => setOwnerPw(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && !loading && submit()}
+                  placeholder="오너 비밀번호"
+                  className="w-full bg-[#101828] border border-[#2a3050] text-white px-3 py-2 text-xs rounded-lg
+                             placeholder-gray-600 focus:outline-none focus:border-yellow-400/50" />
+              </div>
+            ) : (
+              <>
+                <div>
+                  <label className="text-[9px] text-gray-500 block mb-1">닉네임</label>
+                  <input autoFocus value={nickname} onChange={e => setNickname(e.target.value)}
+                    onKeyDown={e => e.key === "Enter" && !loading && submit()}
+                    placeholder="사무실에서 쓸 이름"
+                    className="w-full bg-[#101828] border border-[#2a3050] text-white px-3 py-2 text-xs rounded-lg
+                               placeholder-gray-600 focus:outline-none focus:border-yellow-400/50" />
+                </div>
+                <div>
+                  <label className="text-[9px] text-gray-500 block mb-1">초대코드</label>
+                  <input value={code} onChange={e => setCode(e.target.value.toUpperCase())}
+                    onKeyDown={e => e.key === "Enter" && !loading && submit()}
+                    placeholder="8자리 코드" maxLength={8}
+                    className="w-full bg-[#101828] border border-[#2a3050] text-white px-3 py-2 text-xs rounded-lg
+                               placeholder-gray-600 focus:outline-none focus:border-yellow-400/50 font-mono tracking-widest text-center" />
+                </div>
+              </>
+            )}
             {error && <p className="text-[10px] text-red-400 text-center">{error}</p>}
             <button onClick={submit} disabled={loading}
               className="w-full bg-yellow-500 text-black py-2.5 text-xs font-bold rounded-lg
@@ -289,7 +317,7 @@ export default function LoginPage({ onLogin }: { onLogin: (user: AuthUser) => vo
               {loading ? "입장중..." : "입장하기"}
             </button>
           </div>
-          <p className="text-[8px] text-gray-700 text-center mt-4">초대코드가 없으면 관리자에게 문의하세요</p>
+          <p className="text-[8px] text-gray-700 text-center mt-4">{mode === "invite" ? "초대코드가 없으면 관리자에게 문의하세요" : ""}</p>
         </div>
       </div>
     </div>

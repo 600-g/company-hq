@@ -161,10 +161,56 @@ def ensure_owner_code():
     if not isinstance(codes, list):
         codes = []
 
-    # 이미 오너 코드가 있는지 확인
     has_owner = any(c["role"] == "owner" for c in codes)
     if not has_owner:
         code = create_invite_code(role="owner", created_by="system", max_uses=1)
         print(f"🔑 오너 초대코드 생성: {code}")
         return code
     return None
+
+
+def owner_login(password: str) -> dict | None:
+    """오너 비밀번호 로그인. .env의 OWNER_PASSWORD와 비교."""
+    import os
+    owner_pw = os.getenv("OWNER_PASSWORD", "")
+    if not owner_pw or password != owner_pw:
+        return None
+
+    users = _load_json(_USERS_FILE)
+    if not isinstance(users, dict):
+        users = {}
+
+    # 기존 오너 계정 찾기
+    for uid, u in users.items():
+        if u.get("role") == "owner":
+            token = uuid.uuid4().hex
+            u["token"] = hashlib.sha256(token.encode()).hexdigest()
+            u["last_active"] = datetime.now().isoformat()
+            _save_json(_USERS_FILE, users)
+            return {
+                "user_id": uid,
+                "nickname": u["nickname"],
+                "role": "owner",
+                "permissions": ROLES["owner"],
+                "token": token,
+            }
+
+    # 오너 계정 없으면 새로 생성
+    user_id = "owner"
+    token = uuid.uuid4().hex
+    users[user_id] = {
+        "nickname": "두근",
+        "role": "owner",
+        "token": hashlib.sha256(token.encode()).hexdigest(),
+        "created_at": datetime.now().isoformat(),
+        "last_active": datetime.now().isoformat(),
+        "invite_code": "OWNER",
+    }
+    _save_json(_USERS_FILE, users)
+    return {
+        "user_id": user_id,
+        "nickname": "두근",
+        "role": "owner",
+        "permissions": ROLES["owner"],
+        "token": token,
+    }
