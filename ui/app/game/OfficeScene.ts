@@ -331,92 +331,108 @@ export default class OfficeScene extends Phaser.Scene {
     const ty = wh - 3;
 
     positions.forEach(tx => {
-      // 12% 빈 자리
       if (sR(tx, 55) < 0.12) return;
 
       const sz = sR(tx, 3); // 0~1
-      const tH = 14 + (sz * 18 | 0); // 줄기 높이 14~32
-      const tW = sz > 0.6 ? 3 : 2;
-      const isEv = sR(tx, 90) > 0.8; // 20% 상록수
+      const isEv = sR(tx, 90) > 0.8;
       const cols = isEv ? evColors : leafColors;
 
-      // ── 줄기 ──
+      // 줄기: 짧게 — 전체 높이의 30%만 노출, 나머지는 수관에 가려짐
+      const totalH = 18 + (sz * 22 | 0); // 전체 나무 높이 18~40
+      const trunkShow = 3 + (sz * 4 | 0); // 보이는 줄기 3~7px만
+      const tW = sz > 0.6 ? 3 : 2;
+
       const trunkCol = nightT ? 0x151010 : 0x4a3018;
       const trunkHi = nightT ? 0x1a1414 : 0x5a4020;
+      // 줄기 (아래쪽 짧은 부분만)
       treeG.fillStyle(trunkCol, 0.95);
-      treeG.fillRect(tx - (tW >> 1), ty - tH, tW, tH);
-      treeG.fillStyle(trunkHi, 0.4);
-      treeG.fillRect(tx - (tW >> 1), ty - tH, 1, tH);
-      // 밑동
-      treeG.fillStyle(trunkCol, 0.8);
-      treeG.fillRect(tx - tW, ty - 1, tW * 2 + 1, 1);
+      treeG.fillRect(tx - (tW >> 1), ty - trunkShow, tW, trunkShow);
+      treeG.fillStyle(trunkHi, 0.35);
+      treeG.fillRect(tx - (tW >> 1), ty - trunkShow, 1, trunkShow);
 
       // ── 겨울: 앙상한 가지 ──
       if (mon === 12 || mon <= 2) {
+        // 겨울은 줄기 길게 보임
+        const wTrunkH = 10 + (sz * 12 | 0);
+        treeG.fillStyle(trunkCol, 0.95);
+        treeG.fillRect(tx - (tW >> 1), ty - wTrunkH, tW, wTrunkH);
         const brC = nightT ? 0x111010 : 0x3a3030;
         const bCount = 3 + (sz * 3 | 0);
         treeG.fillStyle(brC, 0.8);
         for (let b = 0; b < bCount; b++) {
           const side = sR(tx, b * 3 + 40) > 0.5 ? 1 : -1;
           const bLen = 4 + (sR(tx, b * 3 + 41) * 7 | 0);
-          const by = ty - tH + 2 + (b * ((tH * 0.6) / bCount) | 0);
+          const by = ty - wTrunkH + 2 + (b * ((wTrunkH * 0.5) / bCount) | 0);
           const bx = side > 0 ? tx + 1 : tx - bLen;
           treeG.fillRect(bx, by, bLen, 1);
-          // 가지 끝 살짝 위로
           if (bLen > 5) treeG.fillRect(side > 0 ? bx + bLen - 1 : bx, by - 1, 1, 1);
         }
-        // 눈
         if (sR(tx, 55) > 0.35) {
           treeG.fillStyle(0xddeeff, 0.45);
-          treeG.fillRect(tx - 3, ty - tH + 3, 3, 1);
-          treeG.fillRect(tx + 2, ty - tH + 6, 2, 1);
+          treeG.fillRect(tx - 3, ty - wTrunkH + 3, 3, 1);
         }
         return;
       }
 
-      // ── 수관: 동그라미 5~7개 겹침 ──
-      const canopyBase = ty - tH - 2;
-      const canopyR = 4 + (sz * 6 | 0); // 반지름 4~10
-      const circleCount = 4 + (sz * 3 | 0); // 4~7개
+      // ── 수관: 줄기를 감싸는 길쭉한 뭉글뭉글 ──
+      // 위쪽 원 3~4개 + 중간 원 2~3개 + 아래쪽 원 1~2개 = 총 6~9개
+      const canopyTop = ty - totalH;  // 수관 꼭대기
+      const canopyBot = ty - trunkShow + 2; // 수관 하단 (줄기 살짝 덮음)
+      const canopyH = canopyBot - canopyTop;
+      const canopyW = 5 + (sz * 8 | 0); // 수관 반폭 5~13
 
-      for (let c = 0; c < circleCount; c++) {
-        // 각 원의 위치를 시드로 고정 (매번 같은 모양)
-        const cx = tx + ((sR(tx, c * 5 + 10) - 0.5) * canopyR * 1.6) | 0;
-        const cy = canopyBase - ((sR(tx, c * 5 + 11) * canopyR * 1.2) | 0);
-        const cr = canopyR * (0.55 + sR(tx, c * 5 + 12) * 0.5);
+      // 3줄로 배치: 상단(좁음), 중단(넓음), 하단(중간)
+      const layers = [
+        { yRatio: 0.0,  wRatio: 0.6, count: 2 + (sz > 0.5 ? 1 : 0) }, // 꼭대기
+        { yRatio: 0.25, wRatio: 0.9, count: 2 + (sz > 0.3 ? 1 : 0) }, // 상단
+        { yRatio: 0.50, wRatio: 1.0, count: 2 + (sz > 0.4 ? 1 : 0) }, // 중단 (가장 넓음)
+        { yRatio: 0.75, wRatio: 0.8, count: 1 + (sz > 0.5 ? 1 : 0) }, // 하단
+      ];
 
-        if (nightT) {
-          // 야간: 어두운 실루엣
-          treeG.fillStyle(0x0a0e08, 0.8);
-          treeG.fillCircle(cx, cy, cr);
-          treeG.fillStyle(cols[c % cols.length] || 0x1a3018, 0.06);
-          treeG.fillCircle(cx, cy, cr);
-        } else {
-          // 그림자층 (약간 아래, 어두운 색)
-          treeG.fillStyle(cols[0], 0.5);
-          treeG.fillCircle(cx + 1, cy + 1, cr);
-          // 메인
-          treeG.fillStyle(cols[1 + (c % (cols.length - 1))], 0.85);
-          treeG.fillCircle(cx, cy, cr);
-          // 하이라이트 (상단 좌측)
-          treeG.fillStyle(cols[cols.length - 1], 0.35);
-          treeG.fillCircle(cx - cr * 0.25, cy - cr * 0.3, cr * 0.5);
+      let ci = 0;
+      layers.forEach((layer, li) => {
+        const ly = canopyTop + (canopyH * layer.yRatio) | 0;
+        const lw = canopyW * layer.wRatio;
+        for (let c = 0; c < layer.count; c++) {
+          const ox = ((sR(tx, ci * 5 + 10) - 0.5) * lw * 1.4) | 0;
+          const oy = ((sR(tx, ci * 5 + 11) - 0.5) * canopyH * 0.15) | 0;
+          const cr = (canopyW * 0.45) * (0.6 + sR(tx, ci * 5 + 12) * 0.45);
+          const ccx = tx + ox;
+          const ccy = ly + oy;
+
+          if (nightT) {
+            treeG.fillStyle(0x0a0e08, 0.8);
+            treeG.fillCircle(ccx, ccy, cr);
+            treeG.fillStyle(cols[ci % cols.length] || 0x1a3018, 0.06);
+            treeG.fillCircle(ccx, ccy, cr);
+          } else {
+            // 그림자
+            treeG.fillStyle(cols[0], 0.45);
+            treeG.fillCircle(ccx + 1, ccy + 1, cr);
+            // 메인색 (레이어별 약간 다른 색)
+            const mainCol = cols[1 + ((ci + li) % (cols.length - 1))];
+            treeG.fillStyle(mainCol, 0.88);
+            treeG.fillCircle(ccx, ccy, cr);
+            // 하이라이트 (상단 원들에만)
+            if (li < 2) {
+              treeG.fillStyle(cols[cols.length - 1], 0.3);
+              treeG.fillCircle(ccx - cr * 0.2, ccy - cr * 0.25, cr * 0.45);
+            }
+          }
+          ci++;
         }
-      }
+      });
 
-      // 봄: 꽃잎 점
+      // 봄: 꽃잎
       if (mon >= 3 && mon <= 5 && !nightT && sR(tx, 12) > 0.3) {
         const petals = 2 + (sR(tx, 13) * 3 | 0);
         for (let p = 0; p < petals; p++) {
-          const px = tx + ((sR(tx, p * 7 + 20) - 0.5) * canopyR * 2) | 0;
-          const py = canopyBase - (sR(tx, p * 7 + 21) * canopyR) | 0;
+          const px = tx + ((sR(tx, p * 7 + 20) - 0.5) * canopyW * 1.8) | 0;
+          const py = canopyTop + (sR(tx, p * 7 + 21) * canopyH) | 0;
           treeG.fillStyle(0xffdde8, 0.7);
           treeG.fillCircle(px, py, 1);
         }
       }
-
-      // 쌍둥이: 18% 확률로 바로 옆에 작은 나무
-      // (별도 그리지 않고, positions에서 이미 간격이 가까운 곳이 자연스럽게 쌍둥이 역할)
     });
 
     // ── 안개 오버레이 ─────────────────────────────────────────────
