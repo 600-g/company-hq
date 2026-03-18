@@ -3,8 +3,12 @@
 import json
 import uuid
 import hashlib
+import os
 from datetime import datetime
 from pathlib import Path
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).parent / ".env")
 
 _AUTH_DIR = Path(__file__).parent / "auth_data"
 _AUTH_DIR.mkdir(exist_ok=True)
@@ -171,7 +175,6 @@ def ensure_owner_code():
 
 def owner_login(password: str) -> dict | None:
     """오너 비밀번호 로그인. .env의 OWNER_PASSWORD와 비교."""
-    import os
     owner_pw = os.getenv("OWNER_PASSWORD", "")
     if not owner_pw or password != owner_pw:
         return None
