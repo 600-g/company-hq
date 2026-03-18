@@ -138,60 +138,98 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
   }, []);
 
   useEffect(() => {
-    const wsUrl = getWsUrl(team.id);
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
-    ws.onopen = () => { setConnected(true); Notification.requestPermission(); }
-    ws.onclose = () => { setConnected(false); setStreaming(false); onWorkingChange(false); }
-    ws.onmessage = (e) => {
-      const data = JSON.parse(e.data);
-      if (data.type === "history_sync") {
-        // 서버에서 과거 대화 수신 → 로컬에 없으면 동기화
-        const serverMsgs: Message[] = data.messages || [];
-        if (serverMsgs.length > 0) {
-          setMessages(prev => prev.length === 0 ? serverMsgs : prev);
-        }
-        return;
-      }
-      if (data.type === "history_cleared") {
-        setMessages([]);
-        return;
-      }
-      if (data.type === "user") {
-        setMessages(prev => [...prev, { type: "user", content: data.content }]);
-      } else if (data.type === "status") {
-        setToolStatus(data.content);
-        setToolLog(prev => [...prev, data.content]);
-      } else if (data.type === "ai_start") {
-        setStreaming(true);
-        setToolStatus("");
-        setToolLog([]);
-        setLastDone(null);
-        setElapsed(0);
-        startTimeRef.current = Date.now();
-        timerRef.current = setInterval(() => {
-          setElapsed(Math.floor((Date.now() - startTimeRef.current) / 1000));
-        }, 1000);
-        onWorkingChange(true);
-        setMessages(prev => [...prev, { type: "ai", content: "" }]);
-      } else if (data.type === "ai_chunk") {
-        setMessages(prev => {
-          const u = [...prev]; const l = u[u.length - 1];
-          if (l?.type === "ai") u[u.length - 1] = { ...l, content: l.content + data.content };
-          return u;
-        });
-      } else if (data.type === "ai_end") {
-        if (timerRef.current) clearInterval(timerRef.current);
-        const sec = Math.floor((Date.now() - startTimeRef.current) / 1000);
+    let ws: WebSocket | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let dead = false;
+    let retryDelay = 1000; // 1초부터 시작, 최대 15초
+
+    const connect = () => {
+      if (dead) return;
+      const wsUrl = getWsUrl(team.id);
+      ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        setConnected(true);
+        retryDelay = 1000; // 성공하면 리셋
+        Notification.requestPermission();
+      };
+
+      ws.onclose = () => {
+        setConnected(false);
         setStreaming(false);
-        setToolStatus("");
-        setLastDone(prev => ({ sec, tools: (prev?.tools ?? 0) + toolLog.length }));
         onWorkingChange(false);
-        notify(`${team.emoji} ${team.name} 완료`, `작업 완료 (${sec}초)`);
-      }
+        wsRef.current = null;
+        // 자동 재연결
+        if (!dead) {
+          reconnectTimer = setTimeout(() => {
+            connect();
+            retryDelay = Math.min(retryDelay * 1.5, 15000);
+          }, retryDelay);
+        }
+      };
+
+      ws.onerror = () => {
+        // onclose가 이어서 호출됨
+      };
+
+      ws.onmessage = (e) => {
+        const data = JSON.parse(e.data);
+        if (data.type === "history_sync") {
+          const serverMsgs: Message[] = data.messages || [];
+          if (serverMsgs.length > 0) {
+            setMessages(prev => prev.length === 0 ? serverMsgs : prev);
+          }
+          return;
+        }
+        if (data.type === "history_cleared") {
+          setMessages([]);
+          return;
+        }
+        if (data.type === "user") {
+          setMessages(prev => [...prev, { type: "user", content: data.content }]);
+        } else if (data.type === "status") {
+          setToolStatus(data.content);
+          setToolLog(prev => [...prev, data.content]);
+        } else if (data.type === "ai_start") {
+          setStreaming(true);
+          setToolStatus("");
+          setToolLog([]);
+          setLastDone(null);
+          setElapsed(0);
+          startTimeRef.current = Date.now();
+          timerRef.current = setInterval(() => {
+            setElapsed(Math.floor((Date.now() - startTimeRef.current) / 1000));
+          }, 1000);
+          onWorkingChange(true);
+          setMessages(prev => [...prev, { type: "ai", content: "" }]);
+        } else if (data.type === "ai_chunk") {
+          setMessages(prev => {
+            const u = [...prev]; const l = u[u.length - 1];
+            if (l?.type === "ai") u[u.length - 1] = { ...l, content: l.content + data.content };
+            return u;
+          });
+        } else if (data.type === "ai_end") {
+          if (timerRef.current) clearInterval(timerRef.current);
+          const sec = Math.floor((Date.now() - startTimeRef.current) / 1000);
+          setStreaming(false);
+          setToolStatus("");
+          setLastDone(prev => ({ sec, tools: (prev?.tools ?? 0) + toolLog.length }));
+          onWorkingChange(false);
+          notify(`${team.emoji} ${team.name} 완료`, `작업 완료 (${sec}초)`);
+        }
+      };
     };
+
+    connect();
     inputRef.current?.focus();
-    return () => { ws.close(); if (timerRef.current) clearInterval(timerRef.current); };
+
+    return () => {
+      dead = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (timerRef.current) clearInterval(timerRef.current);
+      ws?.close();
+    };
   }, [team.id, onWorkingChange, notify]);
 
   useEffect(() => { scrollToBottom(); }, [messages, scrollToBottom]);
@@ -211,8 +249,8 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
       <div className="flex-1 flex flex-col min-h-0">
         {/* 상태 */}
         <div className="flex items-center gap-2 mb-2">
-          <div className={`w-1.5 h-1.5 rounded-full ${connected ? "bg-green-400" : "bg-red-500"}`} />
-          <span className="text-[9px] text-gray-500">{connected ? "연결됨" : "연결중..."}</span>
+          <div className={`w-1.5 h-1.5 rounded-full ${connected ? "bg-green-400" : "bg-red-500 animate-pulse"}`} />
+          <span className={`text-[9px] ${connected ? "text-gray-500" : "text-red-400"}`}>{connected ? "연결됨" : "재연결중..."}</span>
           <button
             onClick={() => { setMessages([]); onMessages([]); wsRef.current?.send(JSON.stringify({ action: "clear_history" })); }}
             className="ml-auto text-[9px] text-gray-500 hover:text-gray-300"
