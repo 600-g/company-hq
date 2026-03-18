@@ -148,8 +148,14 @@ async def handle_chat(ws: WebSocket, team_id: str, project_path: str | None):
                     full_response += event["content"]
                     await manager.send_json(team_id, {"type": "ai_chunk", "content": event["content"]})
 
+            # 빈 응답이면 fallback
+            if not full_response.strip():
+                full_response = "✅ 작업을 처리했습니다."
+                await manager.send_json(team_id, {"type": "ai_chunk", "content": full_response})
+
             manager.add_message(team_id, "ai", full_response)
             _update_status(team_id, working=False, tool=None)
+            _log_activity(team_id, f"✅ 완료 ({len(full_response)}자)")
             await manager.send_json(team_id, {"type": "ai_end", "content": full_response})
 
     except WebSocketDisconnect:

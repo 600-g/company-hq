@@ -154,7 +154,16 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
 
       ws.onopen = () => {
         setConnected(true);
-        retryDelay = 1000; // 성공하면 리셋
+        retryDelay = 1000;
+        // 재연결 시 streaming 상태 리셋 (이전 응답 끊긴 경우)
+        setStreaming(prev => {
+          if (prev) {
+            // 끊긴 스트리밍 → 완료 처리
+            if (timerRef.current) clearInterval(timerRef.current);
+            onWorkingChangeRef.current(false);
+          }
+          return false;
+        });
         Notification.requestPermission();
       };
 
@@ -219,6 +228,16 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
           setToolStatus("");
           setLastDone(prev => ({ sec, tools: (prev?.tools ?? 0) + toolLog.length }));
           onWorkingChangeRef.current(false);
+          // 빈 응답이면 완료 메시지 추가
+          setMessages(prev => {
+            const last = prev[prev.length - 1];
+            if (last?.type === "ai" && !last.content.trim()) {
+              const u = [...prev];
+              u[u.length - 1] = { ...last, content: "✅ 작업 완료 (응답 없음)" };
+              return u;
+            }
+            return prev;
+          });
           notify(`${team.emoji} ${team.name} 완료`, `작업 완료 (${sec}초)`);
         }
       };
