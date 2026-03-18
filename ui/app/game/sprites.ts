@@ -43,18 +43,11 @@ export function preloadAssets(scene: Phaser.Scene) {
   scene.load.image("floor_tile", "/assets/floors/floor_0.png");
   scene.load.image("wall_tile", "/assets/walls/wall_0.png");
 
-  // 나무 (계절별 x 크기별)
-  const seasons = ["spring", "summer", "autumn", "winter", "evergreen"];
-  const sizes = ["sm", "md", "lg"];
-  for (const s of seasons) {
-    for (const sz of sizes) {
+  // 나무 (계절별 x 크기별: 15종)
+  for (const s of ["spring", "summer", "autumn", "winter", "evergreen"]) {
+    for (const sz of ["sm", "md", "lg"]) {
       scene.load.image(`tree_${s}_${sz}`, `/assets/trees/tree_${s}_${sz}.png`);
     }
-  }
-  // 변형 (삼각형 md, 둥근 lg)
-  for (const s of seasons.filter(s => s !== "winter")) {
-    scene.load.image(`tree_${s}_md_tri`, `/assets/trees/tree_${s}_md_tri.png`);
-    scene.load.image(`tree_${s}_lg_round`, `/assets/trees/tree_${s}_lg_round.png`);
   }
 }
 

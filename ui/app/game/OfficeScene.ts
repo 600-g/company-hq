@@ -318,57 +318,35 @@ export default class OfficeScene extends Phaser.Scene {
       : mon >= 6 && mon <= 8 ? "summer"
       : mon >= 9 && mon <= 11 ? "autumn" : "winter";
 
-    // 고정 나무 배치 (위치, 크기, 변형 — 시드 기반으로 결정되어 항상 동일)
-    interface TreeDef { x: number; sizeKey: string; variant: string }
+    // 고정 나무 배치 — 시드 기반으로 항상 동일한 풍경
+    // 위치/크기/종류가 고정. 빈 곳, 쌍둥이, 상록수 섞임도 시드 결정
+    interface TreeDef { x: number; sizeKey: string; useEvergreen: boolean }
     const treeDefs: TreeDef[] = [];
     {
-      let cx = 18;
-      const positions = [18, 55, 105, 148, 230, 268, 340, 395, 450, 510, 570, 625, 690, 740, 790];
+      const positions = [18, 52, 98, 148, 210, 265, 330, 390, 455, 520, 575, 630, 695, 748, 800];
       positions.forEach(px => {
-        // 시드 기반 크기 결정
         const sv = sR(px, 3);
-        const sizeKey = sv < 0.3 ? "sm" : sv < 0.7 ? "md" : "lg";
-        // 시드 기반 변형
-        const vv = sR(px, 77);
-        let variant = "";
-        if (seasonKey !== "winter" && sizeKey === "md" && vv > 0.5) variant = "_tri";
-        if (seasonKey !== "winter" && sizeKey === "lg" && vv > 0.6) variant = "_round";
-        // 15% 빈 자리 (시드 고정이라 항상 같은 자리가 빔)
-        if (sR(px, 55) < 0.15) return;
-        treeDefs.push({ x: px, sizeKey, variant });
-        // 일부 위치에 쌍둥이
+        const sizeKey = sv < 0.3 ? "sm" : sv < 0.65 ? "md" : "lg";
+        // 12% 빈 자리
+        if (sR(px, 55) < 0.12) return;
+        // 20% 확률로 상록수
+        const useEvergreen = sR(px, 90) > 0.8;
+        treeDefs.push({ x: px, sizeKey, useEvergreen });
+        // 18% 확률로 바로 옆에 작은 나무 추가
         if (sR(px, 88) > 0.82) {
-          const twinSz = sR(px, 44) < 0.5 ? "sm" : "md";
-          treeDefs.push({ x: px + 14, sizeKey: twinSz, variant: "" });
+          treeDefs.push({ x: px + 16, sizeKey: "sm", useEvergreen: sR(px, 91) > 0.7 });
         }
       });
     }
 
     const ty = wh - 2;
-    treeDefs.forEach(({ x: tx, sizeKey, variant }) => {
-      const texKey = `tree_${seasonKey === "winter" && variant ? "winter" : seasonKey}_${sizeKey}${variant}`;
-      // 텍스처 존재 확인
+    treeDefs.forEach(({ x: tx, sizeKey, useEvergreen }) => {
+      const season = useEvergreen ? "evergreen" : seasonKey;
+      const texKey = `tree_${season}_${sizeKey}`;
       const tex = this.textures.get(texKey);
-      if (!tex || tex.key === "__MISSING") {
-        // 폴백: 변형 없이
-        const fallback = `tree_${seasonKey}_${sizeKey}`;
-        const fb = this.textures.get(fallback);
-        if (!fb || fb.key === "__MISSING") return;
-        const img = this.add.image(tx, ty, fallback).setOrigin(0.5, 1).setDepth(4);
-        if (nightT) img.setTint(0x1a1a2a).setAlpha(0.7);
-        this.envGroup.add(img);
-        return;
-      }
+      if (!tex || tex.key === "__MISSING") return;
       const img = this.add.image(tx, ty, texKey).setOrigin(0.5, 1).setDepth(4);
       if (nightT) img.setTint(0x1a1a2a).setAlpha(0.7);
-      // 상록수 일부 섞기 (여름/겨울에 상록수 추가)
-      if ((seasonKey === "summer" || seasonKey === "winter") && sR(tx, 90) > 0.7) {
-        const evKey = `tree_evergreen_${sizeKey}`;
-        if (this.textures.get(evKey)?.key !== "__MISSING") {
-          img.setTexture(evKey);
-          if (nightT) img.setTint(0x1a1a2a).setAlpha(0.7);
-        }
-      }
       this.envGroup.add(img);
     });
 
