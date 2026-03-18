@@ -308,129 +308,42 @@ export default class OfficeScene extends Phaser.Scene {
       }
     });
 
-    // ── 계절별 나무 (동그라미 겹침 수관, 고정 배치) ─────────────
+    // ── 계절별 나무 (스프라이트 이미지, 고정 배치) ─────────────
     const nightT = isNight || hr < 6.5 || hr >= 20.5;
     const sR = (a: number, b: number) =>
       (((a * 1664525 + b * 1013904223) | 0) >>> 1) / 0x7fffffff;
 
-    const treeG = this.add.graphics().setDepth(4);
-    this.envGroup.add(treeG);
+    const seasonKey = mon >= 3 && mon <= 5 ? "spring"
+      : mon >= 6 && mon <= 8 ? "summer"
+      : mon >= 9 && mon <= 11 ? "autumn" : "winter";
 
-    // 계절별 색상 (그림자, 메인1, 메인2, 하이라이트)
-    const leafColors = mon >= 3 && mon <= 5
-      ? [0xc87098, 0xe090b0, 0xe8a0c0, 0xf0b8d0, 0xf5c8d8] // 봄 벚꽃
-      : mon >= 6 && mon <= 8
-      ? [0x145010, 0x1a6818, 0x288020, 0x349828, 0x40a830] // 여름
-      : mon >= 9 && mon <= 11
-      ? [0xa03010, 0xc85018, 0xd07020, 0xd89028, 0xe0a838] // 가을
-      : []; // 겨울은 별도
-    const evColors = [0x0c3810, 0x184818, 0x206020, 0x287828, 0x308830]; // 상록수
-
-    // 고정 위치 (시드 기반, 항상 동일)
     const positions = [18, 55, 100, 150, 215, 268, 335, 395, 458, 525, 578, 638, 698, 752, 805];
-    const ty = wh - 3;
+    const ty = wh - 2;
 
     positions.forEach(tx => {
       if (sR(tx, 55) < 0.12) return;
 
-      const sz = sR(tx, 3); // 0~1
-      const isEv = sR(tx, 90) > 0.8;
-      const cols = isEv ? evColors : leafColors;
+      const sz = sR(tx, 3);
+      const sizeKey = sz < 0.3 ? "sm" : sz < 0.65 ? "md" : "lg";
+      const useEv = sR(tx, 90) > 0.8;
+      const season = useEv ? "evergreen" : seasonKey;
+      const texKey = `tree_${season}_${sizeKey}`;
 
-      // 줄기: 짧게 — 전체 높이의 30%만 노출, 나머지는 수관에 가려짐
-      const totalH = 18 + (sz * 22 | 0); // 전체 나무 높이 18~40
-      const trunkShow = 3 + (sz * 4 | 0); // 보이는 줄기 3~7px만
-      const tW = sz > 0.6 ? 3 : 2;
+      const tex = this.textures.get(texKey);
+      if (!tex || tex.key === "__MISSING") return;
 
-      const trunkCol = nightT ? 0x151010 : 0x4a3018;
-      const trunkHi = nightT ? 0x1a1414 : 0x5a4020;
-      // 줄기 (아래쪽 짧은 부분만)
-      treeG.fillStyle(trunkCol, 0.95);
-      treeG.fillRect(tx - (tW >> 1), ty - trunkShow, tW, trunkShow);
-      treeG.fillStyle(trunkHi, 0.35);
-      treeG.fillRect(tx - (tW >> 1), ty - trunkShow, 1, trunkShow);
+      const img = this.add.image(tx, ty, texKey).setOrigin(0.5, 1).setDepth(4);
+      if (nightT) img.setTint(0x1a1a2a).setAlpha(0.7);
+      this.envGroup.add(img);
 
-      // ── 겨울: 앙상한 가지 ──
-      if (mon === 12 || mon <= 2) {
-        // 겨울은 줄기 길게 보임
-        const wTrunkH = 10 + (sz * 12 | 0);
-        treeG.fillStyle(trunkCol, 0.95);
-        treeG.fillRect(tx - (tW >> 1), ty - wTrunkH, tW, wTrunkH);
-        const brC = nightT ? 0x111010 : 0x3a3030;
-        const bCount = 3 + (sz * 3 | 0);
-        treeG.fillStyle(brC, 0.8);
-        for (let b = 0; b < bCount; b++) {
-          const side = sR(tx, b * 3 + 40) > 0.5 ? 1 : -1;
-          const bLen = 4 + (sR(tx, b * 3 + 41) * 7 | 0);
-          const by = ty - wTrunkH + 2 + (b * ((wTrunkH * 0.5) / bCount) | 0);
-          const bx = side > 0 ? tx + 1 : tx - bLen;
-          treeG.fillRect(bx, by, bLen, 1);
-          if (bLen > 5) treeG.fillRect(side > 0 ? bx + bLen - 1 : bx, by - 1, 1, 1);
-        }
-        if (sR(tx, 55) > 0.35) {
-          treeG.fillStyle(0xddeeff, 0.45);
-          treeG.fillRect(tx - 3, ty - wTrunkH + 3, 3, 1);
-        }
-        return;
-      }
-
-      // ── 수관: 줄기를 감싸는 길쭉한 뭉글뭉글 ──
-      // 위쪽 원 3~4개 + 중간 원 2~3개 + 아래쪽 원 1~2개 = 총 6~9개
-      const canopyTop = ty - totalH;  // 수관 꼭대기
-      const canopyBot = ty - trunkShow + 2; // 수관 하단 (줄기 살짝 덮음)
-      const canopyH = canopyBot - canopyTop;
-      const canopyW = 5 + (sz * 8 | 0); // 수관 반폭 5~13
-
-      // 3줄로 배치: 상단(좁음), 중단(넓음), 하단(중간)
-      const layers = [
-        { yRatio: 0.0,  wRatio: 0.6, count: 2 + (sz > 0.5 ? 1 : 0) }, // 꼭대기
-        { yRatio: 0.25, wRatio: 0.9, count: 2 + (sz > 0.3 ? 1 : 0) }, // 상단
-        { yRatio: 0.50, wRatio: 1.0, count: 2 + (sz > 0.4 ? 1 : 0) }, // 중단 (가장 넓음)
-        { yRatio: 0.75, wRatio: 0.8, count: 1 + (sz > 0.5 ? 1 : 0) }, // 하단
-      ];
-
-      let ci = 0;
-      layers.forEach((layer, li) => {
-        const ly = canopyTop + (canopyH * layer.yRatio) | 0;
-        const lw = canopyW * layer.wRatio;
-        for (let c = 0; c < layer.count; c++) {
-          const ox = ((sR(tx, ci * 5 + 10) - 0.5) * lw * 1.4) | 0;
-          const oy = ((sR(tx, ci * 5 + 11) - 0.5) * canopyH * 0.15) | 0;
-          const cr = (canopyW * 0.45) * (0.6 + sR(tx, ci * 5 + 12) * 0.45);
-          const ccx = tx + ox;
-          const ccy = ly + oy;
-
-          if (nightT) {
-            treeG.fillStyle(0x0a0e08, 0.8);
-            treeG.fillCircle(ccx, ccy, cr);
-            treeG.fillStyle(cols[ci % cols.length] || 0x1a3018, 0.06);
-            treeG.fillCircle(ccx, ccy, cr);
-          } else {
-            // 그림자
-            treeG.fillStyle(cols[0], 0.45);
-            treeG.fillCircle(ccx + 1, ccy + 1, cr);
-            // 메인색 (레이어별 약간 다른 색)
-            const mainCol = cols[1 + ((ci + li) % (cols.length - 1))];
-            treeG.fillStyle(mainCol, 0.88);
-            treeG.fillCircle(ccx, ccy, cr);
-            // 하이라이트 (상단 원들에만)
-            if (li < 2) {
-              treeG.fillStyle(cols[cols.length - 1], 0.3);
-              treeG.fillCircle(ccx - cr * 0.2, ccy - cr * 0.25, cr * 0.45);
-            }
-          }
-          ci++;
-        }
-      });
-
-      // 봄: 꽃잎
-      if (mon >= 3 && mon <= 5 && !nightT && sR(tx, 12) > 0.3) {
-        const petals = 2 + (sR(tx, 13) * 3 | 0);
-        for (let p = 0; p < petals; p++) {
-          const px = tx + ((sR(tx, p * 7 + 20) - 0.5) * canopyW * 1.8) | 0;
-          const py = canopyTop + (sR(tx, p * 7 + 21) * canopyH) | 0;
-          treeG.fillStyle(0xffdde8, 0.7);
-          treeG.fillCircle(px, py, 1);
+      // 쌍둥이
+      if (sR(tx, 88) > 0.82) {
+        const twinKey = `tree_${useEv ? "evergreen" : seasonKey}_sm`;
+        const t2 = this.textures.get(twinKey);
+        if (t2 && t2.key !== "__MISSING") {
+          const twin = this.add.image(tx + 16, ty, twinKey).setOrigin(0.5, 1).setDepth(4);
+          if (nightT) twin.setTint(0x1a1a2a).setAlpha(0.7);
+          this.envGroup.add(twin);
         }
       }
     });
