@@ -372,9 +372,19 @@ export default function Office() {
 
         <div
           className="px-2.5 py-1 border-t border-[#2a2a5a] text-[8px] text-gray-700 text-center select-none cursor-default"
-          onDoubleClick={() => {
-            if (typeof caches !== "undefined") caches.keys().then(ks => ks.forEach(k => caches.delete(k)));
-            window.location.reload();
+          onDoubleClick={async () => {
+            // SW 캐시 삭제
+            if (typeof caches !== "undefined") {
+              const ks = await caches.keys();
+              await Promise.all(ks.map(k => caches.delete(k)));
+            }
+            // SW 해제
+            if (navigator.serviceWorker) {
+              const regs = await navigator.serviceWorker.getRegistrations();
+              await Promise.all(regs.map(r => r.unregister()));
+            }
+            // 브라우저 HTTP 캐시 우회 강제 새로고침
+            window.location.href = window.location.pathname + "?v=" + Date.now();
           }}
           title="더블클릭: 새로고침 및 업데이트 반영"
         >
