@@ -26,6 +26,7 @@ function getApiBase(): string {
 export default function LoginPage({ onLogin }: { onLogin: (user: AuthUser) => void }) {
   const [mode, setMode] = useState<"owner" | "invite">("invite");
   const [showOwnerPopup, setShowOwnerPopup] = useState(false);
+  const [showPw, setShowPw] = useState(false);
   const [nickname, setNickname] = useState("");
   const [code, setCode] = useState("");
   const [ownerPw, setOwnerPw] = useState("");
@@ -301,18 +302,46 @@ export default function LoginPage({ onLogin }: { onLogin: (user: AuthUser) => vo
           {showOwnerPopup && (
             <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60" onClick={() => setShowOwnerPopup(false)}>
               <div className="bg-[#0a0e1a] border border-[#2a3050] rounded-lg p-4 w-[240px] shadow-2xl" onClick={e => e.stopPropagation()}>
-                <input autoFocus type="password" value={ownerPw} onChange={e => setOwnerPw(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === "Enter" && !loading) { setMode("owner"); setTimeout(submit, 50); }
+                <input autoFocus type={showPw ? "text" : "password"} value={ownerPw} onChange={e => setOwnerPw(e.target.value)}
+                  onKeyDown={async e => {
                     if (e.key === "Escape") setShowOwnerPopup(false);
+                    if (e.key === "Enter" && !loading) {
+                      // 직접 오너 로그인 실행
+                      e.preventDefault();
+                      (document.querySelector("[data-owner-submit]") as HTMLButtonElement)?.click();
+                    }
                   }}
                   placeholder="비밀번호"
                   className="w-full bg-[#101828] border border-[#2a3050] text-white px-3 py-2 text-xs rounded-lg
                              placeholder-gray-600 focus:outline-none focus:border-yellow-400/50 text-center" />
-                <button onClick={() => { setMode("owner"); setTimeout(submit, 50); }} disabled={loading}
-                  className="w-full mt-2 bg-[#2a3050] text-gray-300 py-1.5 text-[10px] rounded-lg hover:bg-[#3a4060] transition-colors">
-                  {loading ? "..." : "확인"}
-                </button>
+                <div className="flex gap-2 mt-2">
+                  <button onClick={() => setShowPw(v => !v)}
+                    className="px-2 py-1.5 bg-[#1a2040] text-gray-400 text-[10px] rounded-lg hover:text-white transition-colors">
+                    {showPw ? "🙈" : "👁"}
+                  </button>
+                  <button data-owner-submit onClick={async () => {
+                    setLoading(true); setError("");
+                    try {
+                      const res = await fetch(`${getApiBase()}/api/auth/owner`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ password: ownerPw.trim() }),
+                      });
+                      const data = await res.json();
+                      if (!data.ok) { setError(data.error || "실패"); setLoading(false); return; }
+                      localStorage.setItem("hq-auth-token", data.token);
+                      localStorage.setItem("hq-auth-user", JSON.stringify({
+                        user_id: data.user_id, nickname: data.nickname,
+                        role: data.role, permissions: data.permissions,
+                      }));
+                      onLogin(data);
+                    } catch { setError("서버 연결 실패"); setLoading(false); }
+                  }} disabled={loading}
+                    className="flex-1 bg-[#2a3050] text-gray-300 py-1.5 text-[10px] rounded-lg hover:bg-[#3a4060] transition-colors">
+                    {loading ? "..." : "확인"}
+                  </button>
+                </div>
+                {error && <p className="text-[9px] text-red-400 text-center mt-1">{error}</p>}
               </div>
             </div>
           )}
