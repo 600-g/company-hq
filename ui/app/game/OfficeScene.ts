@@ -313,7 +313,8 @@ export default class OfficeScene extends Phaser.Scene {
     const sR = (a: number, b: number) =>
       (((a * 1664525 + b * 1013904223) | 0) >>> 1) / 0x7fffffff;
 
-    const treeG = this.add.graphics().setDepth(4);
+    // 나무는 빌딩 앞 + 창틀 뒤 (depth 6, 창틀 그래픽은 g에 나중에 그려짐)
+    const treeG = this.add.graphics().setDepth(6);
     this.envGroup.add(treeG);
 
     // 계절 색상: [그림자, 어두운, 중간, 밝은, 하이라이트]
@@ -403,9 +404,10 @@ export default class OfficeScene extends Phaser.Scene {
           const cr = baseR * (0.85 + sR(tx, row * 17 + col * 7 + 13) * 0.3);
 
           if (nightT) {
-            treeG.fillStyle(0x080c06, 0.82);
+            // 야간: 거의 검은 실루엣 + 미세한 색 힌트
+            treeG.fillStyle(0x050805, 0.92);
             treeG.fillCircle(cx, ccY, cr);
-            treeG.fillStyle(cols[2] || 0x1a3018, 0.05);
+            treeG.fillStyle(cols[1] || 0x0a1a08, 0.08);
             treeG.fillCircle(cx, ccY, cr);
           } else {
             // 그림자 (오른쪽 아래)
@@ -453,7 +455,7 @@ export default class OfficeScene extends Phaser.Scene {
           const ccy = ct2 + yr * ch2;
           const ccr = r2 * (0.7 + sR(tx2, c * 7 + 13) * 0.4);
           if (nightT) {
-            treeG.fillStyle(0x080c06, 0.8);
+            treeG.fillStyle(0x050805, 0.9);
             treeG.fillCircle(ccx, ccy, ccr);
           } else {
             treeG.fillStyle(cols[0], 0.35);
@@ -1182,9 +1184,9 @@ export default class OfficeScene extends Phaser.Scene {
     tg.members.forEach(m => {
       m.char.play(working ? `char_${m.charIdx}_type` : `char_${m.charIdx}_idle`);
 
-      // 말풍선
+      // 말풍선 — container 위에 표시 (scene 레벨 depth 200)
       if (working && !m.bubble) {
-        const b = this.add.graphics().setDepth(10);
+        const b = this.add.graphics().setDepth(200);
         // 말풍선 배경
         b.fillStyle(0xfffbe6, 1);
         b.fillRoundedRect(-18, -16, 36, 18, 4);
@@ -1196,15 +1198,14 @@ export default class OfficeScene extends Phaser.Scene {
         b.lineStyle(1, 0xf5c842, 0.7);
         b.lineBetween(-3, 2, 0, 7);
         b.lineBetween(3, 2, 0, 7);
-        // 점 3개 (노란 배경에 어두운 점)
+        // 점 3개
         b.fillStyle(0x333333, 1);
         b.fillCircle(-6, -7, 2);
         b.fillCircle(0, -7, 2);
         b.fillCircle(6, -7, 2);
-        b.setPosition(m.char.x, m.char.y - 16);
-        tg.container.add(b);
+        // scene 좌표로 위치 (container 로컬 → world)
+        b.setPosition(tg.container.x + m.char.x, tg.container.y + m.char.y - 18);
         m.bubble = b;
-        // 애니메이션 (살짝 튀는 효과)
         this.tweens.add({ targets: b, scaleX: 1.1, scaleY: 1.1, duration: 200, yoyo: true, ease: "Sine.easeOut" });
       } else if (!working && m.bubble) {
         m.bubble.destroy();
@@ -1265,11 +1266,12 @@ export default class OfficeScene extends Phaser.Scene {
       }
     }
 
-    // ── 말풍선 위치 동기화 ──────────────────────────────────────
+    // ── 말풍선 위치 동기화 (scene 좌표) ─────────────────────────
     this.workingSet.forEach(teamId => {
       const tg = this.teamGroups.get(teamId);
-      tg?.members.forEach(m => {
-        if (m.bubble) m.bubble.setPosition(m.char.x, m.char.y - 14);
+      if (!tg) return;
+      tg.members.forEach(m => {
+        if (m.bubble) m.bubble.setPosition(tg.container.x + m.char.x, tg.container.y + m.char.y - 18);
       });
     });
   }
