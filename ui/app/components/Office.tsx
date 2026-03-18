@@ -144,10 +144,144 @@ function AddTeamModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
   );
 }
 
+// ── 에이전트 가이드 팝업 ──────────────────────────────
+interface GuideData {
+  name: string; emoji: string;
+  claude_md: string; system_prompt: string;
+}
+
+function GuideModal({ teamId, onClose }: { teamId: string; onClose: () => void }) {
+  const [data, setData] = useState<GuideData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState<"overview" | "prompt" | "md">("overview");
+
+  useEffect(() => {
+    fetch(`${getApiBase()}/api/teams/${teamId}/guide`)
+      .then(r => r.json())
+      .then(d => { if (d.ok) setData(d); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, [teamId]);
+
+  // CLAUDE.md에서 주요 섹션 파싱
+  const parseMd = (md: string) => {
+    const sections: { title: string; content: string }[] = [];
+    const lines = md.split("\n");
+    let current: { title: string; lines: string[] } | null = null;
+    for (const line of lines) {
+      if (line.startsWith("## ")) {
+        if (current) sections.push({ title: current.title, content: current.lines.join("\n").trim() });
+        current = { title: line.slice(3).trim(), lines: [] };
+      } else if (current) {
+        current.lines.push(line);
+      }
+    }
+    if (current) sections.push({ title: current.title, content: current.lines.join("\n").trim() });
+    return sections;
+  };
+
+  // 시스템프롬프트에서 섹션 파싱
+  const parsePrompt = (p: string) => {
+    const sections: { title: string; items: string[] }[] = [];
+    const parts = p.split("【");
+    parts.forEach(part => {
+      const m = part.match(/^(.+?)】\n?([\s\S]*)/);
+      if (m) {
+        const items = m[2].split("\n").filter(l => l.trim().startsWith("-")).map(l => l.trim().slice(2));
+        sections.push({ title: m[1], items });
+      }
+    });
+    return sections;
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70" onClick={onClose}>
+      <div className="bg-[#0f0f1f] border border-[#3a3a5a] rounded-lg w-[380px] max-h-[80vh] shadow-2xl flex flex-col" onClick={e => e.stopPropagation()}>
+        {/* 헤더 */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-[#2a2a5a] shrink-0">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">{data?.emoji || "📋"}</span>
+            <span className="text-sm font-bold text-white">{data?.name || teamId}</span>
+            <span className="text-[9px] text-gray-500">에이전트 가이드</span>
+          </div>
+          <button onClick={onClose} className="text-gray-500 hover:text-white text-sm">✕</button>
+        </div>
+
+        {/* 탭 */}
+        <div className="flex border-b border-[#2a2a5a] shrink-0">
+          {(["overview", "prompt", "md"] as const).map(t => (
+            <button key={t} onClick={() => setTab(t)}
+              className={`flex-1 text-[10px] py-2 transition-colors ${
+                tab === t ? "text-yellow-400 border-b-2 border-yellow-400" : "text-gray-500 hover:text-gray-300"
+              }`}>
+              {t === "overview" ? "📋 역할·스펙" : t === "prompt" ? "🧠 시스템프롬프트" : "📄 CLAUDE.md"}
+            </button>
+          ))}
+        </div>
+
+        {/* 내용 */}
+        <div className="flex-1 overflow-y-auto p-4 min-h-0">
+          {loading && <p className="text-gray-500 text-xs text-center py-8">로딩중...</p>}
+          {!loading && !data && <p className="text-red-400 text-xs text-center py-8">정보를 불러올 수 없습니다</p>}
+
+          {data && tab === "overview" && (() => {
+            const promptSections = parsePrompt(data.system_prompt);
+            return (
+              <div className="space-y-3">
+                {promptSections.map((s, i) => (
+                  <div key={i} className="bg-[#1a1a2e] border border-[#2a2a4a] rounded p-3">
+                    <h4 className="text-[11px] font-bold text-yellow-400 mb-1.5">{s.title}</h4>
+                    {s.items.length > 0 ? (
+                      <ul className="space-y-0.5">
+                        {s.items.map((item, j) => (
+                          <li key={j} className="text-[10px] text-gray-300 flex gap-1.5">
+                            <span className="text-gray-600 shrink-0">•</span>
+                            <span>{item}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-[10px] text-gray-400">{data.system_prompt.split("【" + s.title + "】")[1]?.split("【")[0]?.trim().slice(0, 200) || ""}</p>
+                    )}
+                  </div>
+                ))}
+                {promptSections.length === 0 && (
+                  <p className="text-[10px] text-gray-400 whitespace-pre-wrap">{data.system_prompt}</p>
+                )}
+              </div>
+            );
+          })()}
+
+          {data && tab === "prompt" && (
+            <pre className="text-[9px] text-gray-300 whitespace-pre-wrap font-mono bg-[#0a0a1a] p-3 rounded border border-[#1a1a3a]">
+              {data.system_prompt}
+            </pre>
+          )}
+
+          {data && tab === "md" && (
+            data.claude_md ? (
+              <div className="space-y-2">
+                {parseMd(data.claude_md).map((s, i) => (
+                  <div key={i} className="bg-[#1a1a2e] border border-[#2a2a4a] rounded p-2.5">
+                    <h4 className="text-[10px] font-bold text-blue-400 mb-1">{s.title}</h4>
+                    <p className="text-[9px] text-gray-400 whitespace-pre-wrap">{s.content.slice(0, 500)}</p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-gray-500 text-xs text-center py-8">CLAUDE.md 파일이 없습니다</p>
+            )
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Office() {
   const [teams, setTeams] = useState<Team[]>(defaultTeamList);
   const [teamInfoMap, setTeamInfoMap] = useState<Record<string, TeamInfo>>({});
   const [showAddModal, setShowAddModal] = useState(false);
+  const [guideTeamId, setGuideTeamId] = useState<string | null>(null);
   const [openWindows, setOpenWindows] = useState<string[]>([]); // 열린 팀 id 목록
   const [focusedWindow, setFocusedWindow] = useState<string>("");
   const [chatHistory, setChatHistory] = useState<Record<string, Message[]>>(() => {
@@ -248,6 +382,7 @@ export default function Office() {
   return (
     <div className="h-screen flex flex-col md:flex-row overflow-hidden bg-[#1a1a2e]">
       {showAddModal && <AddTeamModal onClose={() => setShowAddModal(false)} onCreated={handleAddTeam} />}
+      {guideTeamId && <GuideModal teamId={guideTeamId} onClose={() => setGuideTeamId(null)} />}
       {/* ── 사무실 영역 ── */}
       <div className="flex-1 flex flex-col min-w-0 min-h-0">
         {/* HUD */}
@@ -402,6 +537,14 @@ export default function Office() {
                         </svg>
                       </a>
                     )}
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setGuideTeamId(team.id); }}
+                      className="w-6 h-6 flex items-center justify-center rounded text-gray-600 hover:text-yellow-400 hover:bg-[#1a1a3a] transition-all"
+                      title={`${team.name} 가이드`}>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
+                      </svg>
+                    </button>
                   </div>
                 </div>
               );

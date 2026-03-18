@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 
 from ws_handler import handle_chat, AGENT_STATUS, RECENT_ACTIVITY, _log_activity
 from project_scanner import scan_all
-from github_manager import create_repo, list_repos
+from github_manager import create_repo, list_repos, _generate_system_prompt, PROJECT_TYPES
 from system_monitor import get_all as get_system, get_process_stats
 from claude_runner import TEAM_SESSIONS, TEAM_MODELS, AGENT_PIDS, MODEL_IDS, get_claude_version, _save_sessions, AGENT_TOKENS
 
@@ -73,18 +73,28 @@ async def get_teams_info():
     return result
 
 
+@app.get("/api/project-types")
+async def get_project_types():
+    """프로젝트 타입 목록 반환 (UI 선택지용)"""
+    return [
+        {"id": k, "label": v["label"], "tech": v["tech"]}
+        for k, v in PROJECT_TYPES.items()
+    ]
+
+
 @app.post("/api/teams")
 async def add_team(body: dict):
-    """신규 팀 추가: GitHub 레포 생성 + 로컬 클론 + 팀 목록에 등록"""
+    """신규 팀 추가: GitHub 레포 생성 + 로컬 클론 + CLAUDE.md + 시스템프롬프트 자동 등록"""
     name = body.get("name", "").strip()
     repo_name = body.get("repo", name).strip()
     emoji = body.get("emoji", "🆕")
     description = body.get("description", "")
+    project_type = body.get("project_type", "general")
 
     if not name or not repo_name:
         return {"ok": False, "error": "name과 repo는 필수입니다."}
 
-    result = create_repo(repo_name, description)
+    result = create_repo(repo_name, description, project_type=project_type, emoji=emoji)
     if not result["ok"]:
         return result
 
@@ -98,13 +108,51 @@ async def add_team(body: dict):
     }
     TEAMS.append(new_team)
 
-    return {"ok": True, "team": new_team, "repo_url": result["repo_url"]}
+    # 시스템프롬프트 자동 등록 (claude_runner에 동적 추가)
+    from claude_runner import TEAM_SYSTEM_PROMPTS
+    if result.get("system_prompt"):
+        TEAM_SYSTEM_PROMPTS[repo_name] = result["system_prompt"]
+
+    return {
+        "ok": True,
+        "team": new_team,
+        "repo_url": result["repo_url"],
+        "project_type": project_type,
+        "claude_md": True,
+    }
 
 
 @app.get("/api/repos")
 async def get_repos():
     """GitHub 레포 목록"""
     return list_repos()
+
+
+@app.get("/api/teams/{team_id}/guide")
+async def get_team_guide(team_id: str):
+    """팀의 CLAUDE.md + 시스템프롬프트 반환 (가이드 팝업용)"""
+    team = next((t for t in TEAMS if t["id"] == team_id), None)
+    if not team:
+        return {"ok": False, "error": "팀을 찾을 수 없습니다."}
+
+    local_path = os.path.expanduser(team.get("localPath", ""))
+    claude_md = ""
+    claude_md_path = os.path.join(local_path, "CLAUDE.md") if local_path else ""
+    if claude_md_path and os.path.isfile(claude_md_path):
+        with open(claude_md_path, "r", encoding="utf-8") as f:
+            claude_md = f.read()
+
+    from claude_runner import TEAM_SYSTEM_PROMPTS, DEFAULT_SYSTEM_PROMPT
+    system_prompt = TEAM_SYSTEM_PROMPTS.get(team_id, DEFAULT_SYSTEM_PROMPT)
+
+    return {
+        "ok": True,
+        "team_id": team_id,
+        "name": team.get("name", ""),
+        "emoji": team.get("emoji", ""),
+        "claude_md": claude_md,
+        "system_prompt": system_prompt,
+    }
 
 
 @app.get("/api/dashboard")
