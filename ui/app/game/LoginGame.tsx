@@ -32,8 +32,8 @@ export default function LoginGame() {
       const game = new Phaser.Game({
         type: Phaser.AUTO,
         parent: containerRef.current,
-        width: 832,
-        height: 576,
+        width: 960,
+        height: 540,
         pixelArt: false,
         antialias: true,
         antialiasGL: true,
