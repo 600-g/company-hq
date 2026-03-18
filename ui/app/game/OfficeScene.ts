@@ -202,18 +202,23 @@ export default class OfficeScene extends Phaser.Scene {
 
     // ── 하늘 그라디언트 ─────────────────────────────────────────
     let skyT: number, skyB: number;
-    if      (hr >= 21 || hr < 5) { skyT = 0x050918; skyB = 0x0e1a30; }
-    else if (hr < 6.5)           { skyT = 0x12103a; skyB = 0xc85028; }
-    else if (hr < 8)             { skyT = 0x2060a8; skyB = 0xf0a050; }
+    if      (hr >= 21 || hr < 5)  { skyT = 0x050918; skyB = 0x0e1a30; }  // 밤
+    else if (hr < 5.5)            { skyT = 0x0a0d20; skyB = 0x1a1838; }  // 새벽 시작
+    else if (hr < 6)              { skyT = 0x101830; skyB = 0x6a3040; }  // 새벽 → 일출
+    else if (hr < 6.5)            { skyT = 0x182848; skyB = 0xb05838; }  // 일출
+    else if (hr < 7.5)            { skyT = 0x2858a0; skyB = 0xd88850; }  // 일출 → 아침
+    else if (hr < 9)              { skyT = 0x1e5ab0; skyB = 0x8ac0f0; }  // 아침
     else if (hr < 17) {
       if (isRain || isThunder)       { skyT = 0x3a4050; skyB = 0x5a6068; }
       else if (isOvercast)           { skyT = 0x5a6070; skyB = 0x8a9098; }
       else if (isSnow)               { skyT = 0x7a8090; skyB = 0xa0a8b0; }
-      else                           { skyT = 0x1e60b0; skyB = 0x7ac8f8; }
+      else                           { skyT = 0x1e60b0; skyB = 0x7ac8f8; }  // 낮
     }
-    else if (hr < 19)            { skyT = 0x2a1850; skyB = 0xf07050; }
-    else if (hr < 21)            { skyT = 0x0f0e28; skyB = 0x3a1a40; }
-    else                         { skyT = 0x050918; skyB = 0x0e1a30; }
+    else if (hr < 18)             { skyT = 0x2a50a0; skyB = 0xe0a060; }  // 오후 → 석양
+    else if (hr < 19)             { skyT = 0x2a2058; skyB = 0xd06848; }  // 석양
+    else if (hr < 20)             { skyT = 0x151838; skyB = 0x6a2a38; }  // 석양 → 황혼
+    else if (hr < 21)             { skyT = 0x0a0e20; skyB = 0x281830; }  // 황혼
+    else                          { skyT = 0x050918; skyB = 0x0e1a30; }  // 밤
 
     g.fillGradientStyle(skyT, skyT, skyB, skyB, 1);
     g.fillRect(0, 0, WORLD_W, wh);
@@ -1139,24 +1144,29 @@ export default class OfficeScene extends Phaser.Scene {
       const pg = this.particleGraphics;
       if (this.rainDrops.length > 0 || this.snowFlakes.length > 0) {
         pg.clear();
-        // 비 (얇은 선, 자연스러운 각도)
+        // 비 — 창문 영역(wh) 안에서만 렌더, 넘치지 않음
         if (this.rainDrops.length > 0) {
           this.rainDrops.forEach(d => {
-            pg.lineStyle(1, 0x8ab8d8, 0.3 + Math.random() * 0.15);
-            pg.lineBetween(d.x, d.y, d.x - 0.5, d.y + d.len);
-            d.y += d.speed; d.x -= 0.2;
-            if (d.y > wh) { d.y = -(d.len + 4); d.x = Math.random() * WORLD_W; }
+            const endY = Math.min(d.y + d.len, wh - 3); // 창문 하단 넘지 않음
+            if (d.y < wh - 3) {
+              pg.lineStyle(1, 0x8ab8d8, 0.25 + Math.random() * 0.12);
+              pg.lineBetween(d.x, d.y, d.x - 0.3, endY);
+            }
+            d.y += d.speed; d.x -= 0.15;
+            if (d.y > wh - 2) { d.y = -(d.len + 6); d.x = Math.random() * WORLD_W; }
             if (d.x < 0) d.x += WORLD_W;
           });
         }
-        // 눈
+        // 눈 — 창문 영역 안에서만
         if (this.snowFlakes.length > 0) {
           this.snowFlakes.forEach(f => {
-            pg.fillStyle(0xeeeeff, 0.68);
-            pg.fillCircle(f.x, f.y, f.size);
+            if (f.y < wh - 2) {
+              pg.fillStyle(0xeeeeff, 0.6);
+              pg.fillCircle(f.x, f.y, f.size);
+            }
             f.y += f.speed;
-            f.x += f.dx + Math.sin(f.y * 0.05) * 0.3;
-            if (f.y > wh) { f.y = -4; f.x = Math.random() * WORLD_W; }
+            f.x += f.dx + Math.sin(f.y * 0.05) * 0.25;
+            if (f.y > wh - 2) { f.y = -4; f.x = Math.random() * WORLD_W; }
             if (f.x < 0) f.x += WORLD_W;
             if (f.x > WORLD_W) f.x -= WORLD_W;
           });

@@ -144,6 +144,23 @@ export default function Office() {
     return () => clearInterval(id);
   }, []);
 
+  // 에이전트 working 상태 폴링 (3초마다) → 채팅창 안 열어도 말풍선/글로우 표시
+  useEffect(() => {
+    const poll = async () => {
+      try {
+        const res = await fetch(`${getApiBase()}/api/dashboard`);
+        if (!res.ok) return;
+        const data = await res.json();
+        (data.agents as { id: string; working: boolean }[]).forEach(agent => {
+          gameRef.current?.setWorking(agent.id, agent.working);
+        });
+      } catch {}
+    };
+    poll();
+    const id = setInterval(poll, 3000);
+    return () => clearInterval(id);
+  }, []);
+
   const [GameComponent, setGameComponent] = useState<React.ComponentType<{
     onTeamClick: (id: string, screenX?: number, screenY?: number) => void;
     ref: React.Ref<OfficeGameHandle>;
