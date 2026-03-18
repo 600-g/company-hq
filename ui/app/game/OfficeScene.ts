@@ -376,40 +376,50 @@ export default class OfficeScene extends Phaser.Scene {
       const canopyBot = ty - trunkH + 3; // 줄기 덮음
       const canopyH = canopyBot - canopyTop;
 
-      // 동그라미 배치: 위→아래로 갈수록 넓어지는 삼각형 안에
-      // 원 크기: 나무 크기의 18~30%
-      const baseR = treeW * 0.22;
-      const circleCount = 7 + (sz * 5 | 0); // 7~12개
+      // 동그라미 배치: 삼각형을 빈틈없이 채움
+      // 균등 그리드 + 시드 jitter → 원끼리 반드시 겹침
+      const baseR = treeW * 0.35; // 크게 (겹침 보장)
+      const rows = 4 + (sz * 2 | 0); // 4~6줄
+      const step = canopyH / (rows + 0.5);
 
-      for (let c = 0; c < circleCount; c++) {
-        // 세로 위치: 위쪽에 더 몰리게 (위에 작은 원, 아래에 큰 원)
-        const yRatio = sR(tx, c * 7 + 10) * 0.85 + sR(tx, c * 7 + 11) * 0.15;
-        const cy = canopyTop + yRatio * canopyH;
+      for (let row = 0; row < rows; row++) {
+        const yRatio = (row + 0.3) / rows;
+        const cy = canopyTop + step * (row + 0.5);
 
         // 삼각형 폭: 위에서 좁고 아래서 넓음
-        const widthAtY = treeW * (0.15 + yRatio * 0.85);
-        const cx = tx + ((sR(tx, c * 7 + 12) - 0.5) * widthAtY * 1.6);
+        const widthAtY = treeW * (0.25 + yRatio * 0.75);
+        // 한 줄에 2~4개 (폭에 따라)
+        const perRow = Math.max(2, Math.round(widthAtY / (baseR * 0.8)));
 
-        // 원 크기: 아래쪽일수록 약간 큼
-        const cr = baseR * (0.7 + yRatio * 0.4 + sR(tx, c * 7 + 13) * 0.3);
+        for (let col = 0; col < perRow; col++) {
+          // 균등 배치 + 살짝 jitter
+          const xBase = -widthAtY * 0.5 + widthAtY * (col + 0.5) / perRow;
+          const jx = (sR(tx, row * 17 + col * 7 + 10) - 0.5) * baseR * 0.5;
+          const jy = (sR(tx, row * 17 + col * 7 + 11) - 0.5) * step * 0.3;
+          const cx = tx + xBase + jx;
+          const ccY = cy + jy;
 
-        if (nightT) {
-          treeG.fillStyle(0x080c06, 0.82);
-          treeG.fillCircle(cx, cy, cr);
-          treeG.fillStyle(cols[2] || 0x1a3018, 0.05);
-          treeG.fillCircle(cx, cy, cr);
-        } else {
-          // 그림자 (오른쪽 아래)
-          treeG.fillStyle(cols[0], 0.4);
-          treeG.fillCircle(cx + 1, cy + 1, cr);
-          // 메인
-          const mi = 1 + ((c + (tx & 3)) % (cols.length - 2));
-          treeG.fillStyle(cols[mi], 0.9);
-          treeG.fillCircle(cx, cy, cr);
-          // 하이라이트 (상단 원에만, 왼쪽 위)
-          if (yRatio < 0.4) {
-            treeG.fillStyle(cols[cols.length - 1], 0.28);
-            treeG.fillCircle(cx - cr * 0.2, cy - cr * 0.2, cr * 0.45);
+          // 원 크기: 기본 + 약간 랜덤 (크게 유지해서 겹침)
+          const cr = baseR * (0.85 + sR(tx, row * 17 + col * 7 + 13) * 0.3);
+
+          if (nightT) {
+            treeG.fillStyle(0x080c06, 0.82);
+            treeG.fillCircle(cx, ccY, cr);
+            treeG.fillStyle(cols[2] || 0x1a3018, 0.05);
+            treeG.fillCircle(cx, ccY, cr);
+          } else {
+            // 그림자 (오른쪽 아래)
+            treeG.fillStyle(cols[0], 0.35);
+            treeG.fillCircle(cx + 1, ccY + 1, cr);
+            // 메인 (줄마다 색 변화)
+            const mi = 1 + ((row + col + (tx & 3)) % (cols.length - 2));
+            treeG.fillStyle(cols[mi], 0.92);
+            treeG.fillCircle(cx, ccY, cr);
+            // 하이라이트 (상단 2줄만)
+            if (row < 2) {
+              treeG.fillStyle(cols[cols.length - 1], 0.25);
+              treeG.fillCircle(cx - cr * 0.15, ccY - cr * 0.15, cr * 0.4);
+            }
           }
         }
       }
