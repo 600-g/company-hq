@@ -308,82 +308,140 @@ export default class OfficeScene extends Phaser.Scene {
       }
     });
 
-    // ── 계절별 나무 (픽셀아트 스타일) ──────────────────────────
-    const treePts = [28, 132, 248, 365, 482, 598, 718, 800];
-    const ty   = wh - 4;
+    // ── 계절별 나무 (불규칙 배치, 다양한 크기/형태) ─────────────
     const nightT = isNight || hr < 6.5 || hr >= 20.5;
     const sR = (a: number, b: number) =>
       (((a * 1664525 + b * 1013904223) | 0) >>> 1) / 0x7fffffff;
 
-    // 픽셀 나무 헬퍼: 사각형 블록으로 수관 구성
-    const drawPixelLeaves = (cx: number, baseY: number, h: number, cols: number[], dark: boolean) => {
-      // 삼각형 모양 수관 (위→아래로 넓어지는 블록 구조)
-      const layers = [
-        { w: 4, dy: 0 },
-        { w: 8, dy: 3 },
-        { w: 12, dy: 6 },
-        { w: 10, dy: 10 },
-      ];
+    // 불규칙 위치 생성: 간격도 랜덤, 빈 곳도 있고 붙어있는 곳도 있음
+    const treeDefs: { x: number; size: number; shape: number }[] = [];
+    {
+      let cx = 15 + (sR(42, 7) * 30 | 0); // 시작점 랜덤
+      while (cx < WORLD_W - 10) {
+        const gap = 40 + (sR(cx, 99) * 100 | 0); // 간격 40~140 (불규칙)
+        const size = sR(cx, 3); // 0~1: 작은나무~큰나무
+        const shape = (sR(cx, 77) * 4) | 0; // 수관 형태 0~3
+        // 20% 확률로 나무 건너뜀 (빈 공간)
+        if (sR(cx, 55) > 0.2) {
+          treeDefs.push({ x: cx, size, shape });
+          // 15% 확률로 바로 옆에 한 그루 더 (쌍둥이 나무)
+          if (sR(cx, 88) > 0.85) {
+            treeDefs.push({ x: cx + 12 + (sR(cx, 66) * 8 | 0), size: sR(cx, 44), shape: ((shape + 1) % 4) });
+          }
+        }
+        cx += gap;
+      }
+    }
+    const ty = wh - 4;
+
+    // 수관 그리기 — shape별로 다른 형태
+    const drawLeaves = (cx: number, baseY: number, scale: number, shape: number, cols: number[], dark: boolean) => {
+      // shape 0: 삼각형 (침엽수), 1: 둥근형, 2: 넓은 납작, 3: 비대칭
+      const s = 0.7 + scale * 0.8; // 0.7~1.5 스케일
+      let layers: { w: number; dy: number; h: number }[];
+      if (shape === 0) { // 삼각형 — 좁고 높음
+        layers = [
+          { w: 3 * s, dy: 0, h: 3 },
+          { w: 6 * s, dy: 3, h: 3 },
+          { w: 10 * s, dy: 6, h: 3 },
+          { w: 7 * s, dy: 9, h: 3 },
+        ];
+      } else if (shape === 1) { // 둥근형 — 폭 넓고 동글
+        layers = [
+          { w: 6 * s, dy: 0, h: 4 },
+          { w: 12 * s, dy: 3, h: 4 },
+          { w: 12 * s, dy: 6, h: 4 },
+          { w: 8 * s, dy: 9, h: 3 },
+        ];
+      } else if (shape === 2) { // 납작 — 넓고 낮음
+        layers = [
+          { w: 10 * s, dy: 0, h: 3 },
+          { w: 14 * s, dy: 3, h: 3 },
+          { w: 10 * s, dy: 5, h: 3 },
+        ];
+      } else { // 비대칭 — 한쪽으로 치우침
+        const lean = sR(cx, 33) > 0.5 ? 1 : -1;
+        layers = [
+          { w: 5 * s, dy: 0, h: 3 },
+          { w: 10 * s, dy: 3, h: 4 },
+          { w: 13 * s, dy: 6, h: 3 },
+          { w: 8 * s, dy: 9, h: 3 },
+        ];
+        // 비대칭 오프셋 적용
+        layers.forEach(l => { (l as { w: number; dy: number; h: number; ox?: number }).ox = lean * 2; });
+      }
+
       layers.forEach((layer, li) => {
-        const lx = cx - layer.w / 2;
+        const ox = (layer as { ox?: number }).ox || 0;
+        const lx = cx - (layer.w / 2 | 0) + ox;
         const ly = baseY + layer.dy;
         const col = cols[li % cols.length];
         if (dark) {
-          // 야간: 어두운 실루엣 + 미세한 색 힌트
           g.fillStyle(0x0a0a0a, 0.85);
-          g.fillRect(lx, ly, layer.w, 4);
+          g.fillRect(lx, ly, layer.w | 0, layer.h);
           g.fillStyle(col, 0.08);
-          g.fillRect(lx, ly, layer.w, 4);
+          g.fillRect(lx, ly, layer.w | 0, layer.h);
         } else {
-          g.fillStyle(col, 0.92);
-          g.fillRect(lx, ly, layer.w, 4);
-          // 하이라이트 (상단 1px)
-          g.fillStyle(0xffffff, 0.12);
-          g.fillRect(lx + 1, ly, layer.w - 2, 1);
+          g.fillStyle(col, 0.9);
+          g.fillRect(lx, ly, layer.w | 0, layer.h);
+          g.fillStyle(0xffffff, 0.1);
+          g.fillRect(lx + 1, ly, (layer.w | 0) - 2, 1);
         }
       });
     };
 
-    treePts.forEach(tx => {
-      const tH  = 16 + (sR(tx, 1) * 6 | 0);  // 높이 16-22
-      const tW  = 2;                           // 줄기 폭 2px (픽셀아트)
+    treeDefs.forEach(({ x: tx, size, shape }) => {
+      const tH = 12 + (size * 16 | 0);  // 높이 12~28 (큰 차이)
+      const tW = size > 0.7 ? 3 : 2;     // 큰 나무는 줄기 굵게
 
-      // 줄기 (직사각형)
+      // 줄기
       g.fillStyle(nightT ? 0x151010 : 0x4a3018, 0.92);
-      g.fillRect(tx - 1, ty - tH, tW, tH);
-      // 줄기 하이라이트
+      g.fillRect(tx - (tW >> 1), ty - tH, tW, tH);
       if (!nightT) {
-        g.fillStyle(0x5a4020, 0.5);
-        g.fillRect(tx - 1, ty - tH, 1, tH);
+        g.fillStyle(0x5a4020, 0.45);
+        g.fillRect(tx - (tW >> 1), ty - tH, 1, tH);
       }
 
       const leafTop = ty - tH - 2;
 
-      if (mon >= 3 && mon <= 5) {       // 봄: 벚꽃 (분홍 블록)
-        drawPixelLeaves(tx, leafTop, tH, [0xf0a0c0, 0xe888a8, 0xf5b0cc, 0xe898b8], nightT);
-        // 꽃잎 점 (2~3px 사각형)
-        if (!nightT) {
-          g.fillStyle(0xffd0e0, 0.7);
-          g.fillRect(tx - 4, leafTop + 2, 2, 2);
-          g.fillRect(tx + 3, leafTop + 5, 2, 2);
+      if (mon >= 3 && mon <= 5) { // 봄: 벚꽃
+        drawLeaves(tx, leafTop, size, shape, [0xf0a0c0, 0xe888a8, 0xf5b0cc, 0xe898b8], nightT);
+        if (!nightT && sR(tx, 12) > 0.4) {
+          // 꽃잎 흩날림 (랜덤 위치, 랜덤 개수)
+          const petals = 1 + (sR(tx, 13) * 3 | 0);
+          for (let p = 0; p < petals; p++) {
+            const px = tx + ((sR(tx, p * 7 + 20) - 0.5) * 14 | 0);
+            const py = leafTop + (sR(tx, p * 7 + 21) * 12 | 0);
+            g.fillStyle(0xffd0e0, 0.6 + sR(tx, p * 7 + 22) * 0.3);
+            g.fillRect(px, py, 2, 2);
+          }
         }
-      } else if (mon >= 6 && mon <= 8) { // 여름: 짙은 초록 블록
-        drawPixelLeaves(tx, leafTop, tH, [0x1a5a18, 0x287028, 0x1a5a18, 0x348a2a], nightT);
-      } else if (mon >= 9 && mon <= 11) { // 가을: 단풍 블록
-        drawPixelLeaves(tx, leafTop, tH, [0xcc4010, 0xe07020, 0xd09010, 0xc03018], nightT);
-      } else {                            // 겨울: 앙상한 가지 (사각형 라인)
+      } else if (mon >= 6 && mon <= 8) { // 여름
+        drawLeaves(tx, leafTop, size, shape, [0x1a5a18, 0x287028, 0x1a5a18, 0x348a2a], nightT);
+      } else if (mon >= 9 && mon <= 11) { // 가을
+        // 각 나무마다 약간 다른 단풍색
+        const autIdx = (sR(tx, 60) * 3 | 0);
+        const autSets = [
+          [0xcc4010, 0xe07020, 0xd09010, 0xc03018],
+          [0xd06020, 0xc04018, 0xe08028, 0xb83010],
+          [0xd09020, 0xc07018, 0xe06010, 0xd04028],
+        ];
+        drawLeaves(tx, leafTop, size, shape, autSets[autIdx], nightT);
+      } else { // 겨울: 앙상한 가지 — 크기별로 가지 수 다름
         const branchCol = nightT ? 0x111010 : 0x3a3030;
-        // 좌우 가지 (직사각형으로 표현)
+        const bCount = 2 + (size * 3 | 0); // 작은 나무 2개, 큰 나무 5개
         g.fillStyle(branchCol, 0.8);
-        g.fillRect(tx - 6, leafTop + 4, 5, 1);   // 좌 상
-        g.fillRect(tx + 2, leafTop + 6, 5, 1);   // 우 상
-        g.fillRect(tx - 5, leafTop + 10, 4, 1);  // 좌 하
-        g.fillRect(tx + 2, leafTop + 12, 4, 1);  // 우 하
+        for (let b = 0; b < bCount; b++) {
+          const side = sR(tx, b * 3 + 40) > 0.5 ? 1 : -1;
+          const bLen = 3 + (sR(tx, b * 3 + 41) * 5 | 0);
+          const by = leafTop + 3 + (b * (12 / bCount) | 0);
+          const bx = side > 0 ? tx + 1 : tx - 1 - bLen;
+          g.fillRect(bx, by, bLen, 1);
+        }
         // 겨울 눈
-        if (sR(tx, 55) > 0.45) {
+        if (sR(tx, 55) > 0.4) {
           g.fillStyle(0xddeeff, 0.5);
-          g.fillRect(tx - 5, leafTop + 3, 3, 1);
-          g.fillRect(tx + 3, leafTop + 5, 2, 1);
+          g.fillRect(tx - 4, leafTop + 3, 2 + (sR(tx, 56) * 2 | 0), 1);
         }
       }
     });
