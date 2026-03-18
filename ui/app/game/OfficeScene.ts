@@ -1184,27 +1184,27 @@ export default class OfficeScene extends Phaser.Scene {
     tg.members.forEach(m => {
       m.char.play(working ? `char_${m.charIdx}_type` : `char_${m.charIdx}_idle`);
 
-      // 말풍선 — container 위에 표시 (scene 레벨 depth 200)
+      // 말풍선 — 캐릭터 머리 위 (scene 레벨 depth 200)
       if (working && !m.bubble) {
         const b = this.add.graphics().setDepth(200);
-        // 말풍선 배경
         b.fillStyle(0xfffbe6, 1);
         b.fillRoundedRect(-18, -16, 36, 18, 4);
         b.lineStyle(1.5, 0xf5c842, 0.9);
         b.strokeRoundedRect(-18, -16, 36, 18, 4);
-        // 꼬리
         b.fillStyle(0xfffbe6, 1);
         b.fillTriangle(-3, 2, 3, 2, 0, 7);
         b.lineStyle(1, 0xf5c842, 0.7);
         b.lineBetween(-3, 2, 0, 7);
         b.lineBetween(3, 2, 0, 7);
-        // 점 3개
         b.fillStyle(0x333333, 1);
         b.fillCircle(-6, -7, 2);
         b.fillCircle(0, -7, 2);
         b.fillCircle(6, -7, 2);
-        // scene 좌표로 위치 (container 로컬 → world)
-        b.setPosition(tg.container.x + m.char.x, tg.container.y + m.char.y - 18);
+        // 머리 위 위치: 1인(CPO)은 container 중앙 위, 멀티는 캐릭 baseY 위
+        const isSolo = tg.config.chars.length === 1;
+        const headX = tg.container.x + (isSolo ? 0 : m.baseX);
+        const headY = tg.container.y + (isSolo ? -30 : m.baseY - 22);
+        b.setPosition(headX, headY);
         m.bubble = b;
         this.tweens.add({ targets: b, scaleX: 1.1, scaleY: 1.1, duration: 200, yoyo: true, ease: "Sine.easeOut" });
       } else if (!working && m.bubble) {
@@ -1266,12 +1266,17 @@ export default class OfficeScene extends Phaser.Scene {
       }
     }
 
-    // ── 말풍선 위치 동기화 (scene 좌표) ─────────────────────────
+    // ── 말풍선 위치 동기화 (머리 위, scene 좌표) ────────────────
     this.workingSet.forEach(teamId => {
       const tg = this.teamGroups.get(teamId);
       if (!tg) return;
+      const isSolo = tg.config.chars.length === 1;
       tg.members.forEach(m => {
-        if (m.bubble) m.bubble.setPosition(tg.container.x + m.char.x, tg.container.y + m.char.y - 18);
+        if (m.bubble) {
+          const hx = tg.container.x + (isSolo ? 0 : m.baseX);
+          const hy = tg.container.y + (isSolo ? -30 : m.baseY - 22);
+          m.bubble.setPosition(hx, hy);
+        }
       });
     });
   }
