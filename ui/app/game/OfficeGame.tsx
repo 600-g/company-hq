@@ -8,7 +8,7 @@ export interface OfficeGameHandle {
 }
 
 interface Props {
-  onTeamClick: (teamId: string) => void;
+  onTeamClick: (teamId: string, screenX?: number, screenY?: number) => void;
 }
 
 const OfficeGame = forwardRef<OfficeGameHandle, Props>(({ onTeamClick }, ref) => {
@@ -19,8 +19,8 @@ const OfficeGame = forwardRef<OfficeGameHandle, Props>(({ onTeamClick }, ref) =>
   const [loading, setLoading] = useState(true);
   onTeamClickRef.current = onTeamClick;
 
-  const stableCallback = useCallback((teamId: string) => {
-    onTeamClickRef.current(teamId);
+  const stableCallback = useCallback((teamId: string, screenX?: number, screenY?: number) => {
+    onTeamClickRef.current(teamId, screenX, screenY);
   }, []);
 
   useImperativeHandle(ref, () => ({
@@ -41,6 +41,18 @@ const OfficeGame = forwardRef<OfficeGameHandle, Props>(({ onTeamClick }, ref) =>
     (async () => {
       const Phaser = await import("phaser");
       const { default: OfficeScene } = await import("./OfficeScene");
+
+      if (destroyed || !containerRef.current) return;
+
+      // 날씨 fetch (실패해도 기본값 0으로)
+      let weatherCode = 0;
+      try {
+        const res = await fetch(
+          "https://api.open-meteo.com/v1/forecast?latitude=37.5665&longitude=126.978&current=weather_code&timezone=Asia/Seoul"
+        );
+        const data = await res.json();
+        weatherCode = data.current?.weather_code ?? 0;
+      } catch {}
 
       if (destroyed || !containerRef.current) return;
 
@@ -66,7 +78,7 @@ const OfficeGame = forwardRef<OfficeGameHandle, Props>(({ onTeamClick }, ref) =>
         scene: scene,
       });
 
-      game.scene.start("OfficeScene", { onTeamClick: stableCallback });
+      game.scene.start("OfficeScene", { onTeamClick: stableCallback, weatherCode });
       gameRef.current = game;
       setLoading(false);
     })();

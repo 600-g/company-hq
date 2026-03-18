@@ -47,11 +47,18 @@ interface AgentInfo {
   pid: number | null;
   cpu: number | null;
   memory_mb: number | null;
+  tokens: { prompts: number; chars: number };
+}
+
+interface NetworkInfo {
+  connected: boolean;
+  type: string;
+  quality: string;
 }
 
 interface DashboardData {
   agents: AgentInfo[];
-  system: { cpu: number; memory: number; disk: number };
+  system: { cpu: number; memory: number; disk: number; network: NetworkInfo };
   activity: { time: string; team: string; content: string }[];
   version: { server: string; python: string; claude_cli: string };
 }
@@ -143,16 +150,6 @@ function AgentCard({ agent, onRestart }: { agent: AgentInfo; onRestart: (id: str
         </div>
       </div>
 
-      {/* 모델 버전 */}
-      <div className="flex items-center gap-1 mb-1">
-        <span className="text-[8px] bg-[#2a2a3a] text-gray-500 px-1 py-0.5 rounded font-mono truncate">
-          {agent.model_id}
-        </span>
-        {agent.session && (
-          <span className="text-[7px] text-gray-700 font-mono">{agent.session}</span>
-        )}
-      </div>
-
       {/* 툴 상태 / 마지막 프롬프트 */}
       {agent.working && agent.tool ? (
         <div className="text-[9px] text-yellow-300/80 truncate">{agent.tool}</div>
@@ -176,9 +173,13 @@ function AgentCard({ agent, onRestart }: { agent: AgentInfo; onRestart: (id: str
           {agent.memory_mb !== null && (
             <span>MEM <span className="text-yellow-400">{agent.memory_mb}MB</span></span>
           )}
-          {agent.pid && (
-            <span className="text-gray-700">PID {agent.pid}</span>
-          )}
+        </div>
+      )}
+
+      {/* 대화 횟수 */}
+      {agent.tokens && agent.tokens.prompts > 0 && (
+        <div className="mt-1 text-[8px] text-gray-600">
+          💬 <span className="text-purple-400">{agent.tokens.prompts}</span>회 대화
         </div>
       )}
 
@@ -197,13 +198,17 @@ export default function ServerDashboard({ onClose }: { onClose: () => void }) {
   const [error, setError] = useState(false);
 
   const fetchData = useCallback(async () => {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 5000);
     try {
-      const res = await fetch(`${getApiBase()}/api/dashboard`);
+      const res = await fetch(`${getApiBase()}/api/dashboard`, { signal: ctrl.signal });
+      clearTimeout(t);
       if (!res.ok) throw new Error();
       setData(await res.json());
       setError(false);
       setLastUpdated(new Date().toLocaleTimeString("ko-KR"));
     } catch {
+      clearTimeout(t);
       setError(true);
     }
   }, []);
@@ -267,6 +272,20 @@ export default function ServerDashboard({ onClose }: { onClose: () => void }) {
                   <ProgressBar value={value} color={metricColor(value)} />
                 </div>
               ))}
+              {/* 네트워크 상태 */}
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-gray-400">네트워크</span>
+                <span className={`text-[10px] font-mono font-semibold ${
+                  data.system.network?.quality === "안정" ? "text-green-400" :
+                  data.system.network?.quality === "보통" ? "text-yellow-400" :
+                  data.system.network?.quality === "불안" ? "text-red-400" :
+                  "text-red-500"
+                }`}>
+                  {data.system.network?.connected
+                    ? `${data.system.network.type === "ethernet" ? "유선" : "WiFi"} · ${data.system.network.quality}`
+                    : "끊김"}
+                </span>
+              </div>
             </div>
           </section>
         )}

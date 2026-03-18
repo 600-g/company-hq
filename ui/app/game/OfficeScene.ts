@@ -15,7 +15,7 @@ const ROWS = 18;
 const WORLD_W = COLS * TILE;
 const WORLD_H = ROWS * TILE;
 const SCALE = 1.5;
-const WALL_H = 2; // 벽(통창) 높이 (칸)
+const WALL_H = 3; // 벽(통창) 높이 — 3칸으로 확장 (96px)
 const DPR = typeof window !== "undefined" ? Math.min(window.devicePixelRatio || 1, 3) : 2;
 const FONT = "'Pretendard Variable', Pretendard, -apple-system, sans-serif";
 
@@ -26,12 +26,12 @@ interface TeamConfig {
 
 const ALL_FLOORS: Record<number, TeamConfig[]> = {
   1: [
-    { id: "cpo-claude", name: "CPO 클로드", emoji: "🧠", chars: [3], gridX: 10, gridY: 9, gridW: 2, gridH: 4 },
-    { id: "trading-bot", name: "매매봇", emoji: "🤖", chars: [0, 3, 4, 5], gridX: 1, gridY: 3, gridW: 4, gridH: 4 },
-    { id: "date-map", name: "데이트지도", emoji: "🗺️", chars: [1, 5, 3, 0], gridX: 6, gridY: 3, gridW: 4, gridH: 4 },
-    { id: "claude-biseo", name: "클로드비서", emoji: "🤵", chars: [2, 4, 5, 1], gridX: 11, gridY: 3, gridW: 4, gridH: 4 },
-    { id: "ai900", name: "AI900", emoji: "📚", chars: [3, 0, 1, 2], gridX: 16, gridY: 3, gridW: 4, gridH: 4 },
-    { id: "cl600g", name: "CL600G", emoji: "⚡", chars: [4, 2, 0, 3], gridX: 3, gridY: 9, gridW: 4, gridH: 4 },
+    { id: "cpo-claude", name: "CPO 클로드", emoji: "🧠", chars: [3], gridX: 10, gridY: 10, gridW: 2, gridH: 4 },
+    { id: "trading-bot", name: "매매봇", emoji: "🤖", chars: [0, 3, 4, 5], gridX: 1, gridY: 4, gridW: 4, gridH: 4 },
+    { id: "date-map", name: "데이트지도", emoji: "🗺️", chars: [1, 5, 3, 0], gridX: 6, gridY: 4, gridW: 4, gridH: 4 },
+    { id: "claude-biseo", name: "클로드비서", emoji: "🤵", chars: [2, 4, 5, 1], gridX: 11, gridY: 4, gridW: 4, gridH: 4 },
+    { id: "ai900", name: "AI900", emoji: "📚", chars: [3, 0, 1, 2], gridX: 16, gridY: 4, gridW: 4, gridH: 4 },
+    { id: "cl600g", name: "CL600G", emoji: "⚡", chars: [4, 2, 0, 3], gridX: 3, gridY: 10, gridW: 4, gridH: 4 },
   ],
   2: [],
   3: [],
@@ -42,12 +42,13 @@ interface TeamGroup {
   container: Phaser.GameObjects.Container; members: MemberSprite[];
   label: Phaser.GameObjects.Text; highlight: Phaser.GameObjects.Rectangle;
   config: TeamConfig; gridX: number; gridY: number; prevGridX: number; prevGridY: number;
+  workGlow?: Phaser.GameObjects.Graphics;
 }
 
 export default class OfficeScene extends Phaser.Scene {
   private teamGroups: Map<string, TeamGroup> = new Map();
   private workingSet: Set<string> = new Set();
-  private onTeamClick?: (id: string) => void;
+  private onTeamClick?: (id: string, screenX?: number, screenY?: number) => void;
   private dragTarget: TeamGroup | null = null;
   private dragOffX = 0; private dragOffY = 0;
   private dragStartX = 0; private dragStartY = 0;
@@ -56,11 +57,17 @@ export default class OfficeScene extends Phaser.Scene {
   private currentFloor = 1;
   private floorLabel!: Phaser.GameObjects.Text;
   private envGroup!: Phaser.GameObjects.Group;
+  private weatherCode = 0;
+  private particleGraphics: Phaser.GameObjects.Graphics | null = null;
+  private rainDrops: { x: number; y: number; speed: number; len: number }[] = [];
+  private snowFlakes: { x: number; y: number; speed: number; size: number; dx: number }[] = [];
+  private thunderTimer = 60;
 
   constructor() { super({ key: "OfficeScene" }); }
 
-  init(data: { onTeamClick?: (id: string) => void }) {
+  init(data: { onTeamClick?: (id: string, screenX?: number, screenY?: number) => void; weatherCode?: number }) {
     this.onTeamClick = data.onTeamClick;
+    this.weatherCode = data.weatherCode ?? 0;
   }
 
   preload() { preloadAssets(this); }
@@ -178,62 +185,291 @@ export default class OfficeScene extends Phaser.Scene {
 
   private drawPanoramaWindow() {
     const g = this.add.graphics();
-    const wh = WALL_H * TILE;
+    const wh = WALL_H * TILE; // 96px
+    const now = new Date();
+    const hr  = now.getHours() + now.getMinutes() / 60;
+    const mon = now.getMonth() + 1; // 1-12
+    const wc  = this.weatherCode;
 
-    // 벽 배경
-    g.fillStyle(0x1e2d4a, 1);
+    const isRain     = (wc >= 51 && wc <= 67) || (wc >= 80 && wc <= 82);
+    const isSnow     = (wc >= 71 && wc <= 77) || (wc >= 85 && wc <= 86);
+    const isFog      = wc === 45 || wc === 48;
+    const isCloudy   = wc >= 1;
+    const isOvercast = wc === 3;
+    const isThunder  = wc >= 95;
+    const isNight    = hr >= 21 || hr < 5;
+    const isSunset   = hr >= 17 && hr < 20;
+
+    // ── 하늘 그라디언트 ─────────────────────────────────────────
+    let skyT: number, skyB: number;
+    if      (hr >= 21 || hr < 5) { skyT = 0x050918; skyB = 0x0e1a30; }
+    else if (hr < 6.5)           { skyT = 0x12103a; skyB = 0xc85028; }
+    else if (hr < 8)             { skyT = 0x2060a8; skyB = 0xf0a050; }
+    else if (hr < 17) {
+      if (isRain || isThunder)       { skyT = 0x3a4050; skyB = 0x5a6068; }
+      else if (isOvercast)           { skyT = 0x5a6070; skyB = 0x8a9098; }
+      else if (isSnow)               { skyT = 0x7a8090; skyB = 0xa0a8b0; }
+      else                           { skyT = 0x1e60b0; skyB = 0x7ac8f8; }
+    }
+    else if (hr < 19)            { skyT = 0x2a1850; skyB = 0xf07050; }
+    else if (hr < 21)            { skyT = 0x0f0e28; skyB = 0x3a1a40; }
+    else                         { skyT = 0x050918; skyB = 0x0e1a30; }
+
+    g.fillGradientStyle(skyT, skyT, skyB, skyB, 1);
     g.fillRect(0, 0, WORLD_W, wh);
 
-    // 유리 (하늘)
-    const isNight = new Date().getHours() >= 18 || new Date().getHours() < 6;
-    const skyTop = isNight ? 0x0a1628 : 0x4a8ac0;
-    const skyBot = isNight ? 0x1a2a4a : 0x88c8f0;
-
-    g.fillGradientStyle(skyTop, skyTop, skyBot, skyBot);
-    g.fillRect(4, 4, WORLD_W - 8, wh - 8);
-
-    // 창틀 세로선
-    for (let x = 0; x < WORLD_W; x += 120) {
-      g.fillStyle(0x4a5a70, 1);
-      g.fillRect(x, 0, 3, wh);
-    }
-    // 창틀 가로선
-    g.fillStyle(0x4a5a70, 1);
-    g.fillRect(0, wh - 2, WORLD_W, 2);
-    g.fillRect(0, 0, WORLD_W, 2);
-
-    if (isNight) {
-      // 별
-      for (let i = 0; i < 30; i++) {
-        g.fillStyle(0xffffcc, 0.3 + Math.random() * 0.5);
-        g.fillRect(Math.random() * WORLD_W, 6 + Math.random() * (wh / 2), 2, 2);
+    // ── 별 & 달 ─────────────────────────────────────────────────
+    if (isNight || hr < 7) {
+      const sa = isNight ? 0.85 : 0.28;
+      const ss = [23,67,113,157,193,241,277,313,383,419,457,523,563,601,641,677,
+                  751,787,857,907,977,1049,1103,1153,1201,1259,1303,1361,1409,1453];
+      ss.forEach(s => {
+        const sx = (s * 31337) % (WORLD_W - 8) + 4;
+        const sy = 4 + (s * 7919) % (wh * 0.6);
+        g.fillStyle(0xeeeeff, sa * (0.5 + (s % 7) * 0.07));
+        g.fillRect(sx | 0, sy | 0, s % 5 === 0 ? 2 : 1, s % 5 === 0 ? 2 : 1);
+      });
+      if (isNight) {
+        const phase = this.getMoonPhase(); // 0=신월, 0.5=보름달
+        const illum = 0.5 - 0.5 * Math.cos(phase * Math.PI * 2); // 0→1→0
+        if (illum > 0.05) {
+          const mx = 55, my = Math.round(wh * 0.3);
+          const moonR = 8;
+          // 보름에 가까울수록 강한 달빛
+          g.fillStyle(0xf0e8cc, 0.06 + illum * 0.10); g.fillCircle(mx, my, 18);
+          g.fillStyle(0xf5eedd, 0.14 + illum * 0.12); g.fillCircle(mx, my, 13);
+          g.fillStyle(0xfffae0, 0.92); g.fillCircle(mx, my, moonR);
+          // 위상 그림자 (terminator 기법)
+          if (illum < 0.93) {
+            const isWaxing = phase < 0.5;
+            const terminator = Math.cos(phase * Math.PI * 2); // 1=신월, -1=보름
+            const shadowCx = mx + (isWaxing ? 1 : -1) * terminator * moonR;
+            g.fillStyle(skyT, 0.88);
+            g.fillCircle(shadowCx, my, moonR);
+          }
+        }
       }
-      // 달
-      g.fillStyle(0xffffdd, 0.8);
-      g.fillCircle(WORLD_W - 80, 20, 10);
-    } else {
-      // 구름
-      [100, 350, 600].forEach(cx => {
-        g.fillStyle(0xffffff, 0.3);
-        g.fillRoundedRect(cx, 10, 40, 12, 6);
-        g.fillRoundedRect(cx + 10, 6, 30, 10, 5);
+    }
+
+    // ── 태양 (비/흐림/눈이면 숨김) ──────────────────────────────
+    if (!isNight && !isRain && !isThunder && !isOvercast && !isSnow) {
+      const sp  = (Math.max(6, Math.min(20, hr)) - 6) / 14;
+      const sx  = 50 + sp * (WORLD_W - 100);
+      const sy  = wh * 0.85 - Math.sin(sp * Math.PI) * wh * 0.75;
+      if (sy > -12 && sy < wh + 12) {
+        g.fillStyle(0xffdd88, 0.10); g.fillCircle(sx, sy, 22);
+        g.fillStyle(0xffee99, 0.22); g.fillCircle(sx, sy, 15);
+        g.fillStyle(0xfff5cc, 0.55); g.fillCircle(sx, sy, 9);
+        g.fillStyle(0xffffff, 0.95); g.fillCircle(sx, sy, 6);
+      }
+    }
+
+    // ── 정적 구름 레이어 (배경) ──────────────────────────────────
+    if (isCloudy || isOvercast) {
+      const cc = isNight ? 0x2a3a50 : ((isRain || isThunder) ? 0x607080 : (isSunset ? 0xd09870 : 0xffffff));
+      const ca = isOvercast ? 0.4 : 0.2;
+      ([
+        [80, 8, 70, 16], [280, 15, 55, 14], [520, 6, 85, 18], [720, 12, 60, 15],
+      ] as [number,number,number,number][]).forEach(([cx, cy, cw, ch]) => {
+        g.fillStyle(cc, ca);
+        g.fillRoundedRect(cx, cy + 5, cw, ch * 0.6, ch * 0.3);
+        g.fillRoundedRect(cx + cw * 0.2, cy, cw * 0.6, ch, ch / 2);
       });
     }
 
-    // 빌딩 실루엣
-    const bColor = isNight ? 0x0f1a2a : 0x6a8aaa;
-    for (let bx = 0; bx < WORLD_W; bx += Phaser.Math.Between(15, 25)) {
-      const bh = Phaser.Math.Between(10, wh - 10);
-      g.fillStyle(bColor, isNight ? 1 : 0.3);
-      g.fillRect(bx, wh - bh, Phaser.Math.Between(10, 20), bh);
-      // 창불
-      if (isNight && Math.random() > 0.5) {
-        g.fillStyle(0xf5c842, 0.5);
-        g.fillRect(bx + 3, wh - bh + 5, 2, 2);
+    // ── 빌딩 실루엣 (고정 배치) ─────────────────────────────────
+    const bc = isNight ? 0x080f1c : (isSunset ? 0x1a0a20 : 0x4a6a88);
+    const ba = isNight ? 1 : 0.38;
+    const bd: [number,number,number][] = [
+      [0,18,35],[20,12,52],[34,22,42],[58,10,68],[70,16,38],[88,14,55],[104,20,45],
+      [126,8,72],[136,18,40],[156,12,60],[170,24,48],[196,10,65],[208,16,38],
+      [226,22,55],[250,14,42],[266,20,50],[288,8,70],[298,18,44],[318,14,58],
+      [334,22,36],[358,12,62],[372,20,46],[394,16,52],[412,10,68],[424,24,40],
+      [450,14,55],[466,18,42],[486,12,60],[500,20,48],[522,8,72],[532,16,38],
+      [550,22,56],[574,10,65],[586,18,44],[606,14,50],[622,20,38],[644,24,62],
+      [670,12,48],[684,18,55],[704,16,40],[722,22,68],[746,10,44],[758,20,52],
+      [780,14,38],[796,18,60],[816,12,44],
+    ];
+    bd.forEach(([bx, bw, bh]) => {
+      if (bh >= wh - 2) return;
+      g.fillStyle(bc, ba);
+      g.fillRect(bx, wh - bh, bw, bh);
+      if (isNight) {
+        const ha = ((bx * 1664525 + 1013904223) & 0xff) / 255;
+        if (ha > 0.35) { g.fillStyle(0xf0df60, 0.45 + ha * 0.3); g.fillRect(bx + 3, wh - bh + 5, 2, 2); }
+        if (bw > 14 && ((bx * 741103597 + 2891336453) & 0xff) > 120) {
+          g.fillStyle(0xf0df60, 0.35); g.fillRect(bx + 8, wh - bh + 8, 2, 2);
+        }
+      }
+    });
+
+    // ── 계절별 나무 (픽셀아트 스타일) ──────────────────────────
+    const treePts = [28, 132, 248, 365, 482, 598, 718, 800];
+    const ty   = wh - 4;
+    const nightT = isNight || hr < 6.5 || hr >= 20.5;
+    const sR = (a: number, b: number) =>
+      (((a * 1664525 + b * 1013904223) | 0) >>> 1) / 0x7fffffff;
+
+    // 픽셀 나무 헬퍼: 사각형 블록으로 수관 구성
+    const drawPixelLeaves = (cx: number, baseY: number, h: number, cols: number[], dark: boolean) => {
+      // 삼각형 모양 수관 (위→아래로 넓어지는 블록 구조)
+      const layers = [
+        { w: 4, dy: 0 },
+        { w: 8, dy: 3 },
+        { w: 12, dy: 6 },
+        { w: 10, dy: 10 },
+      ];
+      layers.forEach((layer, li) => {
+        const lx = cx - layer.w / 2;
+        const ly = baseY + layer.dy;
+        const col = cols[li % cols.length];
+        if (dark) {
+          // 야간: 어두운 실루엣 + 미세한 색 힌트
+          g.fillStyle(0x0a0a0a, 0.85);
+          g.fillRect(lx, ly, layer.w, 4);
+          g.fillStyle(col, 0.08);
+          g.fillRect(lx, ly, layer.w, 4);
+        } else {
+          g.fillStyle(col, 0.92);
+          g.fillRect(lx, ly, layer.w, 4);
+          // 하이라이트 (상단 1px)
+          g.fillStyle(0xffffff, 0.12);
+          g.fillRect(lx + 1, ly, layer.w - 2, 1);
+        }
+      });
+    };
+
+    treePts.forEach(tx => {
+      const tH  = 16 + (sR(tx, 1) * 6 | 0);  // 높이 16-22
+      const tW  = 2;                           // 줄기 폭 2px (픽셀아트)
+
+      // 줄기 (직사각형)
+      g.fillStyle(nightT ? 0x151010 : 0x4a3018, 0.92);
+      g.fillRect(tx - 1, ty - tH, tW, tH);
+      // 줄기 하이라이트
+      if (!nightT) {
+        g.fillStyle(0x5a4020, 0.5);
+        g.fillRect(tx - 1, ty - tH, 1, tH);
+      }
+
+      const leafTop = ty - tH - 2;
+
+      if (mon >= 3 && mon <= 5) {       // 봄: 벚꽃 (분홍 블록)
+        drawPixelLeaves(tx, leafTop, tH, [0xf0a0c0, 0xe888a8, 0xf5b0cc, 0xe898b8], nightT);
+        // 꽃잎 점 (2~3px 사각형)
+        if (!nightT) {
+          g.fillStyle(0xffd0e0, 0.7);
+          g.fillRect(tx - 4, leafTop + 2, 2, 2);
+          g.fillRect(tx + 3, leafTop + 5, 2, 2);
+        }
+      } else if (mon >= 6 && mon <= 8) { // 여름: 짙은 초록 블록
+        drawPixelLeaves(tx, leafTop, tH, [0x1a5a18, 0x287028, 0x1a5a18, 0x348a2a], nightT);
+      } else if (mon >= 9 && mon <= 11) { // 가을: 단풍 블록
+        drawPixelLeaves(tx, leafTop, tH, [0xcc4010, 0xe07020, 0xd09010, 0xc03018], nightT);
+      } else {                            // 겨울: 앙상한 가지 (사각형 라인)
+        const branchCol = nightT ? 0x111010 : 0x3a3030;
+        // 좌우 가지 (직사각형으로 표현)
+        g.fillStyle(branchCol, 0.8);
+        g.fillRect(tx - 6, leafTop + 4, 5, 1);   // 좌 상
+        g.fillRect(tx + 2, leafTop + 6, 5, 1);   // 우 상
+        g.fillRect(tx - 5, leafTop + 10, 4, 1);  // 좌 하
+        g.fillRect(tx + 2, leafTop + 12, 4, 1);  // 우 하
+        // 겨울 눈
+        if (sR(tx, 55) > 0.45) {
+          g.fillStyle(0xddeeff, 0.5);
+          g.fillRect(tx - 5, leafTop + 3, 3, 1);
+          g.fillRect(tx + 3, leafTop + 5, 2, 1);
+        }
+      }
+    });
+
+    // ── 안개 오버레이 ─────────────────────────────────────────────
+    if (isFog) {
+      g.fillStyle(0xc0ccd8, 0.32); g.fillRect(0, wh*0.25|0, WORLD_W, wh*0.75);
+      g.fillStyle(0xd0dce4, 0.18); g.fillRect(0, 0, WORLD_W, wh);
+    }
+
+    // ── 창틀 ─────────────────────────────────────────────────────
+    g.fillStyle(0x3a4a5a, 1); g.fillRect(0, 0, WORLD_W, 3);
+    g.fillStyle(0x3a4a5a, 1); g.fillRect(0, wh-3, WORLD_W, 3);
+    g.fillStyle(0x5a6a7a, 0.5); g.fillRect(0, wh-5, WORLD_W, 2);
+    for (let x = 0; x <= WORLD_W; x += 120) {
+      g.fillStyle(0x3a4a5a, 1); g.fillRect(x-1, 0, 3, wh);
+    }
+    g.fillStyle(0xffffff, 0.04); g.fillRect(2, 3, 4, wh-6); // 유리 반사
+
+    this.envGroup.add(g);
+
+    // ── 파티클 그래픽스 (매 프레임 재드로우) ─────────────────────
+    this.particleGraphics = this.add.graphics().setDepth(5);
+    this.envGroup.add(this.particleGraphics);
+
+    // 파티클 초기화
+    this.rainDrops  = [];
+    this.snowFlakes = [];
+    if (isRain || isThunder) {
+      const count = isThunder ? 40 : 25; // 줄임 (폭우감 → 적당한 비)
+      for (let i = 0; i < count; i++) {
+        this.rainDrops.push({ x: Math.random() * WORLD_W, y: Math.random() * wh,
+          speed: 1.0 + Math.random() * 1.0, len: 3 + Math.random() * 4 }); // 느리고 짧게
+      }
+    }
+    if (isSnow) {
+      for (let i = 0; i < 30; i++) { // 눈도 살짝 줄임
+        this.snowFlakes.push({ x: Math.random() * WORLD_W, y: Math.random() * wh,
+          speed: 0.15 + Math.random() * 0.35, size: 1 + Math.random() * 1.5,
+          dx: (Math.random() - 0.5) * 0.3 });
       }
     }
 
-    this.envGroup.add(g);
+    // 애니메이션 구름 생성
+    this.spawnAnimatedClouds();
+  }
+
+  private spawnAnimatedClouds() {
+    const wh  = WALL_H * TILE;
+    const wc  = this.weatherCode;
+    const hr  = new Date().getHours();
+    const isNight  = hr >= 21 || hr < 5;
+    const isSunset = hr >= 17 && hr < 20;
+    const isRain   = (wc >= 51 && wc <= 82) || wc >= 95;
+    const isOvercast = wc === 3;
+    const isCloudy   = wc >= 1;
+
+    const col   = isNight ? 0x2a3a50 : (isRain ? 0x6a7a88 : (isSunset ? 0xd09878 : 0xfafafa));
+    const alpha = isOvercast ? 0.72 : (isCloudy ? 0.5 : 0.2);
+    const count = isOvercast ? 6 : (isCloudy ? 4 : 2);
+
+    for (let i = 0; i < count; i++) {
+      const cg = this.add.graphics().setDepth(3);
+      const cw = 55 + i * 20;
+      const ch = 15 + i * 4;
+      cg.fillStyle(col, alpha * 0.70); cg.fillRoundedRect(0, ch * 0.45, cw, ch * 0.55, ch * 0.25);
+      cg.fillStyle(col, alpha);        cg.fillRoundedRect(cw * 0.12, 0, cw * 0.65, ch, ch * 0.5);
+      cg.fillStyle(col, alpha * 0.75); cg.fillRoundedRect(cw * 0.5, ch * 0.2, cw * 0.38, ch * 0.72, ch * 0.36);
+
+      const startX = i * (WORLD_W / count) - 40;
+      cg.setPosition(startX, 5 + i * 8);
+      this.envGroup.add(cg);
+
+      const dur = 48000 + i * 14000;
+      const moveCloud = () => {
+        if (!cg.active) return;
+        this.tweens.add({
+          targets: cg, x: WORLD_W + cw + 30,
+          duration: dur + Math.random() * 5000, ease: "Linear",
+          onComplete: () => { if (cg.active) { cg.setPosition(-cw - 20, 5 + Math.random() * (wh * 0.38)); moveCloud(); } },
+        });
+      };
+      moveCloud();
+    }
+  }
+
+  /** 달 위상 반환 (0=신월, 0.25=상현, 0.5=보름, 0.75=하현) */
+  private getMoonPhase(): number {
+    const knownNewMoon = new Date(2000, 0, 6).getTime(); // 2000-01-06 신월 기준
+    const synodicMs = 29.53059 * 24 * 60 * 60 * 1000;
+    return ((Date.now() - knownNewMoon) % synodicMs) / synodicMs;
   }
 
   private drawServerRoom() {
@@ -328,8 +564,13 @@ export default class OfficeScene extends Phaser.Scene {
 
     // 모니터 클릭 영역
     const monHit = this.add.zone(monX, monY, 36, 28).setInteractive({ useHandCursor: true });
-    monHit.on("pointerdown", () => {
-      this.onTeamClick?.("server-monitor");
+    monHit.on("pointerdown", (ptr: Phaser.Input.Pointer) => {
+      const cam = this.cameras.main;
+      const canvas = this.game.canvas;
+      const rect = canvas.getBoundingClientRect();
+      const sx = rect.left + (monX - cam.scrollX) * (rect.width / cam.width);
+      const sy = rect.top + (monY - cam.scrollY) * (rect.height / cam.height);
+      this.onTeamClick?.("server-monitor", Math.round(sx), Math.round(sy));
     });
     this.envGroup.add(monHit);
 
@@ -753,7 +994,15 @@ export default class OfficeScene extends Phaser.Scene {
     if (!t.container.getData("dragging")) {
       this.occupyGrid(t.prevGridX, t.prevGridY, t.config.gridW, t.config.gridH, true);
       t.gridX = t.prevGridX; t.gridY = t.prevGridY;
-      this.onTeamClick?.(t.config.id);
+      // 팀의 캔버스 좌표 → 화면 좌표 변환
+      const cam = this.cameras.main;
+      const canvas = this.game.canvas;
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = rect.width / cam.width;
+      const scaleY = rect.height / cam.height;
+      const sx = rect.left + (t.container.x - cam.scrollX) * scaleX;
+      const sy = rect.top + (t.container.y - cam.scrollY) * scaleY;
+      this.onTeamClick?.(t.config.id, Math.round(sx), Math.round(sy));
     } else {
       const sgx = Math.round((t.container.x - (t.config.gridW * TILE) / 2) / TILE);
       const sgy = Math.round((t.container.y - (t.config.gridH * TILE) / 2) / TILE);
@@ -827,6 +1076,27 @@ export default class OfficeScene extends Phaser.Scene {
     if (!tg) return;
     if (working) this.workingSet.add(teamId); else this.workingSet.delete(teamId);
 
+    // 팀 영역 펄스 글로우
+    if (working && !tg.workGlow) {
+      const pw = tg.config.gridW * TILE;
+      const ph = tg.config.gridH * TILE;
+      const glow = this.add.graphics().setDepth(9);
+      glow.lineStyle(2, 0xf5c842, 0.7);
+      glow.strokeRoundedRect(-pw / 2 - 3, -ph / 2 - 3, pw + 6, ph + 6, 6);
+      glow.fillStyle(0xf5c842, 0.04);
+      glow.fillRoundedRect(-pw / 2 - 3, -ph / 2 - 3, pw + 6, ph + 6, 6);
+      tg.container.add(glow);
+      tg.workGlow = glow;
+      this.tweens.add({
+        targets: glow, alpha: 0.25, duration: 900,
+        yoyo: true, repeat: -1, ease: "Sine.easeInOut",
+      });
+    } else if (!working && tg.workGlow) {
+      this.tweens.killTweensOf(tg.workGlow);
+      tg.workGlow.destroy();
+      tg.workGlow = undefined;
+    }
+
     tg.members.forEach(m => {
       m.char.play(working ? `char_${m.charIdx}_type` : `char_${m.charIdx}_idle`);
 
@@ -862,13 +1132,57 @@ export default class OfficeScene extends Phaser.Scene {
   }
 
   update() {
-    // 말풍선 위치 업데이트 (캐릭터 따라)
+    const wh = WALL_H * TILE;
+
+    // ── 날씨 파티클 ────────────────────────────────────────────
+    if (this.particleGraphics?.active) {
+      const pg = this.particleGraphics;
+      if (this.rainDrops.length > 0 || this.snowFlakes.length > 0) {
+        pg.clear();
+        // 비 (얇은 선, 자연스러운 각도)
+        if (this.rainDrops.length > 0) {
+          this.rainDrops.forEach(d => {
+            pg.lineStyle(1, 0x8ab8d8, 0.3 + Math.random() * 0.15);
+            pg.lineBetween(d.x, d.y, d.x - 0.5, d.y + d.len);
+            d.y += d.speed; d.x -= 0.2;
+            if (d.y > wh) { d.y = -(d.len + 4); d.x = Math.random() * WORLD_W; }
+            if (d.x < 0) d.x += WORLD_W;
+          });
+        }
+        // 눈
+        if (this.snowFlakes.length > 0) {
+          this.snowFlakes.forEach(f => {
+            pg.fillStyle(0xeeeeff, 0.68);
+            pg.fillCircle(f.x, f.y, f.size);
+            f.y += f.speed;
+            f.x += f.dx + Math.sin(f.y * 0.05) * 0.3;
+            if (f.y > wh) { f.y = -4; f.x = Math.random() * WORLD_W; }
+            if (f.x < 0) f.x += WORLD_W;
+            if (f.x > WORLD_W) f.x -= WORLD_W;
+          });
+        }
+      }
+    }
+
+    // ── 번개 번쩍임 ────────────────────────────────────────────
+    if (this.weatherCode >= 95) {
+      this.thunderTimer--;
+      if (this.thunderTimer <= 0) {
+        this.thunderTimer = 120 + Math.floor(Math.random() * 300);
+        const flash = this.add.rectangle(0, 0, WORLD_W, wh, 0xffffff, 0.45)
+          .setDepth(20).setOrigin(0, 0);
+        this.tweens.add({
+          targets: flash, alpha: 0, duration: 160,
+          onComplete: () => { if (flash.active) flash.destroy(); },
+        });
+      }
+    }
+
+    // ── 말풍선 위치 동기화 ──────────────────────────────────────
     this.workingSet.forEach(teamId => {
       const tg = this.teamGroups.get(teamId);
       tg?.members.forEach(m => {
-        if (m.bubble) {
-          m.bubble.setPosition(m.char.x, m.char.y - 14);
-        }
+        if (m.bubble) m.bubble.setPosition(m.char.x, m.char.y - 14);
       });
     });
   }
