@@ -82,7 +82,11 @@ export default class OfficeScene extends Phaser.Scene {
     const nearest = Phaser.Textures.LINEAR; // fallback
     const keys = ["desk_front","desk_side","pc_on1","pc_on2","pc_on3","pc_off","pc_back",
       "chair_front","chair_back","plant","large_plant","bookshelf","cactus","bin","pot",
-      "floor_tile","wall_tile","whiteboard","coffee_table"];
+      "floor_tile","wall_tile","whiteboard","coffee_table",
+      "hanging_plant","large_painting","small_painting","small_painting_2","clock","plant_2",
+      "sofa_front","small_table",
+      "o_laptop","o_monitor","o_monitor_back","o_desk","o_desk_side","o_chair_front","o_chair_back",
+      "o_bookshelf","o_server_rack","o_whiteboard","o_water_cooler","o_coffee","o_clock","o_ac","o_fire_ext"];
     for (let i = 0; i <= 5; i++) keys.push(`char_${i}`);
     keys.forEach(k => {
       const tex = this.textures.get(k);
@@ -130,34 +134,64 @@ export default class OfficeScene extends Phaser.Scene {
       for (let y = 0; y < WALL_H; y++) this.grid[y][x] = true;
     }
 
-    // ── 사무실 바닥 (밝은 흰색 대리석) ──
+    // ── 사무실 바닥 (다크 우드 + 구역별 차별화) ──
     const floorG = this.add.graphics();
     const fy = WALL_H * TILE;
-    const fh = (ROWS - WALL_H) * TILE;
-    const tileSize = 64;
-    for (let y = fy; y < fy + fh; y += tileSize) {
-      for (let x = 0; x < WORLD_W; x += tileSize) {
-        const isLight = ((x / tileSize) + ((y - fy) / tileSize)) % 2 === 0;
-        floorG.fillStyle(isLight ? 0xe8e8ee : 0xdcdce4, 1);
-        floorG.fillRect(x, y, tileSize, tileSize);
-        // 대리석 결
-        floorG.fillStyle(isLight ? 0xf0f0f4 : 0xe2e2ea, 0.25);
-        for (let s = 3; s < tileSize; s += 10) {
-          floorG.fillRect(x + s, y, 1, tileSize);
+    const fh = (ROWS - WALL_H - 3) * TILE; // 복도 제외
+    const srvX = (COLS - 5) * TILE;
+    const plankW = 48;
+    const plankH = 16;
+
+    // 메인 영역: 어두운 원목 바닥 (헤링본 느낌)
+    for (let y = fy; y < fy + fh; y += plankH) {
+      for (let x = 0; x < srvX; x += plankW) {
+        const row = Math.floor((y - fy) / plankH);
+        const col = Math.floor(x / plankW);
+        const offset = (row % 2) * (plankW / 2); // 엇갈림
+        const px = x + offset;
+        // 나무결 색상 변화
+        const hash = ((col * 2654435761 + row * 340573321) >>> 0) % 100;
+        const baseColor = hash < 40 ? 0x3a3028 : hash < 70 ? 0x3e342a : hash < 90 ? 0x36302a : 0x423830;
+        floorG.fillStyle(baseColor, 1);
+        floorG.fillRect(px, y, plankW, plankH);
+        // 나무결 디테일
+        floorG.fillStyle(0xffffff, 0.03);
+        floorG.fillRect(px + 2, y + 3, plankW - 4, 1);
+        floorG.fillRect(px + 5, y + 8, plankW - 10, 1);
+        floorG.fillRect(px + 3, y + 12, plankW - 6, 1);
+        // 나무 옹이 (랜덤)
+        if (hash % 17 === 0) {
+          floorG.fillStyle(0x2a2420, 0.4);
+          floorG.fillCircle(px + plankW / 2, y + plankH / 2, 2);
         }
-        for (let s = 5; s < tileSize; s += 14) {
-          floorG.fillRect(x, y + s, tileSize, 1);
-        }
-        // 광택 하이라이트
-        floorG.fillStyle(0xffffff, 0.08);
-        floorG.fillRect(x, y, tileSize, 2);
-        floorG.fillRect(x, y, 2, tileSize);
-        // 줄눈
-        floorG.fillStyle(0xc0c0c8, 0.4);
-        floorG.fillRect(x + tileSize - 1, y, 1, tileSize);
-        floorG.fillRect(x, y + tileSize - 1, tileSize, 1);
+        // 판자 경계
+        floorG.fillStyle(0x252018, 0.5);
+        floorG.fillRect(px + plankW - 1, y, 1, plankH);
+        floorG.fillRect(px, y + plankH - 1, plankW, 1);
+        // 상단 하이라이트
+        floorG.fillStyle(0xffffff, 0.02);
+        floorG.fillRect(px, y, plankW, 1);
       }
     }
+
+    // 팀 구역별 러그/카펫 (각 팀 위치에 미묘한 영역 표시)
+    const teamZones = ALL_FLOORS[floor] || [];
+    const rugColors = [0x4a3a5a, 0x3a4a5a, 0x5a3a3a, 0x3a5a4a, 0x4a4a3a, 0x3a3a5a, 0x5a4a3a];
+    teamZones.forEach((t, idx) => {
+      if (t.chars.length <= 1) return; // 솔로(CPO)는 러그 없음
+      const rx = t.gridX * TILE + 4;
+      const ry = t.gridY * TILE + 4;
+      const rw = t.gridW * TILE - 8;
+      const rh = t.gridH * TILE - 8;
+      const rugColor = rugColors[idx % rugColors.length];
+      // 러그 본체
+      floorG.fillStyle(rugColor, 0.12);
+      floorG.fillRoundedRect(rx, ry, rw, rh, 4);
+      // 러그 테두리
+      floorG.lineStyle(1, rugColor, 0.18);
+      floorG.strokeRoundedRect(rx + 3, ry + 3, rw - 6, rh - 6, 3);
+    });
+
     this.envGroup.add(floorG);
 
     // ── 통창 ──
@@ -615,45 +649,124 @@ export default class OfficeScene extends Phaser.Scene {
   }
 
   private drawOfficeDetails() {
-    const wallY = WALL_H * TILE + 12;
+    const wallY = WALL_H * TILE;
     const corY = (ROWS - 3) * TILE;
     const srvX = (COLS - 5) * TILE;
 
-    // ── 좌측 벽면 — 책장 (오리지널 에셋) ──
-    this.envGroup.add(this.add.image(30, wallY + 35, "o_bookshelf").setDepth(5));
-    this.envGroup.add(this.add.image(30, wallY + 110, "o_bookshelf").setDepth(5));
+    // ═══════════════════════════════
+    // 벽면 장식 (상단 벽 바로 아래)
+    // ═══════════════════════════════
+
+    // ── 좌측 벽면 — 책장 2개 (오리지널 에셋) ──
+    this.envGroup.add(this.add.image(30, wallY + 45, "o_bookshelf").setDepth(5));
+    this.envGroup.add(this.add.image(30, wallY + 120, "o_bookshelf").setDepth(5));
+
+    // ── 벽면 그림 (소품으로 분위기) ──
+    this.envGroup.add(this.add.image(4 * TILE, wallY + 14, "large_painting").setScale(SCALE).setDepth(5));
+    this.envGroup.add(this.add.image(7 * TILE, wallY + 12, "small_painting").setScale(SCALE).setDepth(5));
+    this.envGroup.add(this.add.image(12 * TILE, wallY + 14, "small_painting_2").setScale(SCALE).setDepth(5));
+    this.envGroup.add(this.add.image(17 * TILE, wallY + 12, "large_painting").setScale(SCALE).setDepth(5));
+
+    // ── 벽걸이 시계 ──
+    this.envGroup.add(this.add.image(10 * TILE, wallY + 10, "clock").setScale(SCALE).setDepth(5));
+
+    // ── 행잉 플랜트 (천장 매달린 화분) ──
+    this.envGroup.add(this.add.image(3 * TILE, wallY + 8, "hanging_plant").setScale(SCALE).setDepth(5));
+    this.envGroup.add(this.add.image(9 * TILE, wallY + 6, "hanging_plant").setScale(SCALE).setDepth(5));
+    this.envGroup.add(this.add.image(16 * TILE, wallY + 8, "hanging_plant").setScale(SCALE).setDepth(5));
 
     // ── 서버실 벽 옆 — 화이트보드 ──
-    this.envGroup.add(this.add.image(srvX - 35, wallY + 20, "o_whiteboard").setDepth(5));
+    this.envGroup.add(this.add.image(srvX - 35, wallY + 30, "o_whiteboard").setDepth(5));
 
-    // ── 벽면 에어컨 ──
-    this.envGroup.add(this.add.image(14 * TILE, wallY - 8, "o_ac").setDepth(5));
+    // ── 벽면 에어컨 2대 ──
+    this.envGroup.add(this.add.image(6 * TILE, wallY + 4, "o_ac").setDepth(5));
+    this.envGroup.add(this.add.image(14 * TILE, wallY + 4, "o_ac").setDepth(5));
 
-    // ── 정수기 (오리지널 에셋) ──
+    // ═══════════════════════════════
+    // 소품/가구 배치 (팀 구역 주변)
+    // ═══════════════════════════════
+
+    // ── 정수기 + 커피머신 (휴게 코너, 좌측 하단) ──
     this.envGroup.add(this.add.image(30, corY - 22, "o_water_cooler").setDepth(5));
-
-    // ── 커피머신 ──
     this.envGroup.add(this.add.image(70, corY - 18, "o_coffee").setDepth(5));
+    // 커피테이블 + 머그 느낌
+    this.envGroup.add(this.add.image(50, corY - 38, "small_table").setScale(SCALE).setDepth(5));
 
-    // ── 창가 화분 ──
-    this.envGroup.add(this.add.image(8 * TILE, wallY + 6, "plant").setScale(SCALE));
-    this.envGroup.add(this.add.image(15 * TILE, wallY + 6, "large_plant").setScale(SCALE));
+    // ── 소파 (휴게 공간) ──
+    this.envGroup.add(this.add.image(50, corY - 58, "sofa_front").setScale(SCALE).setDepth(5));
 
-    // ── 소화기 (오리지널) ──
-    this.envGroup.add(this.add.image(srvX - 40, corY - 16, "o_fire_ext").setDepth(5));
+    // ── 창가 화분들 (다양한 종류) ──
+    this.envGroup.add(this.add.image(2 * TILE, wallY + 20, "plant").setScale(SCALE).setDepth(5));
+    this.envGroup.add(this.add.image(5 * TILE, wallY + 22, "cactus").setScale(SCALE).setDepth(5));
+    this.envGroup.add(this.add.image(8 * TILE, wallY + 20, "large_plant").setScale(SCALE).setDepth(5));
+    this.envGroup.add(this.add.image(11 * TILE, wallY + 22, "plant_2").setScale(SCALE).setDepth(5));
+    this.envGroup.add(this.add.image(15 * TILE, wallY + 20, "plant").setScale(SCALE).setDepth(5));
+    this.envGroup.add(this.add.image(19 * TILE, wallY + 22, "cactus").setScale(SCALE).setDepth(5));
 
-    // ── 천장 조명 반사 ──
-    [5, 11, 17].forEach(col => {
-      [6, 12].forEach(row => {
-        this.envGroup.add(this.add.image(col * TILE, row * TILE, "light_glow").setScale(2));
+    // ── 팀 구역 사이 소품 (구분감 + 디테일) ──
+    // 매매봇~데이트지도 사이
+    this.envGroup.add(this.add.image(5.5 * TILE, 8 * TILE, "large_plant").setScale(SCALE).setDepth(5));
+    // 데이트지도~클로드비서 사이
+    this.envGroup.add(this.add.image(10.5 * TILE, 8 * TILE, "bin").setScale(SCALE).setDepth(5));
+    // 클로드비서~AI900 사이
+    this.envGroup.add(this.add.image(15.5 * TILE, 8 * TILE, "plant_2").setScale(SCALE).setDepth(5));
+    // CL600G~디자인팀 사이
+    this.envGroup.add(this.add.image(7.5 * TILE, 14 * TILE, "pot").setScale(SCALE).setDepth(5));
+    // CPO 근처 화분
+    this.envGroup.add(this.add.image(15 * TILE, 11 * TILE, "cactus").setScale(SCALE).setDepth(5));
+
+    // ── 소화기 (오리지널, 서버실 옆 + 복도) ──
+    this.envGroup.add(this.add.image(srvX - 12, corY - 16, "o_fire_ext").setDepth(5));
+
+    // ── 시계 (오리지널, 서버실 벽) ──
+    this.envGroup.add(this.add.image(srvX - 35, wallY + 10, "o_clock").setDepth(5));
+
+    // ═══════════════════════════════
+    // 조명 효과
+    // ═══════════════════════════════
+
+    // ── 천장 조명 반사 (더 넓은 범위) ──
+    [3, 7, 11, 15, 19].forEach(col => {
+      [6, 10, 14].forEach(row => {
+        if (col * TILE < srvX) {
+          const glow = this.add.image(col * TILE, row * TILE, "light_glow").setScale(2.5).setAlpha(0.6);
+          this.envGroup.add(glow);
+        }
       });
     });
 
-    // ── 걸레받이 ──
+    // ── 모니터 글로우 (팀 구역의 모니터에서 나오는 빛) ──
+    const teams = ALL_FLOORS[this.currentFloor] || [];
+    teams.forEach(t => {
+      if (t.chars.length <= 1) return;
+      const cx = t.gridX * TILE + (t.gridW * TILE) / 2;
+      const cy = t.gridY * TILE + (t.gridH * TILE) / 2;
+      // 모니터 빛 (작은 원형, 초록/파랑 톤)
+      const monGlow = this.add.graphics();
+      // 좌측 모니터 글로우
+      monGlow.fillStyle(0x40d080, 0.04);
+      monGlow.fillCircle(cx - 13, cy - 18, 18);
+      monGlow.fillCircle(cx - 13, cy + 18, 18);
+      // 우측 모니터 글로우
+      monGlow.fillStyle(0x4080d0, 0.04);
+      monGlow.fillCircle(cx + 13, cy - 18, 18);
+      monGlow.fillCircle(cx + 13, cy + 18, 18);
+      this.envGroup.add(monGlow);
+    });
+
+    // ── 걸레받이 (벽 하단 몰딩) ──
     const baseG = this.add.graphics();
-    baseG.fillStyle(0xc0c0c8, 0.3);
-    baseG.fillRect(0, WALL_H * TILE, srvX, 2);
+    baseG.fillStyle(0x4a4a58, 0.5);
+    baseG.fillRect(0, wallY, srvX, 3);
+    baseG.fillStyle(0x5a5a68, 0.3);
+    baseG.fillRect(0, wallY, srvX, 1);
     this.envGroup.add(baseG);
+
+    // ── 벽면 간접 조명 (따뜻한 앰비언트) ──
+    const ambientG = this.add.graphics();
+    ambientG.fillGradientStyle(0xf5c842, 0xf5c842, 0xf5c842, 0xf5c842, 0.03, 0.03, 0, 0);
+    ambientG.fillRect(0, wallY, srvX, 40);
+    this.envGroup.add(ambientG);
   }
 
   changeFloor(floor: number) {
@@ -776,19 +889,16 @@ export default class OfficeScene extends Phaser.Scene {
     // LimeZu(0~3)=16x32 — 원본 크기로 선명하게
     const members: MemberSprite[] = [];
     // 2x2 등맞대기 — 2× 업스케일 스프라이트 (32×64 프레임)
-    const S = 0.75;      // 2× 스프라이트(32×64) × 0.75 = 24px 캐릭 (기존 16px보다 1.5배)
+    const S = 0.5;       // 2× 스프라이트(32×64) × 0.5 = 원래 크기(16px). 고화질은 소스 해상도에서 확보
     const gapX = 36;     // dy = ±18 (약간 겹침 — 탑뷰 원근감으로 자연스러움)
 
-    // 모니터 옆모습 (2× 업스케일 캐릭에 맞게 1.5× 크기)
-    const drawMonSide = (g: Phaser.GameObjects.Graphics, facing: number) => {
-      const f = facing;
-      g.fillStyle(0x2a2a2a, 1); g.fillRect(-4, -14, 8, 20);           // 모니터 본체
-      g.fillStyle(0x1a2a40, 1); g.fillRect(f > 0 ? -4 : 1, -12, 4, 14); // 화면
-      g.fillStyle(0x50d070, 0.8); g.fillRect(f > 0 ? -3 : 2, -9, 3, 2);  // 초록선
-      g.fillStyle(0x60a0e0, 0.6); g.fillRect(f > 0 ? -3 : 2, -5, 3, 2);  // 파란선
-      g.fillStyle(0x50d070, 0.5); g.fillRect(f > 0 ? -3 : 2, -1, 3, 2);  // 초록선2
-      g.fillStyle(0x444444, 1); g.fillRect(-2, 6, 3, 4);               // 스탠드
-      g.fillStyle(0x555555, 1); g.fillRect(-5, 10, 10, 2);             // 받침
+    // 모니터: PC 스프라이트 에셋 사용 (깜빡임 애니메이션 지원)
+    const addMonitorSprite = (cx: number, cy: number, facing: number): Phaser.GameObjects.Sprite => {
+      const mon = this.add.sprite(cx, cy, "pc_on1");
+      mon.setScale(0.5);
+      mon.play("pc_blink");
+      if (facing < 0) mon.setFlipX(true);
+      return mon;
     };
 
     const isSolo = t.chars.length === 1;
@@ -815,11 +925,10 @@ export default class OfficeScene extends Phaser.Scene {
       if (isLeft) {
         // 왼쪽: 캐릭(→) → 책상 → 모니터(→)
         const deskX = -13;
-        container.add(this.add.image(deskX, dy + 6, "desk_front").setScale(0.75));
-        const mon = this.add.graphics();
-        drawMonSide(mon, 1); mon.setPosition(deskX + 2, dy - 8);
+        container.add(this.add.image(deskX, dy + 4, "desk_front").setScale(0.55));
+        const mon = addMonitorSprite(deskX + 1, dy - 6, 1);
         container.add(mon);
-        const charX = deskX - 26;
+        const charX = deskX - 22;
         const char = this.add.sprite(charX, dy, `char_${charIdx}`, cols * 2)
           .setScale(S).setOrigin(0.5, 0.75);
         container.add(char);
@@ -827,11 +936,10 @@ export default class OfficeScene extends Phaser.Scene {
       } else {
         // 오른쪽: 모니터(←) → 책상 → 캐릭(←)
         const deskX = 13;
-        container.add(this.add.image(deskX, dy + 6, "desk_front").setScale(0.75));
-        const mon = this.add.graphics();
-        drawMonSide(mon, -1); mon.setPosition(deskX - 2, dy - 8);
+        container.add(this.add.image(deskX, dy + 4, "desk_front").setScale(0.55));
+        const mon = addMonitorSprite(deskX - 1, dy - 6, -1);
         container.add(mon);
-        const charX = deskX + 26;
+        const charX = deskX + 22;
         const char = this.add.sprite(charX, dy, `char_${charIdx}`, cols)
           .setScale(S).setOrigin(0.5, 0.75);
         container.add(char);
