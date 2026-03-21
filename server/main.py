@@ -2,6 +2,8 @@
 
 import os
 import sys
+import asyncio
+import time
 from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
@@ -23,11 +25,13 @@ ensure_owner_code()
 
 PROJECTS_ROOT = os.path.expanduser(os.getenv("PROJECTS_ROOT", "~/Developer/my-company"))
 
-# 팀 목록 (teams.ts와 동기화)
-TEAMS = [
+# 팀 목록 — teams.json에서 로드 (동적 추가 영구 반영)
+TEAMS_FILE = os.path.join(os.path.dirname(__file__), "teams.json")
+
+_DEFAULT_TEAMS = [
     {"id": "server-monitor", "name": "서버실", "emoji": "🖥", "repo": "company-hq",
      "localPath": "~/Developer/my-company/company-hq", "status": "운영중"},
-    {"id": "cpo-claude", "name": "CPO 클로드", "emoji": "🧠", "repo": "company-hq",
+    {"id": "cpo-claude", "name": "CPO", "emoji": "🧠", "repo": "company-hq",
      "localPath": "~/Developer/my-company/company-hq", "status": "운영중", "model": "opus"},
     {"id": "trading-bot", "name": "매매봇", "emoji": "🤖", "repo": "upbit-auto-trading-bot",
      "localPath": "~/Developer/my-company/upbit-auto-trading-bot", "status": "운영중"},
@@ -39,7 +43,25 @@ TEAMS = [
      "localPath": "~/Developer/my-company/ai900", "status": "운영중"},
     {"id": "cl600g", "name": "CL600G", "emoji": "⚡", "repo": "cl600g",
      "localPath": "~/Developer/my-company/cl600g", "status": "운영중"},
+    {"id": "design-team", "name": "디자인팀", "emoji": "🎨", "repo": "design-team",
+     "localPath": "~/Developer/my-company/design-team", "status": "운영중"},
 ]
+
+def _load_teams() -> list:
+    import json
+    if os.path.isfile(TEAMS_FILE):
+        with open(TEAMS_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    # 최초 실행 시 기본값 저장
+    _save_teams(_DEFAULT_TEAMS)
+    return list(_DEFAULT_TEAMS)
+
+def _save_teams(teams: list):
+    import json
+    with open(TEAMS_FILE, "w", encoding="utf-8") as f:
+        json.dump(teams, f, ensure_ascii=False, indent=2)
+
+TEAMS = _load_teams()
 
 app = FastAPI(title="AI Company HQ", version="1.0.0")
 
@@ -177,9 +199,12 @@ async def add_team(body: dict):
         "emoji": emoji,
         "repo": repo_name,
         "localPath": f"~/Developer/my-company/{repo_name}",
-        "status": "신규",
+        "status": "운영중",
     }
-    TEAMS.append(new_team)
+    # 중복 체크
+    if not any(t["id"] == repo_name for t in TEAMS):
+        TEAMS.append(new_team)
+        _save_teams(TEAMS)  # JSON 영구 저장
 
     # 시스템프롬프트 자동 등록 (claude_runner에 동적 추가)
     from claude_runner import TEAM_SYSTEM_PROMPTS
@@ -193,6 +218,21 @@ async def add_team(body: dict):
         "project_type": project_type,
         "claude_md": True,
     }
+
+
+@app.delete("/api/teams/{team_id}")
+async def delete_team(team_id: str):
+    """에이전트 삭제 — teams.json에서 제거 (로컬/GitHub은 유지)"""
+    global TEAMS
+    if team_id in ("server-monitor", "cpo-claude"):
+        return {"ok": False, "error": "서버실과 CPO는 삭제할 수 없습니다."}
+    before = len(TEAMS)
+    TEAMS = [t for t in TEAMS if t["id"] != team_id]
+    if len(TEAMS) == before:
+        return {"ok": False, "error": "팀을 찾을 수 없습니다."}
+    _save_teams(TEAMS)
+    _log_activity(team_id, "🗑️ 에이전트 삭제됨")
+    return {"ok": True, "team_id": team_id}
 
 
 @app.get("/api/repos")
@@ -226,6 +266,71 @@ async def get_team_guide(team_id: str):
         "claude_md": claude_md,
         "system_prompt": system_prompt,
     }
+
+
+@app.put("/api/teams/{team_id}/guide")
+async def update_team_guide(team_id: str, body: dict):
+    """팀 CLAUDE.md 수정 — 실제 파일에 저장"""
+    team = next((t for t in TEAMS if t["id"] == team_id), None)
+    if not team:
+        return {"ok": False, "error": "팀을 찾을 수 없습니다."}
+
+    local_path = os.path.expanduser(team.get("localPath", ""))
+    if not local_path or not os.path.isdir(local_path):
+        return {"ok": False, "error": "프로젝트 경로를 찾을 수 없습니다."}
+
+    claude_md = body.get("claude_md", "")
+    claude_md_path = os.path.join(local_path, "CLAUDE.md")
+
+    with open(claude_md_path, "w", encoding="utf-8") as f:
+        f.write(claude_md)
+
+    _log_activity(team_id, "📝 CLAUDE.md 수정됨")
+    return {"ok": True, "team_id": team_id}
+
+
+# ── 서비스 상태 (백그라운드 체크, 논블로킹) ──
+_svc_cache: dict = {"data": []}
+
+def _check_services_sync():
+    """별도 스레드에서 실행 — 메인 루프 블로킹 없음"""
+    import urllib.request
+    import urllib.error
+    import socket
+
+    # 외부 서비스 (자기 자신 호출 X)
+    checks = [
+        ("Cloudflare Pages", "https://600g.net", "프론트엔드"),
+        ("Upbit API", "https://api.upbit.com/v1/market/all", "매매봇 데이터"),
+    ]
+    results = []
+    for name, url, desc in checks:
+        try:
+            req = urllib.request.Request(url, method="GET")
+            req.add_header("User-Agent", "health-check/1.0")
+            resp = urllib.request.urlopen(req, timeout=3)
+            results.append({"name": name, "desc": desc, "status": "ok", "code": resp.getcode(), "error": None})
+        except urllib.error.HTTPError as e:
+            results.append({"name": name, "desc": desc, "status": "warn", "code": e.code, "error": str(e.reason)})
+        except Exception as e:
+            results.append({"name": name, "desc": desc, "status": "down", "code": None, "error": str(e)[:40]})
+
+    # 로컬 포트 체크
+    for name, port, desc in [("FastAPI", 8000, "백엔드"), ("Next.js", 3000, "프론트 Dev")]:
+        try:
+            s = socket.create_connection(("127.0.0.1", port), timeout=1)
+            s.close()
+            results.append({"name": name, "desc": desc, "status": "ok", "code": None, "error": None})
+        except Exception:
+            results.append({"name": name, "desc": desc, "status": "down", "code": None, "error": "연결 불가"})
+
+    _svc_cache["data"] = results
+
+async def _check_services() -> list:
+    """논블로킹: 별도 스레드에서 헬스체크 실행"""
+    loop = asyncio.get_event_loop()
+    loop.run_in_executor(None, _check_services_sync)  # fire-and-forget
+    return _svc_cache["data"]  # 이전 캐시 즉시 반환
 
 
 @app.get("/api/dashboard")
@@ -265,6 +370,7 @@ async def get_dashboard():
     return {
         "agents": agents,
         "system": get_system(),
+        "services": await _check_services(),
         "activity": list(reversed(RECENT_ACTIVITY)),
         "version": {
             "server": "1.0.0",
@@ -315,3 +421,4 @@ async def ws_chat(ws: WebSocket, team_id: str):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+# reload Sat Mar 21 02:45:11 KST 2026

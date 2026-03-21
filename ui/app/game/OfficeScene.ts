@@ -26,12 +26,13 @@ interface TeamConfig {
 
 const ALL_FLOORS: Record<number, TeamConfig[]> = {
   1: [
-    { id: "cpo-claude", name: "CPO 클로드", emoji: "🧠", chars: [3], gridX: 10, gridY: 10, gridW: 2, gridH: 4 },
-    { id: "trading-bot", name: "매매봇", emoji: "🤖", chars: [0, 3, 4, 5], gridX: 1, gridY: 4, gridW: 4, gridH: 4 },
-    { id: "date-map", name: "데이트지도", emoji: "🗺️", chars: [1, 5, 3, 0], gridX: 6, gridY: 4, gridW: 4, gridH: 4 },
-    { id: "claude-biseo", name: "클로드비서", emoji: "🤵", chars: [2, 4, 5, 1], gridX: 11, gridY: 4, gridW: 4, gridH: 4 },
-    { id: "ai900", name: "AI900", emoji: "📚", chars: [3, 0, 1, 2], gridX: 16, gridY: 4, gridW: 4, gridH: 4 },
-    { id: "cl600g", name: "CL600G", emoji: "⚡", chars: [4, 2, 0, 3], gridX: 3, gridY: 10, gridW: 4, gridH: 4 },
+    { id: "cpo-claude", name: "CPO", emoji: "🧠", chars: [1], gridX: 10, gridY: 10, gridW: 2, gridH: 2 },
+    { id: "trading-bot", name: "매매봇", emoji: "🤖", chars: [0, 3, 1, 2], gridX: 1, gridY: 4, gridW: 4, gridH: 4 },
+    { id: "date-map", name: "데이트지도", emoji: "🗺️", chars: [1, 2, 3, 0], gridX: 6, gridY: 4, gridW: 4, gridH: 4 },
+    { id: "claude-biseo", name: "클로드비서", emoji: "🤵", chars: [2, 0, 1, 3], gridX: 11, gridY: 4, gridW: 4, gridH: 4 },
+    { id: "ai900", name: "AI900", emoji: "📚", chars: [3, 1, 0, 2], gridX: 16, gridY: 4, gridW: 4, gridH: 4 },
+    { id: "cl600g", name: "CL600G", emoji: "⚡", chars: [0, 2, 3, 1], gridX: 3, gridY: 10, gridW: 4, gridH: 4 },
+    { id: "design-team", name: "디자인팀", emoji: "🎨", chars: [1, 3, 0, 2], gridX: 8, gridY: 10, gridW: 4, gridH: 4 },
   ],
   2: [],
   3: [],
@@ -558,115 +559,112 @@ export default class OfficeScene extends Phaser.Scene {
 
   private drawServerRoom() {
     const g = this.add.graphics();
-    // 서버실 영역: 우측 5칸 x 전체 높이(벽 제외)
+    // 서버실 영역: 우측 5칸 x 전체 높이(벽~복도)
     const srX = (COLS - 5) * TILE;
     const srY = WALL_H * TILE;
     const srW = 5 * TILE;
-    const srH = Math.floor((ROWS - WALL_H - 3) / 2) * TILE; // 반토막
+    const srH = (ROWS - WALL_H - 3) * TILE;
+    const midX = srX + srW / 2;
 
-    // 서버실 바닥 (어두운 톤)
-    g.fillStyle(0x2a2a3a, 1);
+    // ── 서버실 바닥 (어두운 톤 + 격자) ──
+    g.fillStyle(0x1e1e2e, 1);
     g.fillRect(srX, srY, srW, srH);
-    // 바닥 패턴 (서버실 느낌 — 격자)
-    g.lineStyle(1, 0x333345, 0.4);
+    g.lineStyle(1, 0x282840, 0.4);
     for (let y = srY; y < srY + srH; y += 16) g.lineBetween(srX, y, srX + srW, y);
     for (let x = srX; x < srX + srW; x += 16) g.lineBetween(x, srY, x, srY + srH);
 
-    // 좌측 벽 (사무실과 구분)
+    // ── 좌측 벽 (사무실 구분) ──
     g.fillStyle(0x4a4a5a, 1);
     g.fillRect(srX - 3, srY, 6, srH);
-    // 벽 하이라이트
     g.fillStyle(0x5a5a6a, 0.5);
     g.fillRect(srX - 2, srY, 1, srH);
-
-    // 출입구 (벽 중간에 빈 공간)
+    // 출입구
     const doorY = srY + srH / 2 - 16;
-    g.fillStyle(0x2a2a3a, 1);
+    g.fillStyle(0x1e1e2e, 1);
     g.fillRect(srX - 3, doorY, 6, 32);
-    // 문 프레임
     g.lineStyle(1, 0x5a5a6a, 0.6);
     g.strokeRect(srX - 3, doorY, 6, 32);
-
-    // 서버 랙들 (세로 직사각형)
-    for (let ry = 0; ry < 3; ry++) {
-      const rackX = srX + 16;
-      const rackY = srY + 20 + ry * 50;
-      // 랙 본체
-      g.fillStyle(0x1a1a2a, 1);
-      g.fillRect(rackX, rackY, 24, 40);
-      g.fillStyle(0x222235, 1);
-      g.fillRect(rackX + 2, rackY + 2, 20, 36);
-      // 서버 유닛 (가로 줄)
-      for (let u = 0; u < 5; u++) {
-        g.fillStyle(0x2a2a40, 1);
-        g.fillRect(rackX + 3, rackY + 4 + u * 7, 18, 5);
-        // LED
-        g.fillStyle(u % 2 === 0 ? 0x40d080 : 0x40a0d0, 0.8);
-        g.fillRect(rackX + 4, rackY + 5 + u * 7, 2, 2);
-        g.fillStyle(0x40d080, 0.5);
-        g.fillRect(rackX + 8, rackY + 5 + u * 7, 2, 2);
-      }
-    }
-
-    // 우측에도 랙 (1개만)
-    for (let ry = 0; ry < 1; ry++) {
-      const rackX = srX + srW - 42;
-      const rackY = srY + 30 + ry * 60;
-      g.fillStyle(0x1a1a2a, 1);
-      g.fillRect(rackX, rackY, 24, 40);
-      g.fillStyle(0x222235, 1);
-      g.fillRect(rackX + 2, rackY + 2, 20, 36);
-      for (let u = 0; u < 5; u++) {
-        g.fillStyle(0x2a2a40, 1);
-        g.fillRect(rackX + 3, rackY + 4 + u * 7, 18, 5);
-        g.fillStyle(0x40d080, 0.6);
-        g.fillRect(rackX + 4, rackY + 5 + u * 7, 2, 2);
-      }
-    }
-
-    // "SERVER ROOM" 라벨
     this.envGroup.add(g);
-    const srLabel = this.add.text(srX + srW / 2, srY + 10, "🖥 서버실", {
-      fontSize: "13px", fontFamily: FONT,
-      color: "#60d090", resolution: DPR * 2,
-    }).setOrigin(0.5);
-    this.envGroup.add(srLabel);
 
-    // 서버실 모니터 (클릭 가능)
-    const monX = srX + srW - 30;
-    const monY = srY + 30;
-    const monG = this.add.graphics();
-    monG.fillStyle(0x222233, 1); monG.fillRect(monX - 16, monY - 12, 32, 24);
-    monG.fillStyle(0x1a2a40, 1); monG.fillRect(monX - 14, monY - 10, 28, 18);
-    monG.fillStyle(0x50d070, 0.8); monG.fillRect(monX - 12, monY - 8, 10, 1);
-    monG.fillStyle(0x60a0e0, 0.7); monG.fillRect(monX - 12, monY - 5, 16, 1);
-    monG.fillStyle(0x50d070, 0.6); monG.fillRect(monX - 12, monY - 2, 8, 1);
-    monG.fillStyle(0xd0a050, 0.5); monG.fillRect(monX - 12, monY + 1, 12, 1);
-    monG.fillStyle(0x333344, 1); monG.fillRect(monX - 2, monY + 12, 4, 3);
-    monG.fillStyle(0x444455, 1); monG.fillRect(monX - 8, monY + 15, 16, 2);
+    // ── 상단: 점검 모니터 (크게) ──
+    const monX = midX;
+    const monY = srY + 26;
+    // 모니터 프레임 (큰 화면)
+    const monG = this.add.graphics().setDepth(100);
+    monG.fillStyle(0x222233, 1);
+    monG.fillRoundedRect(monX - 55, monY - 18, 110, 36, 3);
+    monG.fillStyle(0x101828, 1);
+    monG.fillRoundedRect(monX - 52, monY - 15, 104, 30, 2);
+    // 화면 내용 (미니 대시보드 느낌)
+    monG.fillStyle(0x40d080, 0.8);
+    monG.fillRect(monX - 48, monY - 12, 30, 2); // 상태바
+    monG.fillStyle(0x60a0e0, 0.6);
+    monG.fillRect(monX - 48, monY - 8, 45, 1);
+    monG.fillStyle(0x40d080, 0.5);
+    monG.fillRect(monX - 48, monY - 5, 20, 1);
+    monG.fillStyle(0xd0a050, 0.5);
+    monG.fillRect(monX - 48, monY - 2, 35, 1);
+    // 우측 미니 그래프
+    [0, 3, 6, 9, 12, 15, 18, 21].forEach((dx, i) => {
+      const h = 4 + Math.sin(i * 1.2) * 3;
+      monG.fillStyle(0x40d080, 0.6);
+      monG.fillRect(monX + 10 + dx, monY + 2 - h, 2, h);
+    });
+    // 스탠드
+    monG.fillStyle(0x333344, 1);
+    monG.fillRect(monX - 3, monY + 18, 6, 4);
+    monG.fillStyle(0x444455, 1);
+    monG.fillRect(monX - 12, monY + 22, 24, 3);
     this.envGroup.add(monG);
 
-    // 모니터 클릭 영역
-    const monHit = this.add.zone(monX, monY, 36, 28).setInteractive({ useHandCursor: true });
-    monHit.on("pointerdown", (ptr: Phaser.Input.Pointer) => {
+    // 모니터 라벨
+    this.envGroup.add(this.add.text(midX, srY + 8, "🖥 서버실", {
+      fontSize: "11px", fontFamily: FONT, color: "#50c080", resolution: DPR * 2,
+    }).setOrigin(0.5).setDepth(101));
+
+    // 모니터 클릭
+    const monHit = this.add.zone(monX, monY, 120, 40).setInteractive({ useHandCursor: true }).setDepth(102);
+    monHit.on("pointerdown", () => {
       const cam = this.cameras.main;
-      const canvas = this.game.canvas;
-      const rect = canvas.getBoundingClientRect();
+      const rect = this.game.canvas.getBoundingClientRect();
       const sx = rect.left + (monX - cam.scrollX) * (rect.width / cam.width);
       const sy = rect.top + (monY - cam.scrollY) * (rect.height / cam.height);
       this.onTeamClick?.("server-monitor", Math.round(sx), Math.round(sy));
     });
     this.envGroup.add(monHit);
 
-    const monLabel = this.add.text(monX, monY + 22, "점검", {
-      fontSize: "11px", fontFamily: FONT,
-      color: "#60d090", resolution: DPR * 2,
-    }).setOrigin(0.5);
-    this.envGroup.add(monLabel);
+    // ── Row 1: 에이전트 서버 (병렬, 이름 없이) ──
+    const row1Y = srY + 70;
+    const row1Count = 6;
+    const r1Space = Math.floor(srW / (row1Count + 1));
+    for (let i = 0; i < row1Count; i++) {
+      const rx = srX + r1Space * (i + 1);
+      const sg = this.add.graphics().setDepth(100);
+      sg.fillStyle(0x1a1a2a, 1); sg.fillRect(rx - 7, row1Y - 12, 14, 24);
+      sg.fillStyle(0x222235, 1); sg.fillRect(rx - 5, row1Y - 10, 10, 20);
+      sg.fillStyle(0x40d080, 0.8); sg.fillCircle(rx, row1Y - 6, 1.5);
+      sg.fillStyle(0x40a0d0, 0.5); sg.fillCircle(rx, row1Y - 2, 1);
+      for (let v = 0; v < 3; v++) sg.fillRect(rx - 3, row1Y + 2 + v * 3, 6, 1);
+      this.envGroup.add(sg);
+    }
 
-    // 서버실 영역 점유 (반토막)
-    const srRows = Math.floor((ROWS - WALL_H - 3) / 2);
-    for (let y = WALL_H; y < WALL_H + srRows; y++)
+    // ── Row 2: 인프라 서버 (병렬, 이름 없이) ──
+    const row2Y = row1Y + 44;
+    const row2Count = 4;
+    const r2Space = Math.floor(srW / (row2Count + 1));
+    for (let i = 0; i < row2Count; i++) {
+      const rx = srX + r2Space * (i + 1);
+      const ig = this.add.graphics().setDepth(100);
+      ig.fillStyle(0x1a1a2a, 1); ig.fillRect(rx - 9, row2Y - 12, 18, 24);
+      ig.fillStyle(0x252540, 1); ig.fillRect(rx - 7, row2Y - 10, 14, 20);
+      ig.fillStyle(0x40d080, 0.8); ig.fillCircle(rx - 3, row2Y - 6, 1.5);
+      ig.fillStyle(0x40a0d0, 0.5); ig.fillCircle(rx + 3, row2Y - 6, 1.5);
+      for (let v = 0; v < 2; v++) ig.fillRect(rx - 5, row2Y + v * 4, 10, 2);
+      this.envGroup.add(ig);
+    }
+
+    // ── 그리드 점유 ──
+    for (let y = WALL_H; y < ROWS - 3; y++)
       for (let x = COLS - 5; x < COLS; x++)
         if (y >= 0 && x >= 0) this.grid[y][x] = true;
   }
@@ -746,32 +744,28 @@ export default class OfficeScene extends Phaser.Scene {
     const corY = (ROWS - 3) * TILE;
     const srvX = (COLS - 5) * TILE;
 
-    // ── 좌측 벽면 — 벽장 (벽 아래, 겹침 없게) ──
-    this.envGroup.add(this.add.image(30, wallY + 35, "wall_cabinet").setScale(1.2));
-    this.envGroup.add(this.add.image(30, wallY + 115, "wall_cabinet").setScale(1.2));
+    // ── 좌측 벽면 — 책장 (오리지널 에셋) ──
+    this.envGroup.add(this.add.image(30, wallY + 35, "o_bookshelf").setDepth(5));
+    this.envGroup.add(this.add.image(30, wallY + 110, "o_bookshelf").setDepth(5));
 
-    // ── 서버실 벽 옆 — 벽장 (벽에서 충분히 떨어지게) ──
-    this.envGroup.add(this.add.image(srvX - 40, wallY + 50, "wall_cabinet").setScale(1.2));
+    // ── 서버실 벽 옆 — 화이트보드 ──
+    this.envGroup.add(this.add.image(srvX - 35, wallY + 20, "o_whiteboard").setDepth(5));
 
-    // ── 정수기 (좌측 하단, 고퀄 그래픽스) ──
-    const wc = this.add.graphics();
-    const wcX = 24, wcY = corY - 42;
-    wc.fillStyle(0x5599cc, 1); wc.fillRect(wcX, wcY, 14, 12); // 물통
-    wc.fillStyle(0x77bbee, 1); wc.fillRect(wcX + 2, wcY + 2, 10, 8);
-    wc.fillStyle(0xaaddff, 0.4); wc.fillRect(wcX + 3, wcY + 3, 4, 6); // 반사
-    wc.fillStyle(0xcccccc, 1); wc.fillRect(wcX - 1, wcY + 12, 16, 24); // 본체
-    wc.fillStyle(0xdddddd, 1); wc.fillRect(wcX + 1, wcY + 14, 12, 20);
-    wc.fillStyle(0x4444ff, 1); wc.fillRect(wcX + 2, wcY + 18, 4, 3); // 차가운물
-    wc.fillStyle(0xff4444, 1); wc.fillRect(wcX + 8, wcY + 18, 4, 3); // 뜨거운물
-    wc.fillStyle(0xaaaaaa, 1); wc.fillRect(wcX - 2, wcY + 36, 18, 4); // 받침
-    this.envGroup.add(wc);
+    // ── 벽면 에어컨 ──
+    this.envGroup.add(this.add.image(14 * TILE, wallY - 8, "o_ac").setDepth(5));
 
-    // ── 창가 선인장 ──
-    this.envGroup.add(this.add.image(8 * TILE, wallY + 6, "cactus").setScale(SCALE));
-    this.envGroup.add(this.add.image(15 * TILE, wallY + 6, "cactus").setScale(SCALE));
+    // ── 정수기 (오리지널 에셋) ──
+    this.envGroup.add(this.add.image(30, corY - 22, "o_water_cooler").setDepth(5));
 
-    // ── 쓰레기통 ──
-    this.envGroup.add(this.add.image(srvX - 40, corY - 16, "bin").setScale(SCALE));
+    // ── 커피머신 ──
+    this.envGroup.add(this.add.image(70, corY - 18, "o_coffee").setDepth(5));
+
+    // ── 창가 화분 ──
+    this.envGroup.add(this.add.image(8 * TILE, wallY + 6, "plant").setScale(SCALE));
+    this.envGroup.add(this.add.image(15 * TILE, wallY + 6, "large_plant").setScale(SCALE));
+
+    // ── 소화기 (오리지널) ──
+    this.envGroup.add(this.add.image(srvX - 40, corY - 16, "o_fire_ext").setDepth(5));
 
     // ── 천장 조명 반사 ──
     [5, 11, 17].forEach(col => {
@@ -888,6 +882,8 @@ export default class OfficeScene extends Phaser.Scene {
     const cy = t.gridY * TILE + (t.gridH * TILE) / 2;
     const container = this.add.container(cx, cy);
     container.setData("teamId", t.id);
+    // Y좌표 기반 depth → 아래쪽(앞쪽) 팀이 위쪽(뒤쪽) 팀 위에 그려짐
+    container.setDepth(t.gridY + 10);
     const pw = t.gridW * TILE;
     const ph = t.gridH * TILE;
     container.setSize(pw, ph);
@@ -903,7 +899,8 @@ export default class OfficeScene extends Phaser.Scene {
     // 2x2 등맞대기 배치
     // 윗줄: PC → 데스크 → 캐릭(정면) | 아랫줄: 캐릭(뒷면) → 데스크 → PC뒷면
     // Pixel Agents 에셋 비율 맞추기
-    // DESK=48x32, PC=16x32(세로 길음, 상단 절반만 보이게), CHAR=16x16
+    // DESK=48x32, PC=16x32(세로 길음, 상단 절반만 보이게)
+    // CHAR: LimeZu(0~3)=16x32, PixelAgents(4~5)=16x16
     // 모든 에셋 동일 스케일, PC는 cropY로 모니터 부분만
     const members: MemberSprite[] = [];
     // 2x2 등맞대기 — 그래픽스 모니터
@@ -911,91 +908,74 @@ export default class OfficeScene extends Phaser.Scene {
     const gapX = 34;
     const rowGap = 24;
 
-    // 모니터 그리기 헬퍼
-    const drawMonFront = (g: Phaser.GameObjects.Graphics) => {
-      g.fillStyle(0x2a2a2a, 1); g.fillRect(-10, -10, 20, 14);
-      g.fillStyle(0x1a2a40, 1); g.fillRect(-8, -8, 16, 10);
-      g.fillStyle(0x50d070, 0.9); g.fillRect(-6, -6, 7, 1);
-      g.fillStyle(0x60a0e0, 0.8); g.fillRect(-6, -4, 10, 1);
-      g.fillStyle(0x50d070, 0.7); g.fillRect(-6, -2, 5, 1);
-      g.fillStyle(0xd0a050, 0.6); g.fillRect(-6, 0, 8, 1);
+    // 모니터 옆모습 (facing = 1: 오른쪽 향함, -1: 왼쪽 향함)
+    const drawMonSide = (g: Phaser.GameObjects.Graphics, facing: number) => {
+      const f = facing;
+      // 모니터 본체 (옆에서 보면 얇음)
+      g.fillStyle(0x2a2a2a, 1); g.fillRect(-3, -10, 6, 14);
+      // 화면 (한쪽만 보임)
+      g.fillStyle(0x1a2a40, 1); g.fillRect(f > 0 ? -3 : 1, -8, 3, 10);
+      g.fillStyle(0x50d070, 0.8); g.fillRect(f > 0 ? -2 : 1, -6, 2, 1);
+      g.fillStyle(0x60a0e0, 0.6); g.fillRect(f > 0 ? -2 : 1, -4, 2, 1);
+      g.fillStyle(0x50d070, 0.5); g.fillRect(f > 0 ? -2 : 1, -2, 2, 1);
+      // 스탠드
       g.fillStyle(0x444444, 1); g.fillRect(-1, 4, 2, 3);
-      g.fillStyle(0x555555, 1); g.fillRect(-5, 7, 10, 2);
-    };
-    const drawMonBack = (g: Phaser.GameObjects.Graphics) => {
-      g.fillStyle(0x2a2a2a, 1); g.fillRect(-10, -4, 20, 14);
-      g.fillStyle(0x3a3a3a, 1); g.fillRect(-8, -2, 16, 10);
-      g.fillStyle(0x444444, 1); g.fillRect(-1, 10, 2, 3);
-      g.fillStyle(0x555555, 1); g.fillRect(-5, 13, 10, 2);
+      g.fillStyle(0x555555, 1); g.fillRect(-4, 7, 8, 2);
     };
 
     const isSolo = t.chars.length === 1;
 
+    // 좌우 마주보기 배치 — depth 문제 없음
+    // 왼쪽 2명: 오른쪽 바라봄 | 오른쪽 2명: 왼쪽 바라봄
+    const cols = 7; // spritesheet columns
     t.chars.forEach((charIdx, i) => {
       if (i >= 4) return;
 
-      // 1인(CPO) — 코드로 정면 전신 미니미 그리기
       if (isSolo) {
-        const cg = this.add.graphics().setDepth(3);
-        // 머리 (둥글게)
-        cg.fillStyle(0xfcd9a8, 1); cg.fillCircle(0, -10, 7);
-        // 머리카락
-        cg.fillStyle(0x333333, 1); cg.fillRect(-7, -17, 14, 5);
-        cg.fillRect(-7, -14, 3, 6); cg.fillRect(4, -14, 3, 6);
-        // 눈
-        cg.fillStyle(0x222222, 1); cg.fillRect(-4, -11, 2, 2); cg.fillRect(2, -11, 2, 2);
-        cg.fillStyle(0xffffff, 1); cg.fillRect(-4, -11, 1, 1); cg.fillRect(2, -11, 1, 1);
-        // 입
-        cg.fillStyle(0xe0a080, 1); cg.fillRect(-2, -7, 4, 1);
-        // 셔츠 (파란색)
-        cg.fillStyle(0x3366aa, 1); cg.fillRect(-6, -3, 12, 10);
-        cg.fillStyle(0x4477bb, 1); cg.fillRect(-5, -2, 10, 8);
-        // 넥타이
-        cg.fillStyle(0xcc3333, 1); cg.fillRect(-1, -2, 2, 7);
-        // 팔
-        cg.fillStyle(0xfcd9a8, 1); cg.fillRect(-8, -2, 3, 8); cg.fillRect(5, -2, 3, 8);
-        // 바지
-        cg.fillStyle(0x2a2a3a, 1); cg.fillRect(-5, 7, 4, 8); cg.fillRect(1, 7, 4, 8);
-        // 신발
-        cg.fillStyle(0x222222, 1); cg.fillRect(-6, 15, 5, 2); cg.fillRect(1, 15, 5, 2);
-        container.add(cg);
-
-        // 더미 sprite (애니메이션/참조용)
-        const char = this.add.sprite(0, 100, `char_${charIdx}`, 0)
-          .setScale(0.01).setAlpha(0);
+        const isLimzu = charIdx <= 3;
+        const char = this.add.sprite(0, 0, `char_${charIdx}`, 0)
+          .setScale(S * 1.5).setOrigin(0.5, isLimzu ? 0.75 : 0.5)
+          .play(`char_${charIdx}_idle`);
         container.add(char);
         members.push({ char, charIdx, baseX: 0, baseY: 0 });
         return;
       }
 
-      const isTop = i < 2;
-      const col = i % 2;
-      const dx = col === 0 ? -gapX / 2 : gapX / 2;
+      const isLeft = i < 2;
+      const row = i % 2;
+      const dy = row === 0 ? -gapX / 2 : gapX / 2;
+      const isLimzu = charIdx <= 3;
 
-      if (isTop) {
-        // 윗줄: 모니터 → 책상 → 캐릭(앞)
-        const baseY = -rowGap / 2 - 2;
-        const mon = this.add.graphics().setDepth(1);
-        drawMonFront(mon);
-        mon.setPosition(dx, baseY - 6);
+      if (isLeft) {
+        // 왼쪽: 캐릭(→) → 책상 → 모니터(→) — 조밀하게
+        const deskX = -10;
+        // 책상
+        container.add(this.add.image(deskX, dy + 3, "desk_front").setScale(S * 0.45, S * 0.45));
+        // 모니터 옆모습 (오른쪽 향함)
+        const mon = this.add.graphics();
+        drawMonSide(mon, 1); mon.setPosition(deskX, dy - 5);
         container.add(mon);
-        container.add(this.add.image(dx, baseY + 4, "desk_front").setScale(S * 0.55, S * 0.65).setDepth(2));
-        const char = this.add.sprite(dx, baseY + 16, `char_${charIdx}`, 0)
-          .setScale(S).setDepth(3).play(`char_${charIdx}_idle`);
+        // 캐릭터
+        const charX = deskX - 16;
+        const char = this.add.sprite(charX, dy, `char_${charIdx}`, cols * 2)
+          .setScale(S).setOrigin(0.5, isLimzu ? 0.75 : 0.5);
         container.add(char);
-        members.push({ char, charIdx, baseX: dx, baseY: baseY + 16 });
+        members.push({ char, charIdx, baseX: charX, baseY: dy });
       } else {
-        // 아랫줄: 캐릭(뒤) → 책상 → 모니터뒷면
-        const baseY = rowGap / 2 + 2;
-        const char = this.add.sprite(dx, baseY - 16, `char_${charIdx}`, 3 * 7)
-          .setScale(S).setDepth(1);
-        container.add(char);
-        container.add(this.add.image(dx, baseY - 4, "desk_front").setScale(S * 0.55, S * 0.65).setDepth(2));
-        const mon = this.add.graphics().setDepth(3);
-        drawMonBack(mon);
-        mon.setPosition(dx, baseY - 10);
+        // 오른쪽: 모니터(←) → 책상 → 캐릭(←) — 조밀하게
+        const deskX = 10;
+        // 책상
+        container.add(this.add.image(deskX, dy + 3, "desk_front").setScale(S * 0.45, S * 0.45));
+        // 모니터 옆모습 (왼쪽 향함)
+        const mon = this.add.graphics();
+        drawMonSide(mon, -1); mon.setPosition(deskX, dy - 5);
         container.add(mon);
-        members.push({ char, charIdx, baseX: dx, baseY: baseY - 16 });
+        // 캐릭터
+        const charX = deskX + 16;
+        const char = this.add.sprite(charX, dy, `char_${charIdx}`, cols)
+          .setScale(S).setOrigin(0.5, isLimzu ? 0.75 : 0.5);
+        container.add(char);
+        members.push({ char, charIdx, baseX: charX, baseY: dy });
       }
     });
 
@@ -1109,7 +1089,8 @@ export default class OfficeScene extends Phaser.Scene {
       }
     }
 
-    t.container.setDepth(0);
+    // Y좌표 기반 depth 복원 (아래쪽 = 앞쪽 = 높은 depth)
+    t.container.setDepth(t.gridY + 10);
     this.overlapRect?.setVisible(false);
     this.dragTarget = null;
   }

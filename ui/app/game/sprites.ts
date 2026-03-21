@@ -1,6 +1,7 @@
 /**
- * Pixel Agents MIT 에셋 기반 스프라이트 시스템
- * 캐릭터: 112x96 스프라이트시트 (16x16 프레임, 7열x6행)
+ * LimeZu Modern Interiors + Pixel Agents 기반 스프라이트 시스템
+ * 캐릭터 0~3: LimeZu (112x192, 16x32 프레임, 7열x6행)
+ * 캐릭터 4~5: Pixel Agents 원본 (112x96, 16x16 프레임, 7열x6행)
  * 가구: 개별 PNG (desk, PC, chair 등)
  * 바닥: 16x16 타일
  */
@@ -12,11 +13,11 @@ import * as Phaser from "phaser";
 // ═══════════════════════════════════
 
 export function preloadAssets(scene: Phaser.Scene) {
-  // 캐릭터 6종 (각 112x96, 16x16 프레임)
-  for (let i = 0; i <= 5; i++) {
+  // 캐릭터 0~3: LimeZu (16x32 프레임) — 전 팀 공용
+  for (let i = 0; i <= 3; i++) {
     scene.load.spritesheet(`char_${i}`, `/assets/char_${i}.png`, {
       frameWidth: 16,
-      frameHeight: 16,
+      frameHeight: 32,
     });
   }
 
@@ -39,6 +40,27 @@ export function preloadAssets(scene: Phaser.Scene) {
   scene.load.image("pot", "/assets/furniture/POT/POT.png");
   scene.load.image("coffee_table", "/assets/furniture/COFFEE_TABLE/COFFEE_TABLE.png");
 
+  // 오리지널 사무실 에셋 (Pixel Forge)
+  scene.load.image("o_laptop", "/assets/original/office/laptop_open.png");
+  scene.load.image("o_laptop_closed", "/assets/original/office/laptop_closed.png");
+  scene.load.image("o_monitor", "/assets/original/office/monitor_front.png");
+  scene.load.image("o_monitor_back", "/assets/original/office/monitor_back.png");
+  scene.load.image("o_desk", "/assets/original/office/desk_front.png");
+  scene.load.image("o_desk_side", "/assets/original/office/desk_side.png");
+  scene.load.image("o_chair_front", "/assets/original/office/chair_front.png");
+  scene.load.image("o_chair_back", "/assets/original/office/chair_back.png");
+  scene.load.image("o_bookshelf", "/assets/original/office/bookshelf.png");
+  scene.load.image("o_server_rack", "/assets/original/office/server_rack.png");
+  scene.load.image("o_server_small", "/assets/original/office/server_small.png");
+  scene.load.image("o_window_day", "/assets/original/office/window_day.png");
+  scene.load.image("o_window_night", "/assets/original/office/window_night.png");
+  scene.load.image("o_whiteboard", "/assets/original/office/whiteboard.png");
+  scene.load.image("o_water_cooler", "/assets/original/office/water_cooler.png");
+  scene.load.image("o_coffee", "/assets/original/office/coffee_machine.png");
+  scene.load.image("o_clock", "/assets/original/office/wall_clock.png");
+  scene.load.image("o_ac", "/assets/original/office/ac_unit.png");
+  scene.load.image("o_fire_ext", "/assets/original/office/fire_extinguisher.png");
+
   // 바닥/벽
   scene.load.image("floor_tile", "/assets/floors/floor_0.png");
   scene.load.image("wall_tile", "/assets/walls/wall_0.png");
@@ -53,7 +75,8 @@ export function preloadAssets(scene: Phaser.Scene) {
 
 // ═══════════════════════════════════
 // 애니메이션 등록
-// 캐릭터 시트 레이아웃 (7열 x 6행, 16x16):
+// 캐릭터 시트 레이아웃 (7열 x 6행):
+// char_0~3: LimeZu 16x32 | char_4~5: Pixel Agents 16x16
 // 행0: 아래 idle + walk (front)
 // 행1: 왼쪽
 // 행2: 오른쪽
@@ -63,7 +86,7 @@ export function preloadAssets(scene: Phaser.Scene) {
 // ═══════════════════════════════════
 
 export function registerCharAnims(scene: Phaser.Scene) {
-  for (let i = 0; i <= 5; i++) {
+  for (let i = 0; i <= 3; i++) {
     const key = `char_${i}`;
     const cols = 7;
 

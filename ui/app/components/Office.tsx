@@ -688,6 +688,21 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
                         <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
                       </svg>
                     </button>
+                    {team.id !== "server-monitor" && team.id !== "cpo-claude" && (
+                      <button
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          if (!confirm(`${team.emoji} ${team.name} 에이전트를 삭제할까요?`)) return;
+                          await fetch(`${getApiBase()}/api/teams/${team.id}`, { method: "DELETE" });
+                          window.location.reload();
+                        }}
+                        className="w-6 h-6 flex items-center justify-center rounded text-gray-700 hover:text-red-400 hover:bg-red-500/10 transition-all"
+                        title="에이전트 삭제">
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/>
+                        </svg>
+                      </button>
+                    )}
                   </div>
                 </div>
               );

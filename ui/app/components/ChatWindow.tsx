@@ -5,6 +5,82 @@ import { Team } from "../config/teams";
 import ChatPanel, { Message } from "./ChatPanel";
 import ServerDashboard from "./ServerDashboard";
 
+function getApiBase(): string {
+  if (typeof window === "undefined") return "";
+  const h = window.location.hostname;
+  const isLocal = h === "localhost" || h.startsWith("192.168.");
+  return isLocal ? `http://${h}:8000` : "https://api.600g.net";
+}
+
+function SpecPopup({ team, onClose }: { team: Team; onClose: () => void }) {
+  const [md, setMd] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    fetch(`${getApiBase()}/api/teams/${team.id}/guide`)
+      .then(r => r.json())
+      .then(d => { setMd(d.claude_md || d.system_prompt || "스펙 없음"); setLoading(false); })
+      .catch(() => { setMd("불러오기 실패"); setLoading(false); });
+  }, [team.id]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    setSaved(false);
+    try {
+      const res = await fetch(`${getApiBase()}/api/teams/${team.id}/guide`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ claude_md: md }),
+      });
+      if (res.ok) { setSaved(true); setEditing(false); setTimeout(() => setSaved(false), 2000); }
+    } catch { /* ignore */ }
+    setSaving(false);
+  };
+
+  return (
+    <div className="absolute inset-0 z-50 bg-[#0a0a18] flex flex-col rounded-lg overflow-hidden">
+      <div className="flex items-center justify-between px-3 py-2 bg-[#14142a] border-b border-[#2a2a5a] shrink-0">
+        <span className="text-[11px] font-bold text-gray-300">{team.emoji} {team.name} 스펙</span>
+        <div className="flex items-center gap-1.5">
+          {saved && <span className="text-[9px] text-green-400">저장됨</span>}
+          {editing ? (
+            <>
+              <button onClick={handleSave} disabled={saving}
+                className="text-[9px] px-2 py-0.5 bg-green-500/20 text-green-400 border border-green-500/30 rounded hover:bg-green-500/30 disabled:opacity-50">
+                {saving ? "..." : "저장"}
+              </button>
+              <button onClick={() => setEditing(false)}
+                className="text-[9px] px-2 py-0.5 text-gray-500 hover:text-gray-300">취소</button>
+            </>
+          ) : (
+            <button onClick={() => setEditing(true)}
+              className="text-[9px] px-2 py-0.5 bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 rounded hover:bg-yellow-500/20">
+              수정
+            </button>
+          )}
+          <button onClick={onClose} className="text-gray-400 hover:text-white text-sm px-1">✕</button>
+        </div>
+      </div>
+      <div className="flex-1 overflow-y-auto p-2 min-h-0">
+        {loading ? (
+          <span className="text-[11px] text-gray-500 p-2">로딩중...</span>
+        ) : editing ? (
+          <textarea
+            value={md}
+            onChange={e => setMd(e.target.value)}
+            className="w-full h-full bg-[#0f0f1f] text-[11px] text-gray-300 leading-relaxed p-2 border border-[#2a2a5a] rounded resize-none focus:outline-none focus:border-yellow-500/40 font-mono"
+          />
+        ) : (
+          <div className="text-[11px] text-gray-300 leading-relaxed whitespace-pre-wrap p-1">{md}</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 interface Props {
   team: Team;
   messages: Message[];
@@ -24,6 +100,7 @@ export default function ChatWindow({
   team, messages, onMessages, onClose, onWorkingChange, onFocus, zIndex, initialX, initialY
 }: Props) {
   const isDashboard = team.id === "server-monitor";
+  const [showSpec, setShowSpec] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [pos, setPos] = useState({ x: initialX, y: initialY });
   const [size, setSize] = useState({ w: isDashboard ? 420 : 380, h: isDashboard ? 560 : 440 });
@@ -109,6 +186,14 @@ export default function ChatWindow({
                 <a href={team.siteUrl} target="_blank" rel="noopener noreferrer"
                   className="text-[9px] text-blue-400/70 hover:text-blue-300" title={`${team.name} 사이트`}>↗</a>
               )}
+              {!isDashboard && (
+                <button onClick={() => setShowSpec(true)}
+                  className="text-[9px] text-gray-500 hover:text-yellow-400 transition-colors" title="스펙 보기">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" className="inline">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM6 20V4h5v7h7v9H6zm2-7h8v1.5H8V13zm0 3h8v1.5H8V16zm0-6h3v1.5H8V10z"/>
+                  </svg>
+                </button>
+              )}
               {team.githubUrl && (
                 <a href={team.githubUrl} target="_blank" rel="noopener noreferrer"
                   className="text-[9px] text-gray-500 hover:text-gray-300" title="GitHub">
@@ -120,7 +205,8 @@ export default function ChatWindow({
             </div>
             <button onClick={onClose} className="text-gray-400 hover:text-white text-sm px-2 py-1">✕</button>
           </div>
-          <div className="flex-1 min-h-0 overflow-hidden p-2 flex flex-col">
+          <div className="flex-1 min-h-0 overflow-hidden p-2 flex flex-col relative">
+            {showSpec && <SpecPopup team={team} onClose={() => setShowSpec(false)} />}
             {team.id === "server-monitor"
               ? <ServerDashboard onClose={onClose} />
               : <ChatPanel team={team} onClose={onClose} onWorkingChange={onWorkingChange}
@@ -190,6 +276,14 @@ export default function ChatWindow({
               ↗
             </a>
           )}
+          {!isDashboard && (
+            <button onClick={() => setShowSpec(true)} onPointerDown={e => e.stopPropagation()}
+              className="text-[9px] text-gray-500 hover:text-yellow-400 transition-colors" title="스펙 보기">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" className="inline">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM6 20V4h5v7h7v9H6zm2-7h8v1.5H8V13zm0 3h8v1.5H8V16zm0-6h3v1.5H8V10z"/>
+              </svg>
+            </button>
+          )}
           {team.githubUrl && (
             <a href={team.githubUrl} target="_blank" rel="noopener noreferrer"
               onPointerDown={e => e.stopPropagation()}
@@ -204,7 +298,8 @@ export default function ChatWindow({
       </div>
 
       {/* ── 콘텐츠 영역 ── */}
-      <div className="flex-1 min-h-0 overflow-hidden p-2 flex flex-col">
+      <div className="flex-1 min-h-0 overflow-hidden p-2 flex flex-col relative">
+        {showSpec && <SpecPopup team={team} onClose={() => setShowSpec(false)} />}
         {team.id === "server-monitor"
           ? <ServerDashboard onClose={onClose} />
           : <ChatPanel team={team} onClose={onClose} onWorkingChange={onWorkingChange}

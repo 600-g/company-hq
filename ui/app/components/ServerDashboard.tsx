@@ -56,9 +56,19 @@ interface NetworkInfo {
   quality: string;
 }
 
+interface ServiceInfo {
+  name: string;
+  desc: string;
+  url: string;
+  status: "ok" | "warn" | "down";
+  code: number | null;
+  error: string | null;
+}
+
 interface DashboardData {
   agents: AgentInfo[];
   system: { cpu: number; memory: number; disk: number; network: NetworkInfo };
+  services?: ServiceInfo[];
   activity: { time: string; team: string; content: string }[];
   version: { server: string; python: string; claude_cli: string };
 }
@@ -130,12 +140,22 @@ function AgentCard({ agent, onRestart }: { agent: AgentInfo; onRestart: (id: str
           {agent.working ? (
             <span className="flex items-center gap-0.5">
               <span className="w-1.5 h-1.5 bg-yellow-400 rounded-full animate-pulse" />
-              <span className="text-[8px] text-yellow-400">작업중</span>
+              <span className="text-[8px] text-yellow-400 font-bold">작업중</span>
+            </span>
+          ) : agent.pid ? (
+            <span className="flex items-center gap-0.5">
+              <span className="w-1.5 h-1.5 bg-green-400 rounded-full" />
+              <span className="text-[8px] text-green-400">정상</span>
+            </span>
+          ) : agent.session ? (
+            <span className="flex items-center gap-0.5">
+              <span className="w-1.5 h-1.5 bg-gray-500 rounded-full" />
+              <span className="text-[8px] text-gray-500">대기</span>
             </span>
           ) : (
             <span className="flex items-center gap-0.5">
-              <span className="w-1.5 h-1.5 bg-green-400/60 rounded-full" />
-              <span className="text-[8px] text-gray-500">대기</span>
+              <span className="w-1.5 h-1.5 bg-red-400/60 rounded-full" />
+              <span className="text-[8px] text-red-400">미연결</span>
             </span>
           )}
           <button
@@ -150,11 +170,9 @@ function AgentCard({ agent, onRestart }: { agent: AgentInfo; onRestart: (id: str
         </div>
       </div>
 
-      {/* 툴 상태 / 마지막 프롬프트 */}
+      {/* 현재 작업 상태만 표시 */}
       {agent.working && agent.tool ? (
-        <div className="text-[9px] text-yellow-300/80 truncate">{agent.tool}</div>
-      ) : agent.last_prompt ? (
-        <div className="text-[8px] text-gray-600 truncate">↩ {agent.last_prompt}</div>
+        <div className="text-[9px] text-yellow-300/80 truncate">⚡ {agent.tool}</div>
       ) : null}
 
       {/* 작업중 로딩바 */}
@@ -176,18 +194,43 @@ function AgentCard({ agent, onRestart }: { agent: AgentInfo; onRestart: (id: str
         </div>
       )}
 
-      {/* 대화 횟수 */}
-      {agent.tokens && agent.tokens.prompts > 0 && (
-        <div className="mt-1 text-[8px] text-gray-600">
-          💬 <span className="text-purple-400">{agent.tokens.prompts}</span>회 대화
-        </div>
-      )}
-
-      {agent.last_active && (
-        <div className="text-[7px] text-gray-700 mt-1">{agent.last_active}</div>
-      )}
+      {/* 모델 + 세션 상태 */}
+      <div className="mt-1 flex items-center gap-2 text-[8px] text-gray-600">
+        <span>{agent.model_key}</span>
+        {agent.tokens && agent.tokens.prompts > 0 && (
+          <span>· {agent.tokens.prompts}회</span>
+        )}
+      </div>
     </div>
     </>
+  );
+}
+
+// ── 서비스 상태 패널 ─────────────────────────────────────
+function ServiceStatus({ services }: { services: ServiceInfo[] }) {
+  return (
+    <div className="space-y-1">
+      <div className="text-[9px] text-gray-500 font-bold mb-1">🌐 서비스 상태</div>
+      {services.map(svc => (
+        <div key={svc.name} className="flex items-center justify-between py-0.5">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+              svc.status === "ok" ? "bg-green-400" :
+              svc.status === "warn" ? "bg-yellow-400" : "bg-red-500 animate-pulse"
+            }`} />
+            <span className="text-[9px] text-gray-400 truncate">{svc.name}</span>
+          </div>
+          <span className={`text-[8px] shrink-0 ${
+            svc.status === "ok" ? "text-green-400" :
+            svc.status === "warn" ? "text-yellow-400" : "text-red-400"
+          }`}>
+            {svc.status === "ok" ? "정상" :
+             svc.status === "warn" ? `⚠ ${svc.code || "경고"}` :
+             `✕ ${svc.error || "중단"}`}
+          </span>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -300,6 +343,21 @@ export default function ServerDashboard({ onClose }: { onClose: () => void }) {
               {data.agents.map(agent => (
                 <AgentCard key={agent.id} agent={agent} onRestart={fetchData} />
               ))}
+            </div>
+          </section>
+        )}
+
+        {/* ── 서비스 상태 ── */}
+        {data?.services && data.services.length > 0 && (
+          <section>
+            <h3 className="text-[9px] text-gray-600 uppercase tracking-wider mb-1.5">
+              서비스 상태
+              {data.services.some(s => s.status === "down") && (
+                <span className="text-red-400 ml-1 normal-case">⚠ 장애 감지</span>
+              )}
+            </h3>
+            <div className="bg-[#1a1a2e] border border-[#2a2a4a] rounded p-2">
+              <ServiceStatus services={data.services} />
             </div>
           </section>
         )}

@@ -285,10 +285,13 @@ def create_repo(
     g = get_github()
     user = g.get_user()
 
+    # GitHub API는 latin-1 인코딩 → 이모지/비ASCII 제거
+    safe_desc = description.encode("ascii", "ignore").decode("ascii").strip() or name
+
     try:
         repo = user.create_repo(
             name=name,
-            description=description,
+            description=safe_desc,
             private=private,
             auto_init=True,
         )
