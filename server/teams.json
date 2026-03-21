@@ -63,5 +63,13 @@
     "repo": "design-team",
     "localPath": "~/Developer/my-company/design-team",
     "status": "운영중"
+  },
+  {
+    "id": "경주데이트-정리",
+    "name": "경주데이트 정리",
+    "emoji": "🆕",
+    "repo": "경주데이트-정리",
+    "localPath": "~/Developer/my-company/경주데이트-정리",
+    "status": "운영중"
   }
 ]

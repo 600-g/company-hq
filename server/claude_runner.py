@@ -41,6 +41,8 @@ TEAM_SESSIONS: dict[str, str] = _load_sessions()
 # ── 모델 설정 ──────────────────────────────────────────
 TEAM_MODELS: dict[str, str] = {
     "cpo-claude": "opus",
+    "trading-bot": "opus",
+    "design-team": "opus",
 }
 
 # ── 공통 보조 프롬프트 (CLAUDE.md가 메인, 이건 보조) ──
@@ -247,6 +249,7 @@ DEFAULT_SYSTEM_PROMPT = (
     "너는 두근컴퍼니의 AI 에이전트야. "
     "담당 프로젝트의 개발, 분석, 운영 작업을 해. "
     "한국어로 자연스럽게 소통해.\n"
+    "총괄 명령이 올 수 있어 — 본인 담당이 아니면 '⏭ 해당없음' 한 줄만 답해.\n"
     + _CHAT_STYLE
 )
 

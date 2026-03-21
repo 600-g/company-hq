@@ -7,6 +7,256 @@ import ChatWindow from "./ChatWindow";
 import WeatherBoard from "./WeatherBoard";
 import type { OfficeGameHandle } from "../game/OfficeGame";
 
+// ── 스마트 디스패치 ────────────────────────────────
+type DispatchStatus = "pending" | "sending" | "working" | "done" | "skipped" | "error";
+interface DispatchEntry {
+  teamId: string; emoji: string; name: string;
+  text: string; status: DispatchStatus; routed: boolean;
+  tools: string[]; // 사용한 도구 목록
+}
+
+// 키워드 기반 라우팅
+const ROUTE_KEYWORDS: Record<string, string[]> = {
+  "cpo-claude": ["cpo", "전체", "회사", "조직", "보고", "총괄", "전략"],
+  "trading-bot": ["매매", "트레이딩", "봇", "업비트", "코인", "수익", "전략", "시장"],
+  "date-map": ["데이트", "지도", "맵", "장소", "카페", "음식"],
+  "claude-biseo": ["비서", "일정", "스케줄", "메일", "알림", "정리"],
+  "ai900": ["ai900", "학습", "교육", "문서", "자료"],
+  "cl600g": ["cl600g", "600g", "서버", "인프라"],
+  "design-team": ["디자인", "ui", "ux", "색상", "폰트", "에셋", "픽셀", "화면", "레이아웃"],
+};
+
+function routeMessage(msg: string, teams: Team[]): string[] {
+  const lower = msg.toLowerCase();
+  const matched: string[] = [];
+
+  // "전체", "모두", "각 팀" 등은 전체 전송
+  if (/전체|모두|각\s?팀|다\s?같이|상태\s?보고/.test(lower)) {
+    return teams.filter(t => t.id !== "server-monitor").map(t => t.id);
+  }
+
+  for (const [teamId, keywords] of Object.entries(ROUTE_KEYWORDS)) {
+    if (keywords.some(kw => lower.includes(kw))) {
+      matched.push(teamId);
+    }
+  }
+
+  // 매칭 없으면 CPO에게
+  return matched.length > 0 ? matched : ["cpo-claude"];
+}
+
+interface DispatchMessage {
+  role: "user" | "agent";
+  text: string;
+  teamId?: string;
+  emoji?: string;
+  name?: string;
+  tools?: string[];
+  status?: DispatchStatus;
+}
+
+function DispatchChat({ teams, onOpenChat }: { teams: Team[]; onOpenChat?: (teamId: string) => void }) {
+  const [input, setInput] = useState("");
+  const [entries, setEntries] = useState<DispatchEntry[]>([]);
+  const [messages, setMessages] = useState<DispatchMessage[]>([]);
+  const [sending, setSending] = useState(false);
+  const wsRefs = useRef<Map<string, WebSocket>>(new Map());
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  const getWsUrl = (teamId: string) => {
+    const h = typeof window !== "undefined" ? window.location.hostname : "localhost";
+    const isLocal = h === "localhost" || h.startsWith("192.168.");
+    return `${isLocal ? `ws://${h}:8000` : "wss://api.600g.net"}/ws/chat/${teamId}`;
+  };
+
+  const dispatch = () => {
+    if (!input.trim() || sending) return;
+    const msg = input.trim();
+    setInput("");
+    setSending(true);
+
+    // 유저 메시지 히스토리 추가
+    setMessages(prev => [...prev, { role: "user", text: msg }]);
+
+    const targetIds = routeMessage(msg, teams);
+    const allTeams = teams.filter(t => t.id !== "server-monitor");
+
+    // 라우팅 결과로 엔트리 생성
+    const newEntries: DispatchEntry[] = allTeams.map(t => ({
+      teamId: t.id, emoji: t.emoji, name: t.name, text: "",
+      status: targetIds.includes(t.id) ? "pending" : "skipped",
+      routed: targetIds.includes(t.id), tools: [],
+    }));
+    setEntries(newEntries);
+
+    // 라우팅된 에이전트에만 전송
+    let doneCount = 0;
+    const targets = allTeams.filter(t => targetIds.includes(t.id));
+
+    targets.forEach(team => {
+      setEntries(prev => prev.map(e =>
+        e.teamId === team.id ? { ...e, status: "sending" } : e
+      ));
+
+      const ws = new WebSocket(getWsUrl(team.id));
+      wsRefs.current.set(team.id, ws);
+
+      ws.onopen = () => {
+        ws.send(JSON.stringify({ prompt: msg }));
+        setEntries(prev => prev.map(e =>
+          e.teamId === team.id ? { ...e, status: "working" } : e
+        ));
+      };
+
+      ws.onmessage = (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          if (data.type === "status") {
+            setEntries(prev => prev.map(e =>
+              e.teamId === team.id ? { ...e, tools: [...e.tools, data.content] } : e
+            ));
+          } else if (data.type === "ai_chunk") {
+            setEntries(prev => prev.map(e =>
+              e.teamId === team.id ? { ...e, text: e.text + data.content } : e
+            ));
+          } else if (data.type === "ai_end") {
+            setEntries(prev => prev.map(e =>
+              e.teamId === team.id ? { ...e, status: "done" } : e
+            ));
+            ws.close();
+          }
+        } catch { /* ignore */ }
+      };
+
+      ws.onerror = () => {
+        setEntries(prev => prev.map(e =>
+          e.teamId === team.id ? { ...e, text: "연결 실패", status: "error" } : e
+        ));
+      };
+
+      ws.onclose = () => {
+        wsRefs.current.delete(team.id);
+        doneCount++;
+        if (doneCount >= targets.length) {
+          setSending(false);
+          // 완료된 응답을 히스토리에 추가
+          setEntries(final => {
+            final.filter(e => e.routed && e.text.trim()).forEach(e => {
+              setMessages(prev => [...prev, {
+                role: "agent", text: e.text, teamId: e.teamId,
+                emoji: e.emoji, name: e.name, tools: e.tools, status: e.status,
+              }]);
+            });
+            return final;
+          });
+          setEntries([]);
+        }
+      };
+    });
+
+    if (targets.length === 0) setSending(false);
+  };
+
+  useEffect(() => {
+    scrollRef.current?.scrollTo(0, scrollRef.current.scrollHeight);
+  }, [entries]);
+
+  const statusIcon = (s: DispatchStatus) => {
+    switch (s) {
+      case "pending": return "⏳";
+      case "sending": return "📡";
+      case "working": return "⚡";
+      case "done": return "✅";
+      case "skipped": return "⏭";
+      case "error": return "❌";
+    }
+  };
+
+  const statusColor = (s: DispatchStatus) => {
+    switch (s) {
+      case "working": return "bg-yellow-500/5 border-yellow-500/20";
+      case "done": return "bg-green-500/5 border-green-500/20";
+      case "error": return "bg-red-500/5 border-red-500/20";
+      default: return "bg-[#1a1a2e] border-[#2a2a4a]";
+    }
+  };
+
+  const routed = entries.filter(e => e.routed);
+  const skipped = entries.filter(e => !e.routed);
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      {/* 히스토리 + 진행중 */}
+      {(messages.length > 0 || entries.length > 0) && (
+        <div ref={scrollRef} className="max-h-[220px] overflow-y-auto space-y-1">
+          {/* 대화 히스토리 */}
+          {messages.map((m, i) => (
+            m.role === "user" ? (
+              <div key={i} className="text-[10px] text-yellow-400 bg-yellow-500/5 border border-yellow-500/10 rounded px-2 py-1">
+                ▶ {m.text}
+              </div>
+            ) : (
+              <div key={i}
+                className="text-[10px] p-1.5 rounded border bg-[#1a1a2e] border-[#2a2a4a] cursor-pointer hover:border-yellow-500/30 transition-colors"
+                onClick={() => m.teamId && onOpenChat?.(m.teamId)}
+                title="클릭 → 채팅창 열기"
+              >
+                <div className="flex items-center gap-1 mb-0.5">
+                  <span>{m.emoji}</span>
+                  <span className="font-bold text-gray-300">{m.name}</span>
+                  {m.tools && m.tools.length > 0 && (
+                    <span className="text-[7px] text-purple-400 ml-auto">{m.tools.length}개 작업</span>
+                  )}
+                </div>
+                <div className="text-gray-400 whitespace-pre-wrap text-[9px] line-clamp-3">{m.text.slice(0, 200)}{m.text.length > 200 ? "..." : ""}</div>
+              </div>
+            )
+          ))}
+
+          {/* 진행중인 응답 */}
+          {entries.length > 0 && (
+            <>
+              {skipped.length > 0 && (
+                <div className="text-[8px] text-gray-600 px-1">⏭ {skipped.map(e => e.emoji).join("")}</div>
+              )}
+              {routed.map(e => (
+                <div key={e.teamId} className={`text-[10px] p-1.5 rounded border ${statusColor(e.status)}`}>
+                  <div className="flex items-center gap-1 mb-0.5">
+                    <span className="text-[8px]">{statusIcon(e.status)}</span>
+                    <span>{e.emoji}</span>
+                    <span className="font-bold text-gray-300">{e.name}</span>
+                    {e.status === "working" && <span className="w-1 h-1 bg-yellow-400 rounded-full animate-pulse" />}
+                  </div>
+                  {e.status === "working" && e.tools.length > 0 && (
+                    <div className="text-[8px] text-yellow-400/70 truncate">⚡ {e.tools[e.tools.length - 1]}</div>
+                  )}
+                  {e.text && (
+                    <div className="text-gray-400 whitespace-pre-wrap text-[9px] max-h-[60px] overflow-y-auto">{e.text}</div>
+                  )}
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* 입력 */}
+      <form onSubmit={(e) => { e.preventDefault(); dispatch(); }} className="flex gap-1">
+        <input
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          placeholder="명령 입력 (자동 라우팅)..."
+          className="flex-1 bg-[#1a1a2e] border border-[#3a3a5a] text-white text-[11px] px-2 py-1.5 rounded focus:outline-none focus:border-yellow-400/50"
+        />
+        <button type="submit" disabled={!input.trim()}
+          className="px-2 py-1.5 bg-yellow-500/20 text-yellow-400 text-[10px] font-bold border border-yellow-500/30 rounded hover:bg-yellow-500/30 disabled:opacity-30 transition-colors shrink-0">
+          {sending ? "⏳" : "▶"}
+        </button>
+      </form>
+    </div>
+  );
+}
+
 const WS_KEY = "hq-ws-base-url";
 
 function getApiBase(): string {
@@ -123,10 +373,12 @@ function AddTeamModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
 
           {/* 설명 */}
           <div>
-            <label className="text-[9px] text-gray-500 block mb-0.5">한 줄 설명</label>
-            <input value={desc} onChange={e => setDesc(e.target.value)}
-              placeholder="예) 네이버 뉴스 자동 크롤링 및 요약"
-              className="w-full bg-[#1a1a2e] border border-[#3a3a5a] text-white px-2 py-1.5 text-xs rounded focus:outline-none focus:border-yellow-400/50" />
+            <label className="text-[9px] text-gray-500 block mb-0.5">설명 (Shift+Enter 줄바꿈)</label>
+            <textarea value={desc} onChange={e => setDesc(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (!loading) submit(); } }}
+              placeholder={"예) 네이버 뉴스 자동 크롤링 및 요약\n역할, 기능, 목표 등 자유롭게 작성"}
+              rows={desc.includes("\n") ? Math.min(desc.split("\n").length + 1, 5) : 2}
+              className="w-full bg-[#1a1a2e] border border-[#3a3a5a] text-white px-2 py-1.5 text-xs rounded focus:outline-none focus:border-yellow-400/50 resize-none" />
           </div>
 
           {error && <p className="text-[10px] text-red-400">{error}</p>}
@@ -414,6 +666,26 @@ function SideMenu({ user, open, onClose, onLogout }: {
 
 export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?: () => void }) {
   const [teams, setTeams] = useState<Team[]>(defaultTeamList);
+
+  // API에서 팀 목록 동적 로드 (teams.json 기반)
+  useEffect(() => {
+    fetch(`${getApiBase()}/api/teams`)
+      .then(r => r.json())
+      .then((data: { id: string; name: string; emoji: string; repo: string; localPath: string; status: string }[]) => {
+        if (!Array.isArray(data)) return;
+        const merged: Team[] = data.map(t => {
+          const existing = defaultTeamList.find(d => d.id === t.id);
+          return {
+            id: t.id, name: t.name, emoji: t.emoji, repo: t.repo,
+            localPath: t.localPath, status: t.status,
+            siteUrl: existing?.siteUrl,
+            githubUrl: existing?.githubUrl || `https://github.com/600-g/${t.repo}`,
+          };
+        });
+        setTeams(merged);
+      })
+      .catch(() => {}); // 실패 시 기본 목록 유지
+  }, []);
   const [teamInfoMap, setTeamInfoMap] = useState<Record<string, TeamInfo>>({});
   const [showAddModal, setShowAddModal] = useState(false);
   const [guideTeamId, setGuideTeamId] = useState<string | null>(null);
@@ -619,7 +891,7 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
       })}
 
       {/* ── 우측 패널 (PC만) ── */}
-      <aside className="hidden md:flex md:w-[300px] h-full bg-[#12122a] border-l border-[#2a2a5a] flex-col shrink-0 overflow-hidden">
+      <aside className="hidden md:flex md:w-[360px] h-full bg-[#12122a] border-l border-[#2a2a5a] flex-col shrink-0 overflow-hidden">
         {/* 에이전트 목록 */}
         <div className="p-2 border-b border-[#2a2a5a] overflow-y-auto flex-1">
           <div className="flex items-center justify-between mb-1">
@@ -710,10 +982,12 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
           </div>
         </div>
 
-        {/* 날씨 게시판 */}
-        <div className="p-2 border-t border-[#2a2a5a] hidden md:block">
-          <WeatherBoard />
+        {/* 총괄 디스패치 (하단 채팅형) */}
+        <div className="p-2 border-t border-[#2a2a5a] shrink-0">
+          <DispatchChat teams={teams} onOpenChat={(id) => handleTeamClick(id)} />
         </div>
+
+        {/* 날씨 게시판 — 숨김 (공간 확보) */}
 
         <div
           className="px-2.5 py-1 border-t border-[#2a2a5a] text-[8px] text-gray-700 text-center select-none cursor-default"

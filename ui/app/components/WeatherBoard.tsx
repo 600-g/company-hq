@@ -34,7 +34,6 @@ export default function WeatherBoard() {
   const [time, setTime] = useState(new Date());
 
   useEffect(() => {
-    // 서울 날씨 (Open-Meteo, 무료, 키 불필요)
     fetch("https://api.open-meteo.com/v1/forecast?latitude=37.5665&longitude=126.978&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&timezone=Asia/Seoul")
       .then(r => r.json())
       .then(data => {
@@ -49,45 +48,60 @@ export default function WeatherBoard() {
       })
       .catch(() => {});
 
-    // 시계
-    const timer = setInterval(() => setTime(new Date()), 60000);
+    const timer = setInterval(() => setTime(new Date()), 30000);
     return () => clearInterval(timer);
   }, []);
 
   const icon = weather ? (WEATHER_ICONS[weather.weatherCode] || "🌡") : "⏳";
-  const text = weather ? (WEATHER_TEXT[weather.weatherCode] || "알 수 없음") : "로딩중";
+  const text = weather ? (WEATHER_TEXT[weather.weatherCode] || "알 수 없음") : "불러오는 중...";
+  const timeStr = time.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
+  const dateStr = time.toLocaleDateString("ko-KR", { month: "long", day: "numeric", weekday: "short" });
 
   return (
-    <div className="bg-[#1a1a2a] border border-[#2a2a4a] rounded p-2.5 text-[10px]">
-      <div className="flex items-center justify-between mb-1.5">
-        <span className="text-gray-500 font-semibold uppercase text-[8px] tracking-wider">게시판</span>
-        <span className="text-gray-600">{time.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}</span>
+    <div className="bg-[#12122a] border border-[#252548] rounded-lg overflow-hidden">
+      {/* 헤더 */}
+      <div className="px-3 py-2 border-b border-[#1e1e40] flex items-center justify-between">
+        <span className="text-[10px] font-semibold text-[#6464a0] uppercase tracking-widest">두근 HQ</span>
+        <div className="text-right">
+          <div className="text-white font-bold text-sm leading-none">{timeStr}</div>
+          <div className="text-[#5050a0] text-[10px] mt-0.5">{dateStr}</div>
+        </div>
       </div>
 
       {/* 날씨 */}
-      <div className="flex items-center gap-2 mb-2">
-        <span className="text-2xl">{icon}</span>
-        <div>
-          <div className="text-white font-semibold text-[13px]">
-            {weather ? `${weather.temp}°C` : "--"}
+      <div className="px-3 py-2.5 flex items-center gap-3">
+        <span className="text-3xl leading-none">{icon}</span>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-white font-bold text-xl leading-none">
+              {weather ? `${weather.temp}°` : "--"}
+            </span>
+            <span className="text-[#7070b0] text-xs">서울</span>
           </div>
-          <div className="text-gray-400 text-[9px]">서울 · {text}</div>
+          <div className="text-[#9090c0] text-[11px] mt-0.5">{text}</div>
         </div>
+        {weather && (
+          <div className="text-right shrink-0">
+            <div className="text-[#7070b0] text-[10px]">💧 {weather.humidity}%</div>
+            <div className="text-[#7070b0] text-[10px] mt-0.5">💨 {weather.windSpeed}㎞/h</div>
+          </div>
+        )}
       </div>
 
-      {weather && (
-        <div className="flex gap-3 text-gray-500 text-[9px]">
-          <span>💧 {weather.humidity}%</span>
-          <span>💨 {weather.windSpeed}km/h</span>
-        </div>
-      )}
-
       {/* 오늘 할 일 */}
-      <div className="mt-2 pt-2 border-t border-[#2a2a4a]">
-        <div className="text-gray-500 text-[8px] mb-1">📋 TODAY</div>
-        <div className="text-gray-400 text-[9px] space-y-0.5">
-          <div>• 에이전트 상태 확인</div>
-          <div>• 사무실 꾸미기</div>
+      <div className="px-3 pb-2.5 border-t border-[#1a1a38]">
+        <div className="text-[#5050a0] text-[9px] font-semibold uppercase tracking-wider mt-2 mb-1.5">
+          📋 Today
+        </div>
+        <div className="space-y-1">
+          <div className="flex items-center gap-1.5 text-[#8888b8] text-[11px]">
+            <span className="w-1 h-1 rounded-full bg-[#4a4a8a] shrink-0" />
+            에이전트 상태 확인
+          </div>
+          <div className="flex items-center gap-1.5 text-[#8888b8] text-[11px]">
+            <span className="w-1 h-1 rounded-full bg-[#4a4a8a] shrink-0" />
+            사무실 꾸미기
+          </div>
         </div>
       </div>
     </div>

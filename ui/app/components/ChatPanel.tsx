@@ -119,7 +119,7 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
 
   const wsRef = useRef<WebSocket | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   // 콜백 ref — useEffect deps에 넣지 않아도 항상 최신 참조
   const onWorkingChangeRef = useRef(onWorkingChange);
   onWorkingChangeRef.current = onWorkingChange;
@@ -228,6 +228,7 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
           setToolStatus("");
           setLastDone(prev => ({ sec, tools: (prev?.tools ?? 0) + toolLog.length }));
           onWorkingChangeRef.current(false);
+          setQueued(prev => prev.length > 0 ? prev.slice(1) : prev); // 큐에서 처리된 항목 제거
           // 빈 응답이면 완료 메시지 추가
           setMessages(prev => {
             const last = prev[prev.length - 1];
@@ -257,9 +258,16 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
 
   useEffect(() => { scrollToBottom(); }, [messages, scrollToBottom]);
 
+  const [queued, setQueued] = useState<string[]>([]);
+
   const send = () => {
-    if (!input.trim() || !wsRef.current || streaming) return;
-    wsRef.current.send(JSON.stringify({ prompt: input.trim() }));
+    if (!input.trim() || !wsRef.current) return;
+    const msg = input.trim();
+    if (streaming) {
+      // 작업 중 → 큐에 추가 (WebSocket 버퍼로 전송, 순차 처리됨)
+      setQueued(prev => [...prev, msg]);
+    }
+    wsRef.current.send(JSON.stringify({ prompt: msg }));
     setInput("");
   };
 
@@ -397,23 +405,39 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
           ))}
         </div>
 
-        {/* 입력 */}
-        <div className="mt-1.5 flex gap-1.5">
-          <input
+        {/* 대기중 메시지 */}
+        {queued.length > 0 && (
+          <div className="mt-1 space-y-0.5">
+            {queued.map((q, i) => (
+              <div key={i} className="text-[9px] text-yellow-400/60 bg-yellow-500/5 border border-yellow-500/10 rounded px-2 py-0.5 truncate">
+                ⏳ 대기{queued.length > 1 ? ` (${i + 1}/${queued.length})` : ""}: {q.slice(0, 40)}{q.length > 40 ? "..." : ""}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* 입력 (작업 중에도 입력 가능, Shift+Enter=줄바꿈) */}
+        <div className="mt-1.5 flex gap-1.5 items-end">
+          <textarea
             ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) { e.preventDefault(); send(); } }}
-            placeholder={streaming ? "처리중..." : "명령 입력..."}
-            disabled={streaming}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                send();
+              }
+            }}
+            placeholder={streaming ? "작업중... (추가 입력 가능)" : "명령 입력... (Shift+Enter 줄바꿈)"}
+            rows={input.includes("\n") ? Math.min(input.split("\n").length, 4) : 1}
             className="flex-1 bg-[#1a1a2e] border border-[#3a3a5a] text-white px-2 py-1.5 text-[11px] rounded
-                       placeholder-gray-600 focus:outline-none focus:border-yellow-400/50 disabled:opacity-40"
+                       placeholder-gray-600 focus:outline-none focus:border-yellow-400/50 resize-none"
           />
           <button
             onClick={send}
-            disabled={streaming || !input.trim()}
+            disabled={!input.trim()}
             className="bg-yellow-500 text-black px-3 py-1.5 text-[10px] font-bold rounded
-                       hover:bg-yellow-400 disabled:opacity-30 transition-colors"
+                       hover:bg-yellow-400 disabled:opacity-30 transition-colors shrink-0"
           >
             전송
           </button>
@@ -450,14 +474,15 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
             </div>
           ))}
         </div>
-        <div className="border-t border-[#2a2a5a] p-3 flex gap-2">
-          <input ref={inputRef} value={input} onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) { e.preventDefault(); send(); } }}
-            placeholder="명령 입력..." disabled={streaming}
+        <div className="border-t border-[#2a2a5a] p-3 flex gap-2 items-end">
+          <textarea ref={inputRef} value={input} onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(); } }}
+            placeholder={streaming ? "작업중... (추가 입력 가능)" : "명령 입력..."}
+            rows={input.includes("\n") ? Math.min(input.split("\n").length, 4) : 1}
             className="flex-1 bg-[#1a1a2e] border border-[#3a3a5a] text-white px-3 py-2 text-sm rounded
-                       focus:outline-none focus:border-yellow-400/50" />
-          <button onClick={send} disabled={streaming || !input.trim()}
-            className="bg-yellow-500 text-black px-4 py-2 text-sm font-bold rounded hover:bg-yellow-400 disabled:opacity-30">
+                       focus:outline-none focus:border-yellow-400/50 resize-none" />
+          <button onClick={send} disabled={!input.trim()}
+            className="bg-yellow-500 text-black px-4 py-2 text-sm font-bold rounded hover:bg-yellow-400 disabled:opacity-30 shrink-0">
             전송
           </button>
         </div>

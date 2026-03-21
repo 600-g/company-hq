@@ -26,7 +26,7 @@ interface TeamConfig {
 
 const ALL_FLOORS: Record<number, TeamConfig[]> = {
   1: [
-    { id: "cpo-claude", name: "CPO", emoji: "🧠", chars: [1], gridX: 10, gridY: 10, gridW: 2, gridH: 2 },
+    { id: "cpo-claude", name: "CPO", emoji: "🧠", chars: [1], gridX: 13, gridY: 10, gridW: 2, gridH: 2 },
     { id: "trading-bot", name: "매매봇", emoji: "🤖", chars: [0, 3, 1, 2], gridX: 1, gridY: 4, gridW: 4, gridH: 4 },
     { id: "date-map", name: "데이트지도", emoji: "🗺️", chars: [1, 2, 3, 0], gridX: 6, gridY: 4, gridW: 4, gridH: 4 },
     { id: "claude-biseo", name: "클로드비서", emoji: "🤵", chars: [2, 0, 1, 3], gridX: 11, gridY: 4, gridW: 4, gridH: 4 },
@@ -101,7 +101,8 @@ export default class OfficeScene extends Phaser.Scene {
     this.drawElevator();
 
     // 카메라
-    this.cameras.main.setBounds(0, 0, WORLD_W, WORLD_H);
+    // 경계 여유 32px: 가장자리 팀 캐릭터 컬링 방지
+    this.cameras.main.setBounds(-32, -32, WORLD_W + 64, WORLD_H + 64);
     this.cameras.main.setBackgroundColor(0x1a1a2e);
 
     // 입력
@@ -309,163 +310,37 @@ export default class OfficeScene extends Phaser.Scene {
       }
     });
 
-    // ── 계절별 나무 (삼각형 실루엣 + 동그라미 뭉글뭉글) ─────────
+    // ── 계절별 나무 (PNG 에셋 사용) ─────────────────────────────
     const nightT = isNight || hr < 6.5 || hr >= 20.5;
-    const sR = (a: number, b: number) =>
-      (((a * 1664525 + b * 1013904223) | 0) >>> 1) / 0x7fffffff;
+    const season = mon >= 3 && mon <= 5 ? "spring"
+      : mon >= 6 && mon <= 8 ? "summer"
+      : mon >= 9 && mon <= 11 ? "autumn" : "winter";
 
-    // 나무는 빌딩 앞 + 창틀 뒤 (depth 6, 창틀 그래픽은 g에 나중에 그려짐)
-    const treeG = this.add.graphics().setDepth(6);
-    this.envGroup.add(treeG);
+    // 나무 위치 (빌딩 사이사이에 배치)
+    const treePositions: { x: number; size: "sm" | "md" | "lg"; isEv: boolean }[] = [
+      { x: 25, size: "sm", isEv: false },
+      { x: 65, size: "md", isEv: false },
+      { x: 120, size: "lg", isEv: true },
+      { x: 170, size: "sm", isEv: false },
+      { x: 230, size: "md", isEv: false },
+      { x: 290, size: "lg", isEv: false },
+      { x: 355, size: "sm", isEv: true },
+      { x: 415, size: "md", isEv: false },
+      { x: 480, size: "lg", isEv: false },
+      { x: 545, size: "sm", isEv: false },
+      { x: 600, size: "md", isEv: true },
+      { x: 660, size: "lg", isEv: false },
+      { x: 720, size: "sm", isEv: false },
+      { x: 775, size: "md", isEv: false },
+      { x: 825, size: "sm", isEv: true },
+    ];
 
-    // 계절 색상: [그림자, 어두운, 중간, 밝은, 하이라이트]
-    const seasonCols = mon >= 3 && mon <= 5
-      ? [0x98607a, 0xc07898, 0xd898b0, 0xe8b0c8, 0xf0c8d8]  // 봄
-      : mon >= 6 && mon <= 8
-      ? [0x0e3810, 0x1a5818, 0x287820, 0x389828, 0x48b038]  // 여름
-      : mon >= 9 && mon <= 11
-      ? [0x802810, 0xa84818, 0xc86820, 0xd88828, 0xe8a838]  // 가을
-      : [];
-    const evCols = [0x082810, 0x143c18, 0x205020, 0x2c6828, 0x387830];
-
-    const positions = [20, 58, 105, 155, 218, 272, 340, 400, 462, 530, 582, 645, 705, 758, 810];
-    const ty = wh - 3;
-
-    positions.forEach(tx => {
-      if (sR(tx, 55) < 0.12) return;
-
-      const sz = sR(tx, 3); // 0~1
-      const isEv = sR(tx, 90) > 0.8;
-      const cols = isEv ? evCols : seasonCols;
-      const isWinter = mon === 12 || mon <= 2;
-
-      // 나무 전체 크기 (약간 축소)
-      const treeH = 16 + (sz * 22 | 0); // 16~38
-      const treeW = 8 + (sz * 13 | 0);  // 8~21 (반폭 기준)
-      const trunkH = 6 + (sz * 4 | 0);  // 줄기 보이는 부분 6~10
-      const trunkW = sz > 0.6 ? 3 : 2;
-
-      // ── 줄기 ──
-      const tc = nightT ? 0x151010 : 0x4a3018;
-      treeG.fillStyle(tc, 0.95);
-      treeG.fillRect(tx - (trunkW >> 1), ty - trunkH, trunkW, trunkH);
-
-      // ── 겨울: 앙상한 가지 ──
-      if (isWinter) {
-        const wH = 12 + (sz * 14 | 0);
-        treeG.fillStyle(tc, 0.95);
-        treeG.fillRect(tx - (trunkW >> 1), ty - wH, trunkW, wH);
-        const brC = nightT ? 0x111010 : 0x3a3030;
-        treeG.fillStyle(brC, 0.8);
-        const bN = 3 + (sz * 3 | 0);
-        for (let b = 0; b < bN; b++) {
-          const side = sR(tx, b * 3 + 40) > 0.5 ? 1 : -1;
-          const bLen = 4 + (sR(tx, b * 3 + 41) * 8 | 0);
-          const by = ty - wH + 2 + (b * ((wH * 0.55) / bN) | 0);
-          const bx = side > 0 ? tx + 1 : tx - bLen;
-          treeG.fillRect(bx, by, bLen, 1);
-          if (bLen > 5) treeG.fillRect(side > 0 ? bx + bLen - 1 : bx, by - 1, 1, 1);
-        }
-        if (sR(tx, 55) > 0.35) {
-          treeG.fillStyle(0xddeeff, 0.45);
-          treeG.fillRect(tx - 3, ty - wH + 3, 3, 1);
-        }
-        return;
-      }
-
-      // ── 수관: 삼각형 범위 안에 동그라미 가득 ──
-      const canopyTop = ty - treeH;
-      const canopyBot = ty - trunkH + 3; // 줄기 덮음
-      const canopyH = canopyBot - canopyTop;
-
-      // 동그라미 배치: 삼각형을 빈틈없이 채움
-      // 균등 그리드 + 시드 jitter → 원끼리 반드시 겹침
-      const baseR = treeW * 0.35; // 크게 (겹침 보장)
-      const rows = 4 + (sz * 2 | 0); // 4~6줄
-      const step = canopyH / (rows + 0.5);
-
-      for (let row = 0; row < rows; row++) {
-        const yRatio = (row + 0.3) / rows;
-        const cy = canopyTop + step * (row + 0.5);
-
-        // 삼각형 폭: 위에서 좁고 아래서 넓음
-        const widthAtY = treeW * (0.25 + yRatio * 0.75);
-        // 한 줄에 2~4개 (폭에 따라)
-        const perRow = Math.max(2, Math.round(widthAtY / (baseR * 0.8)));
-
-        for (let col = 0; col < perRow; col++) {
-          // 균등 배치 + 살짝 jitter
-          const xBase = -widthAtY * 0.5 + widthAtY * (col + 0.5) / perRow;
-          const jx = (sR(tx, row * 17 + col * 7 + 10) - 0.5) * baseR * 0.5;
-          const jy = (sR(tx, row * 17 + col * 7 + 11) - 0.5) * step * 0.3;
-          const cx = tx + xBase + jx;
-          const ccY = cy + jy;
-
-          // 원 크기: 기본 + 약간 랜덤 (크게 유지해서 겹침)
-          const cr = baseR * (0.85 + sR(tx, row * 17 + col * 7 + 13) * 0.3);
-
-          if (nightT) {
-            // 야간: 거의 검은 실루엣 + 미세한 색 힌트
-            treeG.fillStyle(0x050805, 0.92);
-            treeG.fillCircle(cx, ccY, cr);
-            treeG.fillStyle(cols[1] || 0x0a1a08, 0.08);
-            treeG.fillCircle(cx, ccY, cr);
-          } else {
-            // 그림자 (오른쪽 아래)
-            treeG.fillStyle(cols[0], 0.35);
-            treeG.fillCircle(cx + 1, ccY + 1, cr);
-            // 메인 (줄마다 색 변화)
-            const mi = 1 + ((row + col + (tx & 3)) % (cols.length - 2));
-            treeG.fillStyle(cols[mi], 0.92);
-            treeG.fillCircle(cx, ccY, cr);
-            // 하이라이트 (상단 2줄만)
-            if (row < 2) {
-              treeG.fillStyle(cols[cols.length - 1], 0.25);
-              treeG.fillCircle(cx - cr * 0.15, ccY - cr * 0.15, cr * 0.4);
-            }
-          }
-        }
-      }
-
-      // 봄: 꽃잎 점
-      if (mon >= 3 && mon <= 5 && !nightT && sR(tx, 12) > 0.3) {
-        for (let p = 0; p < 3; p++) {
-          const px = tx + ((sR(tx, p * 7 + 20) - 0.5) * treeW * 1.4) | 0;
-          const py = canopyTop + (sR(tx, p * 7 + 21) * canopyH * 0.8) | 0;
-          treeG.fillStyle(0xffdde8, 0.65);
-          treeG.fillCircle(px, py, 1.5);
-        }
-      }
-
-      // 쌍둥이: 일부 위치에 작은 나무 추가
-      if (sR(tx, 88) > 0.82) {
-        const tx2 = tx + 18 + (sR(tx, 66) * 6 | 0);
-        const sz2 = 0.15 + sR(tx, 44) * 0.25;
-        const h2 = 14 + (sz2 * 12 | 0);
-        const w2 = 6 + (sz2 * 6 | 0);
-        const r2 = w2 * 0.22;
-        const ct2 = ty - h2;
-        const cb2 = ty - 3;
-        const ch2 = cb2 - ct2;
-        treeG.fillStyle(tc, 0.9);
-        treeG.fillRect(tx2, ty - 4, 2, 4);
-        for (let c = 0; c < 5; c++) {
-          const yr = sR(tx2, c * 7 + 10) * 0.8 + 0.1;
-          const wd = w2 * (0.2 + yr * 0.8);
-          const ccx = tx2 + ((sR(tx2, c * 7 + 12) - 0.5) * wd * 1.4);
-          const ccy = ct2 + yr * ch2;
-          const ccr = r2 * (0.7 + sR(tx2, c * 7 + 13) * 0.4);
-          if (nightT) {
-            treeG.fillStyle(0x050805, 0.9);
-            treeG.fillCircle(ccx, ccy, ccr);
-          } else {
-            treeG.fillStyle(cols[0], 0.35);
-            treeG.fillCircle(ccx + 0.5, ccy + 0.5, ccr);
-            treeG.fillStyle(cols[2], 0.88);
-            treeG.fillCircle(ccx, ccy, ccr);
-          }
-        }
-      }
+    treePositions.forEach(({ x, size, isEv }) => {
+      const treeSeason = isEv ? "evergreen" : season;
+      const key = `tree_${treeSeason}_${size}`;
+      const tree = this.add.image(x, wh, key).setOrigin(0.5, 1).setDepth(6);
+      if (nightT) tree.setTint(0x0a1520);
+      this.envGroup.add(tree);
     });
 
     // ── 안개 오버레이 ─────────────────────────────────────────────
@@ -898,29 +773,22 @@ export default class OfficeScene extends Phaser.Scene {
 
     // 2x2 등맞대기 배치
     // 윗줄: PC → 데스크 → 캐릭(정면) | 아랫줄: 캐릭(뒷면) → 데스크 → PC뒷면
-    // Pixel Agents 에셋 비율 맞추기
-    // DESK=48x32, PC=16x32(세로 길음, 상단 절반만 보이게)
-    // CHAR: LimeZu(0~3)=16x32, PixelAgents(4~5)=16x16
-    // 모든 에셋 동일 스케일, PC는 cropY로 모니터 부분만
+    // LimeZu(0~3)=16x32 — 원본 크기로 선명하게
     const members: MemberSprite[] = [];
-    // 2x2 등맞대기 — 그래픽스 모니터
-    const S = 1.0;
-    const gapX = 34;
-    const rowGap = 24;
+    // 2x2 등맞대기 — 2× 업스케일 스프라이트 (32×64 프레임)
+    const S = 0.75;      // 2× 스프라이트(32×64) × 0.75 = 24px 캐릭 (기존 16px보다 1.5배)
+    const gapX = 36;     // dy = ±18 (약간 겹침 — 탑뷰 원근감으로 자연스러움)
 
-    // 모니터 옆모습 (facing = 1: 오른쪽 향함, -1: 왼쪽 향함)
+    // 모니터 옆모습 (2× 업스케일 캐릭에 맞게 1.5× 크기)
     const drawMonSide = (g: Phaser.GameObjects.Graphics, facing: number) => {
       const f = facing;
-      // 모니터 본체 (옆에서 보면 얇음)
-      g.fillStyle(0x2a2a2a, 1); g.fillRect(-3, -10, 6, 14);
-      // 화면 (한쪽만 보임)
-      g.fillStyle(0x1a2a40, 1); g.fillRect(f > 0 ? -3 : 1, -8, 3, 10);
-      g.fillStyle(0x50d070, 0.8); g.fillRect(f > 0 ? -2 : 1, -6, 2, 1);
-      g.fillStyle(0x60a0e0, 0.6); g.fillRect(f > 0 ? -2 : 1, -4, 2, 1);
-      g.fillStyle(0x50d070, 0.5); g.fillRect(f > 0 ? -2 : 1, -2, 2, 1);
-      // 스탠드
-      g.fillStyle(0x444444, 1); g.fillRect(-1, 4, 2, 3);
-      g.fillStyle(0x555555, 1); g.fillRect(-4, 7, 8, 2);
+      g.fillStyle(0x2a2a2a, 1); g.fillRect(-4, -14, 8, 20);           // 모니터 본체
+      g.fillStyle(0x1a2a40, 1); g.fillRect(f > 0 ? -4 : 1, -12, 4, 14); // 화면
+      g.fillStyle(0x50d070, 0.8); g.fillRect(f > 0 ? -3 : 2, -9, 3, 2);  // 초록선
+      g.fillStyle(0x60a0e0, 0.6); g.fillRect(f > 0 ? -3 : 2, -5, 3, 2);  // 파란선
+      g.fillStyle(0x50d070, 0.5); g.fillRect(f > 0 ? -3 : 2, -1, 3, 2);  // 초록선2
+      g.fillStyle(0x444444, 1); g.fillRect(-2, 6, 3, 4);               // 스탠드
+      g.fillStyle(0x555555, 1); g.fillRect(-5, 10, 10, 2);             // 받침
     };
 
     const isSolo = t.chars.length === 1;
@@ -932,9 +800,8 @@ export default class OfficeScene extends Phaser.Scene {
       if (i >= 4) return;
 
       if (isSolo) {
-        const isLimzu = charIdx <= 3;
         const char = this.add.sprite(0, 0, `char_${charIdx}`, 0)
-          .setScale(S * 1.5).setOrigin(0.5, isLimzu ? 0.75 : 0.5)
+          .setScale(S).setOrigin(0.5, 0.75)
           .play(`char_${charIdx}_idle`);
         container.add(char);
         members.push({ char, charIdx, baseX: 0, baseY: 0 });
@@ -944,36 +811,29 @@ export default class OfficeScene extends Phaser.Scene {
       const isLeft = i < 2;
       const row = i % 2;
       const dy = row === 0 ? -gapX / 2 : gapX / 2;
-      const isLimzu = charIdx <= 3;
 
       if (isLeft) {
-        // 왼쪽: 캐릭(→) → 책상 → 모니터(→) — 조밀하게
-        const deskX = -10;
-        // 책상
-        container.add(this.add.image(deskX, dy + 3, "desk_front").setScale(S * 0.45, S * 0.45));
-        // 모니터 옆모습 (오른쪽 향함)
+        // 왼쪽: 캐릭(→) → 책상 → 모니터(→)
+        const deskX = -13;
+        container.add(this.add.image(deskX, dy + 6, "desk_front").setScale(0.75));
         const mon = this.add.graphics();
-        drawMonSide(mon, 1); mon.setPosition(deskX, dy - 5);
+        drawMonSide(mon, 1); mon.setPosition(deskX + 2, dy - 8);
         container.add(mon);
-        // 캐릭터
-        const charX = deskX - 16;
+        const charX = deskX - 26;
         const char = this.add.sprite(charX, dy, `char_${charIdx}`, cols * 2)
-          .setScale(S).setOrigin(0.5, isLimzu ? 0.75 : 0.5);
+          .setScale(S).setOrigin(0.5, 0.75);
         container.add(char);
         members.push({ char, charIdx, baseX: charX, baseY: dy });
       } else {
-        // 오른쪽: 모니터(←) → 책상 → 캐릭(←) — 조밀하게
-        const deskX = 10;
-        // 책상
-        container.add(this.add.image(deskX, dy + 3, "desk_front").setScale(S * 0.45, S * 0.45));
-        // 모니터 옆모습 (왼쪽 향함)
+        // 오른쪽: 모니터(←) → 책상 → 캐릭(←)
+        const deskX = 13;
+        container.add(this.add.image(deskX, dy + 6, "desk_front").setScale(0.75));
         const mon = this.add.graphics();
-        drawMonSide(mon, -1); mon.setPosition(deskX, dy - 5);
+        drawMonSide(mon, -1); mon.setPosition(deskX - 2, dy - 8);
         container.add(mon);
-        // 캐릭터
-        const charX = deskX + 16;
+        const charX = deskX + 26;
         const char = this.add.sprite(charX, dy, `char_${charIdx}`, cols)
-          .setScale(S).setOrigin(0.5, isLimzu ? 0.75 : 0.5);
+          .setScale(S).setOrigin(0.5, 0.75);
         container.add(char);
         members.push({ char, charIdx, baseX: charX, baseY: dy });
       }
@@ -1125,12 +985,30 @@ export default class OfficeScene extends Phaser.Scene {
       if (this.workingSet.has(teamId)) return;
       if (Phaser.Math.Between(1, 10) > 3) return;
       const m = tg.members[Phaser.Math.Between(0, tg.members.length - 1)];
-      m.char.play(`char_${m.charIdx}_walk_down`);
       const mx = Phaser.Math.Between(-2, 2);
+      if (mx === 0) return; // 이동 없으면 스킵
+      const COLS = 7;
+      const isDeskChar = m.baseX !== 0;
+      if (!isDeskChar) {
+        // 솔로 캐릭: 이동 방향에 맞는 워크 애니 (좌우만)
+        const anim = mx > 0 ? `char_${m.charIdx}_walk_right` : `char_${m.charIdx}_walk_left`;
+        m.char.play(anim);
+      }
+      // 움직이는 캐릭터를 컨테이너 맨 앞으로 → 다른 요소에 가려지지 않음
+      tg.container.bringToTop(m.char);
+      // 책상 캐릭: 방향 유지, 슬라이드만
       this.tweens.add({ targets: m.char, x: m.baseX + mx, duration: 350, ease: "Sine.easeInOut",
         onComplete: () => {
-          m.char.play(`char_${m.charIdx}_idle`);
-          this.tweens.add({ targets: m.char, x: m.baseX, duration: 300, ease: "Sine.easeInOut" });
+          if (isDeskChar) {
+            if (m.baseX < 0) m.char.setFrame(COLS * 2);  // 오른쪽 옆모습 유지
+            else m.char.setFrame(COLS);                    // 왼쪽 옆모습 유지
+          }
+          // 리턴 트윈 — 솔로는 끝나면 idle로
+          this.tweens.add({ targets: m.char, x: m.baseX, duration: 300, ease: "Sine.easeInOut",
+            onComplete: () => {
+              if (!isDeskChar) m.char.play(`char_${m.charIdx}_idle`);
+            },
+          });
         },
       });
     });
@@ -1150,7 +1028,9 @@ export default class OfficeScene extends Phaser.Scene {
       glow.strokeRoundedRect(-pw / 2 - 3, -ph / 2 - 3, pw + 6, ph + 6, 6);
       glow.fillStyle(0xf5c842, 0.04);
       glow.fillRoundedRect(-pw / 2 - 3, -ph / 2 - 3, pw + 6, ph + 6, 6);
-      tg.container.add(glow);
+      // index 2에 삽입 → bg(0), highlight(1) 뒤, 모든 캐릭터/가구 앞
+      // (add()로 마지막에 추가하면 캐릭터 위에 렌더되어 잘림 현상 발생)
+      tg.container.addAt(glow, 2);
       tg.workGlow = glow;
       this.tweens.add({
         targets: glow, alpha: 0.25, duration: 900,
@@ -1163,7 +1043,16 @@ export default class OfficeScene extends Phaser.Scene {
     }
 
     tg.members.forEach(m => {
-      m.char.play(working ? `char_${m.charIdx}_type` : `char_${m.charIdx}_idle`);
+      if (working) {
+        // 오른쪽 책상(baseX>0)=왼쪽 향함 → type_left, 나머지 → type
+        const typeAnim = m.baseX > 0 ? `char_${m.charIdx}_type_left` : `char_${m.charIdx}_type`;
+        m.char.play(typeAnim);
+      } else {
+        const COLS = 7;
+        if (m.baseX < 0) m.char.setFrame(COLS * 2);   // 왼쪽 책상 → 오른쪽 옆모습 복원
+        else if (m.baseX > 0) m.char.setFrame(COLS);  // 오른쪽 책상 → 왼쪽 옆모습 복원
+        else m.char.play(`char_${m.charIdx}_idle`);   // 솔로 → 정면
+      }
 
       // 말풍선 — 캐릭터 머리 위 (scene 레벨 depth 200)
       if (working && !m.bubble) {

@@ -13,11 +13,11 @@ import * as Phaser from "phaser";
 // ═══════════════════════════════════
 
 export function preloadAssets(scene: Phaser.Scene) {
-  // 캐릭터 0~3: LimeZu (16x32 프레임) — 전 팀 공용
+  // 캐릭터 0~3: LimeZu 2× 업스케일 (32×64 프레임) — 전 팀 공용
   for (let i = 0; i <= 3; i++) {
     scene.load.spritesheet(`char_${i}`, `/assets/char_${i}.png`, {
-      frameWidth: 16,
-      frameHeight: 32,
+      frameWidth: 32,
+      frameHeight: 64,
     });
   }
 
@@ -150,13 +150,25 @@ export function registerCharAnims(scene: Phaser.Scene) {
       repeat: -1,
     });
 
-    // typing (앉은 자세 — 행4 사용, 또는 행0 변형)
+    // typing — 오른쪽 향함 (왼쪽 책상, col0~2=RIGHT 프레임)
     scene.anims.create({
       key: `${key}_type`,
       frames: [
         { key, frame: cols * 4 },
         { key, frame: cols * 4 + 1 },
         { key, frame: cols * 4 + 2 },
+      ],
+      frameRate: 4,
+      repeat: -1,
+    });
+
+    // typing — 왼쪽 향함 (오른쪽 책상, col3~5=LEFT 프레임)
+    scene.anims.create({
+      key: `${key}_type_left`,
+      frames: [
+        { key, frame: cols * 4 + 3 },
+        { key, frame: cols * 4 + 4 },
+        { key, frame: cols * 4 + 5 },
       ],
       frameRate: 4,
       repeat: -1,
