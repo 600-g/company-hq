@@ -40,16 +40,6 @@ export function preloadAssets(scene: Phaser.Scene) {
   scene.load.image("pot", "/assets/furniture/POT/POT.png");
   scene.load.image("coffee_table", "/assets/furniture/COFFEE_TABLE/COFFEE_TABLE.png");
 
-  // 추가 가구 에셋 (벽장식/소품)
-  scene.load.image("hanging_plant", "/assets/furniture/HANGING_PLANT/HANGING_PLANT.png");
-  scene.load.image("large_painting", "/assets/furniture/LARGE_PAINTING/LARGE_PAINTING.png");
-  scene.load.image("small_painting", "/assets/furniture/SMALL_PAINTING/SMALL_PAINTING.png");
-  scene.load.image("small_painting_2", "/assets/furniture/SMALL_PAINTING_2/SMALL_PAINTING_2.png");
-  scene.load.image("clock", "/assets/furniture/CLOCK/CLOCK.png");
-  scene.load.image("plant_2", "/assets/furniture/PLANT_2/PLANT_2.png");
-  scene.load.image("sofa_front", "/assets/furniture/SOFA/SOFA_FRONT.png");
-  scene.load.image("small_table", "/assets/furniture/SMALL_TABLE/SMALL_TABLE_FRONT.png");
-
   // 오리지널 사무실 에셋 (Pixel Forge)
   scene.load.image("o_laptop", "/assets/original/office/laptop_open.png");
   scene.load.image("o_laptop_closed", "/assets/original/office/laptop_closed.png");
