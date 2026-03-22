@@ -772,6 +772,8 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
 
   const handleAddTeam = useCallback((newTeam: Team) => {
     setTeams(prev => [...prev, newTeam]);
+    // 사무실 씬에 팀 자동 배치
+    gameRef.current?.addTeam(newTeam.id, newTeam.name, newTeam.emoji);
   }, []);
 
   // 날짜 상대 표시

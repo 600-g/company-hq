@@ -5,6 +5,7 @@ import { useEffect, useRef, useCallback, forwardRef, useImperativeHandle, useSta
 export interface OfficeGameHandle {
   setWorking: (teamId: string, working: boolean) => void;
   changeFloor: (floor: number) => void;
+  addTeam: (teamId: string, teamName: string, emoji: string) => void;
 }
 
 interface Props {
@@ -31,6 +32,10 @@ const OfficeGame = forwardRef<OfficeGameHandle, Props>(({ onTeamClick }, ref) =>
     changeFloor: (floor: number) => {
       const scene = sceneRef.current as { changeFloor?: (f: number) => void } | null;
       scene?.changeFloor?.(floor);
+    },
+    addTeam: (teamId: string, teamName: string, emoji: string) => {
+      const scene = sceneRef.current as { addTeam?: (id: string, name: string, emoji: string) => void } | null;
+      scene?.addTeam?.(teamId, teamName, emoji);
     },
   }));
 

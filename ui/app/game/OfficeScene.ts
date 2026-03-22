@@ -33,6 +33,7 @@ const ALL_FLOORS: Record<number, TeamConfig[]> = {
     { id: "ai900", name: "AI900", emoji: "📚", chars: [3, 1, 0, 2], gridX: 16, gridY: 4, gridW: 4, gridH: 4 },
     { id: "cl600g", name: "CL600G", emoji: "⚡", chars: [0, 2, 3, 1], gridX: 3, gridY: 10, gridW: 4, gridH: 4 },
     { id: "design-team", name: "디자인팀", emoji: "🎨", chars: [1, 3, 0, 2], gridX: 8, gridY: 10, gridW: 4, gridH: 4 },
+    { id: "content-lab", name: "콘텐츠랩", emoji: "🔬", chars: [2, 0, 3, 1], gridX: 16, gridY: 10, gridW: 4, gridH: 4 },
   ],
   2: [],
   3: [],
@@ -1082,6 +1083,50 @@ export default class OfficeScene extends Phaser.Scene {
         m.bubble = undefined;
       }
     });
+  }
+
+  /** 런타임에 새 팀을 사무실에 추가 (API로 팀 생성 후 호출) */
+  addTeam(teamId: string, teamName: string, emoji: string) {
+    // 이미 존재하면 무시
+    if (this.teamGroups.has(teamId)) return;
+
+    // 빈 그리드 위치 자동 탐색 (4x4 블록)
+    const gridW = 4, gridH = 4;
+    const pos = this.findEmptyGrid(gridW, gridH);
+    if (!pos) return; // 공간 없으면 무시
+
+    const charIndices = [
+      (teamId.charCodeAt(0) || 0) % 4,
+      ((teamId.charCodeAt(1) || 1) + 1) % 4,
+      ((teamId.charCodeAt(2) || 2) + 2) % 4,
+      ((teamId.charCodeAt(3) || 3) + 3) % 4,
+    ];
+
+    const config: TeamConfig = {
+      id: teamId, name: teamName, emoji,
+      chars: charIndices, gridX: pos.x, gridY: pos.y, gridW, gridH,
+    };
+
+    // ALL_FLOORS에도 추가 (층 전환 시 유지)
+    const floorTeams = ALL_FLOORS[this.currentFloor];
+    if (floorTeams) floorTeams.push(config);
+
+    this.createTeamGroup(config);
+    this.occupyGrid(pos.x, pos.y, gridW, gridH, true);
+    this.savePositions();
+  }
+
+  /** gridW x gridH 크기의 빈 공간을 그리드에서 찾아 반환 */
+  private findEmptyGrid(gridW: number, gridH: number): { x: number; y: number } | null {
+    // 벽 아래부터 탐색 (WALL_H 이후)
+    for (let y = WALL_H; y <= ROWS - gridH; y++) {
+      for (let x = 0; x <= COLS - gridW; x++) {
+        if (this.canPlace(x, y, gridW, gridH, "")) {
+          return { x, y };
+        }
+      }
+    }
+    return null;
   }
 
   update() {
