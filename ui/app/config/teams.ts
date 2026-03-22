@@ -84,6 +84,15 @@ export const defaultTeams: Team[] = [
     status: "운영중",
     githubUrl: "https://github.com/600-g/design-team",
   },
+  {
+    id: "content-lab",
+    name: "콘텐츠랩",
+    emoji: "🔬",
+    repo: "content-lab",
+    localPath: "~/Developer/my-company/content-lab",
+    status: "운영중",
+    githubUrl: "https://github.com/600-g/content-lab",
+  },
 ];
 
 // 하위 호환: 기존 `teams` import 유지
