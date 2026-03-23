@@ -124,9 +124,14 @@ export default class OfficeScene extends Phaser.Scene {
   // ═══════════════════════════════
 
   private buildFloor(floor: number) {
-    // 기존 제거
+    // 기존 제거 (말풍선 포함)
     this.envGroup.clear(true, true);
-    this.teamGroups.forEach(tg => tg.container.destroy());
+    this.teamGroups.forEach(tg => {
+      tg.members.forEach(m => {
+        if (m.bubble) { m.bubble.destroy(); m.bubble = undefined; }
+      });
+      tg.container.destroy();
+    });
     this.teamGroups.clear();
 
     // 그리드 초기화
