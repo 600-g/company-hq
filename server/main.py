@@ -439,6 +439,145 @@ async def restart_agent(team_id: str):
     return {"ok": True, "team_id": team_id}
 
 
+# ── 디스패치 (다중 에이전트 협업) ─────────────────────
+
+import logging as _log
+
+# 디스패치 작업 저장소
+DISPATCH_TASKS: dict[str, dict] = {}  # dispatch_id -> task info
+
+@app.post("/api/dispatch")
+async def dispatch_task(body: dict):
+    """CPO가 여러 팀에 작업을 분배하고 결과를 수집
+
+    body 예시:
+    {
+        "instruction": "매매봇 대시보드 리뉴얼해",
+        "steps": [
+            {"team": "trading-bot", "prompt": "현재 데이터 구조 정리해서 알려줘"},
+            {"team": "cl600g", "prompt": "이 데이터로 대시보드 만들어: {prev_result}"}
+        ]
+    }
+
+    steps가 없으면 CPO가 자동으로 판단해서 분배
+    """
+    instruction = body.get("instruction", "")
+    steps = body.get("steps", [])
+    if not instruction:
+        return {"ok": False, "error": "instruction이 필요합니다"}
+
+    dispatch_id = str(uuid.uuid4())[:8]
+    DISPATCH_TASKS[dispatch_id] = {
+        "instruction": instruction,
+        "status": "running",
+        "steps": [],
+        "started": datetime.now().isoformat(),
+    }
+    _log_activity("cpo-claude", f"📋 디스패치 시작: {instruction[:50]}")
+
+    # steps가 없으면 CPO에게 분배 계획 요청
+    if not steps:
+        plan_prompt = (
+            f"다음 작업을 수행하려고 해:\n\n{instruction}\n\n"
+            f"현재 팀 목록:\n"
+            + "\n".join(f"- {t['emoji']} {t['name']} ({t['id']}): {t['repo']}" for t in TEAMS if t['id'] not in ('server-monitor',))
+            + "\n\n"
+            "이 작업을 어떤 팀에 어떤 순서로 시킬지 JSON으로 답해줘. 형식:\n"
+            '[{"team": "team-id", "prompt": "팀에게 줄 구체적 지시"}]\n'
+            "JSON만 답해. 설명 없이."
+        )
+        cpo_path = next((t["localPath"] for t in TEAMS if t["id"] == "cpo-claude"), None)
+        plan_result = ""
+        async for chunk in run_claude(plan_prompt, cpo_path, "cpo-claude"):
+            if chunk["kind"] == "text":
+                plan_result += chunk["content"]
+
+        # JSON 파싱 시도
+        import re
+        json_match = re.search(r'\[.*\]', plan_result, re.DOTALL)
+        if json_match:
+            try:
+                steps = json.loads(json_match.group())
+            except json.JSONDecodeError:
+                DISPATCH_TASKS[dispatch_id]["status"] = "failed"
+                DISPATCH_TASKS[dispatch_id]["error"] = "CPO 분배 계획 파싱 실패"
+                return {"ok": False, "dispatch_id": dispatch_id, "error": "CPO 분배 계획 파싱 실패", "raw": plan_result}
+        else:
+            DISPATCH_TASKS[dispatch_id]["status"] = "failed"
+            return {"ok": False, "dispatch_id": dispatch_id, "error": "CPO가 분배 계획을 생성하지 못함", "raw": plan_result}
+
+    # 순차 실행 (이전 결과를 다음 팀에 전달)
+    prev_result = ""
+    all_results = []
+
+    for i, step in enumerate(steps):
+        team_id = step.get("team", "")
+        prompt = step.get("prompt", "")
+
+        # 팀 존재 확인
+        team = next((t for t in TEAMS if t["id"] == team_id), None)
+        if not team:
+            step_result = {"step": i + 1, "team": team_id, "status": "skipped", "error": f"팀 '{team_id}'을 찾을 수 없음"}
+            all_results.append(step_result)
+            continue
+
+        # {prev_result} 치환
+        actual_prompt = prompt.replace("{prev_result}", prev_result)
+
+        # 실행
+        _log_activity(team_id, f"📨 디스패치 작업 수신: {actual_prompt[:50]}")
+        result_text = ""
+        project_path = team["localPath"]
+
+        try:
+            async for chunk in run_claude(actual_prompt, project_path, team_id):
+                if chunk["kind"] == "text":
+                    result_text += chunk["content"]
+        except Exception as e:
+            step_result = {"step": i + 1, "team": team_id, "status": "error", "error": str(e)}
+            all_results.append(step_result)
+            continue
+
+        prev_result = result_text
+        step_result = {
+            "step": i + 1,
+            "team": team_id,
+            "team_name": team["name"],
+            "prompt": actual_prompt[:200],
+            "result": result_text[:2000],
+            "status": "done",
+        }
+        all_results.append(step_result)
+        DISPATCH_TASKS[dispatch_id]["steps"] = all_results
+        _log.info(f"[DISPATCH] Step {i+1}/{len(steps)} 완료: {team_id}")
+
+    DISPATCH_TASKS[dispatch_id]["status"] = "done"
+    DISPATCH_TASKS[dispatch_id]["completed"] = datetime.now().isoformat()
+    _log_activity("cpo-claude", f"✅ 디스패치 완료: {instruction[:50]}")
+
+    return {
+        "ok": True,
+        "dispatch_id": dispatch_id,
+        "instruction": instruction,
+        "steps": all_results,
+    }
+
+
+@app.get("/api/dispatch/{dispatch_id}")
+async def get_dispatch(dispatch_id: str):
+    """디스패치 작업 상태 조회"""
+    task = DISPATCH_TASKS.get(dispatch_id)
+    if not task:
+        return {"ok": False, "error": "디스패치를 찾을 수 없습니다"}
+    return {"ok": True, **task}
+
+
+@app.get("/api/dispatch")
+async def list_dispatches():
+    """모든 디스패치 작업 목록"""
+    return [{"id": k, **v} for k, v in DISPATCH_TASKS.items()]
+
+
 # ── WebSocket ─────────────────────────────────────────
 
 @app.websocket("/ws/chat/{team_id}")
