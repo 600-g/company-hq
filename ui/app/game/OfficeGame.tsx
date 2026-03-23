@@ -6,6 +6,8 @@ export interface OfficeGameHandle {
   setWorking: (teamId: string, working: boolean) => void;
   changeFloor: (floor: number) => void;
   addTeam: (teamId: string, teamName: string, emoji: string) => void;
+  moveTeamToFloor: (teamId: string, targetFloor: number) => void;
+  getTeamFloor: (teamId: string) => number | null;
 }
 
 interface Props {
@@ -36,6 +38,14 @@ const OfficeGame = forwardRef<OfficeGameHandle, Props>(({ onTeamClick }, ref) =>
     addTeam: (teamId: string, teamName: string, emoji: string) => {
       const scene = sceneRef.current as { addTeam?: (id: string, name: string, emoji: string) => void } | null;
       scene?.addTeam?.(teamId, teamName, emoji);
+    },
+    moveTeamToFloor: (teamId: string, targetFloor: number) => {
+      const scene = sceneRef.current as { moveTeamToFloor?: (id: string, floor: number) => void } | null;
+      scene?.moveTeamToFloor?.(teamId, targetFloor);
+    },
+    getTeamFloor: (teamId: string) => {
+      const scene = sceneRef.current as { getTeamFloor?: (id: string) => number | null } | null;
+      return scene?.getTeamFloor?.(teamId) ?? null;
     },
   }));
 

@@ -103,11 +103,29 @@ export default function ChatWindow({
   const [showSpec, setShowSpec] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [pos, setPos] = useState({ x: initialX, y: initialY });
-  const [size, setSize] = useState({ w: isDashboard ? 420 : 380, h: isDashboard ? 560 : 440 });
+
+  // 크기 저장/복원 (localStorage)
+  const sizeKey = `hq-chat-size-${team.id}`;
+  const getInitialSize = () => {
+    if (typeof window === "undefined") return { w: isDashboard ? 420 : 380, h: isDashboard ? 560 : 440 };
+    try {
+      const saved = localStorage.getItem(sizeKey);
+      if (saved) return JSON.parse(saved) as { w: number; h: number };
+    } catch {}
+    return { w: isDashboard ? 420 : 380, h: isDashboard ? 560 : 440 };
+  };
+  const [size, setSize] = useState(getInitialSize);
   const [dragging, setDragging] = useState(false);
   const [resizing, setResizing] = useState<string | null>(null);
   const dragOffset = useRef({ x: 0, y: 0 });
   const resizeStart = useRef({ x: 0, y: 0, w: 0, h: 0, px: 0, py: 0 });
+
+  // 리사이즈 끝나면 크기 저장
+  useEffect(() => {
+    if (!resizing) {
+      try { localStorage.setItem(sizeKey, JSON.stringify(size)); } catch {}
+    }
+  }, [resizing, size, sizeKey]);
 
   useEffect(() => {
     setIsMobile(window.innerWidth < 768);

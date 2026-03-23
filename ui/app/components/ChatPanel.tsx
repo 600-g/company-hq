@@ -190,7 +190,7 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
         if (data.type === "history_sync") {
           const serverMsgs: Message[] = data.messages || [];
           if (serverMsgs.length > 0) {
-            setMessages(prev => prev.length === 0 ? serverMsgs : prev);
+            setMessages(serverMsgs);
           }
           return;
         }
@@ -289,14 +289,14 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
         </div>
 
         {/* 메시지 */}
-        <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-2 min-h-0">
+        <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-2 min-h-0 select-text">
           {messages.length === 0 && (
             <div className="py-6 text-center">
               <p className="text-[10px] text-gray-600">명령을 입력하거나 아래 바로가기를 사용하세요</p>
             </div>
           )}
           {messages.map((msg, i) => (
-            <div key={i} className={`group relative text-[11px] px-2 py-1.5 rounded ${
+            <div key={i} className={`group relative text-[11px] px-2 py-1.5 rounded select-text cursor-text ${
               msg.type === "user"
                 ? "bg-blue-600/15 text-blue-200 border-l-2 border-blue-500"
                 : "bg-[#1a2a1a] text-green-300 border-l-2 border-green-600"

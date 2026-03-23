@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import { teams as defaultTeamList, Team } from "../config/teams";
-import { Message, getWsStorageKey } from "./ChatPanel";
+import ChatPanel, { Message, getWsStorageKey } from "./ChatPanel";
 import ChatWindow from "./ChatWindow";
 import WeatherBoard from "./WeatherBoard";
 import type { OfficeGameHandle } from "../game/OfficeGame";
@@ -696,6 +696,9 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
   const [showMenu, setShowMenu] = useState(false);
   const [openWindows, setOpenWindows] = useState<string[]>([]); // 열린 팀 id 목록
   const [focusedWindow, setFocusedWindow] = useState<string>("");
+  const [mobileChat, setMobileChat] = useState<string | null>(null); // 모바일 풀스크린 채팅 팀 id
+  const [mobileDispatch, setMobileDispatch] = useState(false); // 모바일 통합채팅
+  const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
   const [chatHistory, setChatHistory] = useState<Record<string, Message[]>>(() => {
     if (typeof window === "undefined") return {};
     try {
@@ -758,6 +761,12 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
   const [clickPositions, setClickPositions] = useState<Record<string, { x: number; y: number }>>({});
 
   const handleTeamClick = useCallback((teamId: string, screenX?: number, screenY?: number) => {
+    const mobile = typeof window !== "undefined" && window.innerWidth < 768;
+    if (mobile) {
+      setMobileChat(prev => prev === teamId ? null : teamId);
+      setMobileDispatch(false);
+      return;
+    }
     if (screenX != null && screenY != null) {
       setClickPositions(prev => ({ ...prev, [teamId]: { x: screenX, y: screenY } }));
     }
@@ -794,7 +803,7 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
   };
 
   return (
-    <div className="h-screen flex flex-col md:flex-row overflow-hidden bg-[#1a1a2e]">
+    <div className="h-[100dvh] flex flex-col md:flex-row overflow-hidden bg-[#1a1a2e]">
       {showAddModal && <AddTeamModal onClose={() => setShowAddModal(false)} onCreated={handleAddTeam} />}
       {guideTeamId && <GuideModal teamId={guideTeamId} onClose={() => setGuideTeamId(null)} />}
       {user && onLogout && <SideMenu user={user} open={showMenu} onClose={() => setShowMenu(false)} onLogout={onLogout} />}
@@ -835,8 +844,8 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
           </div>
         </header>
 
-        {/* Phaser */}
-        <main className="flex-1 relative min-h-0">
+        {/* Phaser — 모바일에서 채팅 열리면 축소 */}
+        <main className={`relative min-h-0 md:flex-1 ${(mobileChat || mobileDispatch) ? "h-[35%] shrink-0" : "flex-1"}`}>
           {GameComponent ? (
             <GameComponent ref={gameRef} onTeamClick={handleTeamClick} />
           ) : (
@@ -846,15 +855,72 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
           )}
         </main>
 
+        {/* ── 모바일 인라인 채팅 (사무실 아래, 하단바 위) ── */}
+        {mobileChat && (() => {
+          const team = teams.find(t => t.id === mobileChat);
+          if (!team) return null;
+          return (
+            <div className="md:hidden flex-1 flex flex-col min-h-0 border-t border-[#2a2a5a] bg-[#0a0a18]">
+              {/* 채팅 헤더 */}
+              <div className="flex items-center justify-between px-3 py-1.5 bg-[#0e0e20] border-b border-[#2a2a5a] shrink-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm">{team.emoji}</span>
+                  <span className="text-xs font-semibold text-white">{team.name}</span>
+                </div>
+                <button onClick={() => setMobileChat(null)} className="text-gray-500 hover:text-white text-[10px] px-2 py-0.5 rounded bg-[#1a1a3a]">닫기</button>
+              </div>
+              {/* 채팅 본문 */}
+              <div className="flex-1 min-h-0">
+                <ChatPanel
+                  team={team}
+                  onClose={() => setMobileChat(null)}
+                  onWorkingChange={(working) => handleWorkingChange(team.id, working)}
+                  inline={true}
+                  messages={chatHistory[team.id] || []}
+                  onMessages={(msgs) => setChatHistory(prev => ({ ...prev, [team.id]: msgs }))}
+                />
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* ── 모바일 인라인 통합채팅 ── */}
+        {mobileDispatch && !mobileChat && (
+          <div className="md:hidden flex-1 flex flex-col min-h-0 border-t border-[#2a2a5a] bg-[#0a0a18]">
+            <div className="flex items-center justify-between px-3 py-1.5 bg-[#0e0e20] border-b border-[#2a2a5a] shrink-0">
+              <div className="flex items-center gap-2">
+                <span className="text-sm">📡</span>
+                <span className="text-xs font-semibold text-white">통합 채팅</span>
+              </div>
+              <button onClick={() => setMobileDispatch(false)} className="text-gray-500 hover:text-white text-[10px] px-2 py-0.5 rounded bg-[#1a1a3a]">닫기</button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-3">
+              <DispatchChat teams={teams} onOpenChat={(id) => { setMobileDispatch(false); setMobileChat(id); }} />
+            </div>
+          </div>
+        )}
+
         {/* ── 모바일 하단 에이전트 바 ── */}
-        <div className="md:hidden border-t border-[#2a2a5a] bg-[#0e0e20] px-2 py-1.5 shrink-0">
+        <div className="md:hidden border-t border-[#2a2a5a] bg-[#0e0e20] px-2 pt-2 shrink-0" style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}>
           <div className="flex gap-1.5 overflow-x-auto pb-0.5 scrollbar-hide">
+            {/* 통합채팅 버튼 */}
+            <button
+              onClick={() => { setMobileDispatch(v => !v); setMobileChat(null); }}
+              className={`shrink-0 flex items-center gap-1 px-3 py-2.5 rounded-full text-[12px] font-medium transition-all ${
+                mobileDispatch
+                  ? "bg-purple-500/15 text-purple-400 border border-purple-500/30"
+                  : "bg-[#1a1a3a] text-purple-400/60 border border-[#2a2a5a] active:bg-[#2a2a4a]"
+              }`}
+            >
+              <span>📡</span>
+              <span className="whitespace-nowrap">통합</span>
+            </button>
             {teams.filter(t => t.id !== "server-monitor").map(team => (
               <button
                 key={team.id}
                 onClick={() => handleTeamClick(team.id)}
-                className={`shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] transition-all ${
-                  openWindows.includes(team.id)
+                className={`shrink-0 flex items-center gap-1 px-3 py-2.5 rounded-full text-[12px] font-medium transition-all ${
+                  mobileChat === team.id
                     ? "bg-yellow-500/15 text-yellow-400 border border-yellow-500/30"
                     : "bg-[#1a1a3a] text-gray-400 border border-[#2a2a5a] active:bg-[#2a2a4a]"
                 }`}
@@ -865,7 +931,7 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
             ))}
             <button
               onClick={() => setShowAddModal(true)}
-              className="shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-full text-[11px] bg-[#1a1a3a] text-yellow-400/60 border border-dashed border-yellow-500/20 active:bg-[#2a2a4a]"
+              className="shrink-0 flex items-center gap-1 px-3 py-2.5 rounded-full text-[12px] bg-[#1a1a3a] text-yellow-400/60 border border-dashed border-yellow-500/20 active:bg-[#2a2a4a]"
             >
               +
             </button>
@@ -873,7 +939,7 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
         </div>
       </div>
 
-      {/* ── 채팅 윈도우들 (팀 위치 기반) ── */}
+      {/* ── 채팅 윈도우들 (PC만, 팀 위치 기반) ── */}
       {openWindows.map((teamId, idx) => {
         const team = teams.find(t => t.id === teamId);
         if (!team) return null;
@@ -966,6 +1032,20 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
                         <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
                       </svg>
                     </button>
+                    {team.id !== "server-monitor" && team.id !== "cpo-claude" && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const currentFloor = gameRef.current?.getTeamFloor(team.id) || 1;
+                          const nextFloor = currentFloor === 1 ? 2 : 1;
+                          gameRef.current?.moveTeamToFloor(team.id, nextFloor);
+                        }}
+                        className="w-6 h-6 flex items-center justify-center rounded text-[8px] text-gray-600 hover:text-blue-400 hover:bg-[#1a1a3a] transition-all"
+                        title="층 이동"
+                      >
+                        ↕
+                      </button>
+                    )}
                     {team.id !== "server-monitor" && team.id !== "cpo-claude" && (
                       <button
                         onClick={async (e) => {

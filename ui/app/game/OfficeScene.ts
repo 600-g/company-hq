@@ -1066,6 +1066,56 @@ export default class OfficeScene extends Phaser.Scene {
     this.savePositions();
   }
 
+  getTeamFloor(teamId: string): number | null {
+    for (const [floor, teams] of Object.entries(ALL_FLOORS)) {
+      if (teams.some(t => t.id === teamId)) return Number(floor);
+    }
+    return null;
+  }
+
+  moveTeamToFloor(teamId: string, targetFloor: number) {
+    if (targetFloor < 1 || targetFloor > 3) return;
+
+    // 1. Find current floor
+    let sourceFloor: number | null = null;
+    let teamConfig: TeamConfig | null = null;
+    for (const [floor, teams] of Object.entries(ALL_FLOORS)) {
+      const idx = teams.findIndex(t => t.id === teamId);
+      if (idx !== -1) {
+        sourceFloor = Number(floor);
+        teamConfig = { ...teams[idx] };
+        teams.splice(idx, 1);
+        break;
+      }
+    }
+    if (!teamConfig || sourceFloor === null || sourceFloor === targetFloor) return;
+
+    // 2. Add to target floor with default grid position (will be auto-placed on build)
+    const targetTeams = ALL_FLOORS[targetFloor];
+    if (!targetTeams) return;
+
+    // Reset grid position to auto-find on next build
+    teamConfig.gridX = 1;
+    teamConfig.gridY = 4;
+    targetTeams.push(teamConfig);
+
+    // 3. Remove saved position from source floor, set default in target
+    try {
+      const srcKey = `hq-positions-${sourceFloor}`;
+      const srcData = localStorage.getItem(srcKey);
+      if (srcData) {
+        const srcPositions = JSON.parse(srcData);
+        delete srcPositions[teamId];
+        localStorage.setItem(srcKey, JSON.stringify(srcPositions));
+      }
+    } catch {}
+
+    // 4. If currently viewing source or target floor, rebuild
+    if (this.currentFloor === sourceFloor || this.currentFloor === targetFloor) {
+      this.buildFloor(this.currentFloor);
+    }
+  }
+
   /** gridW x gridH 크기의 빈 공간을 그리드에서 찾아 반환 */
   private findEmptyGrid(gridW: number, gridH: number): { x: number; y: number } | null {
     // 벽 아래부터 탐색 (WALL_H 이후)
