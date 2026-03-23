@@ -760,6 +760,119 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
 
   const [clickPositions, setClickPositions] = useState<Record<string, { x: number; y: number }>>({});
 
+  // ── 에이전트 패널 드래그 앤 드롭 (층별 순서) ──
+  const PINNED_IDS = ["server-monitor", "cpo-claude"];
+  const [floorTeams, setFloorTeams] = useState<Record<number, string[]>>(() => {
+    if (typeof window === "undefined") return {};
+    try {
+      const saved = localStorage.getItem("hq-floor-teams-order");
+      return saved ? JSON.parse(saved) : {};
+    } catch { return {}; }
+  });
+  const dragItem = useRef<{ teamId: string; fromFloor: number } | null>(null);
+  const [dropTarget, setDropTarget] = useState<{ floor: number; index: number } | null>(null);
+
+  // floorTeams 초기화: gameRef에서 실제 층 정보 읽어서 구성
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (!gameRef.current || teams.length === 0) return;
+      clearInterval(timer);
+
+      const savedRaw = localStorage.getItem("hq-floor-teams-order");
+      const saved: Record<number, string[]> = savedRaw ? JSON.parse(savedRaw) : {};
+
+      // 현재 모든 팀의 층 정보 수집
+      const currentFloors: Record<number, string[]> = {};
+      for (const t of teams) {
+        const floor = gameRef.current!.getTeamFloor(t.id) ?? 1;
+        if (!currentFloors[floor]) currentFloors[floor] = [];
+        currentFloors[floor].push(t.id);
+      }
+
+      // saved 순서를 존중하되, 새 팀은 끝에 추가, 삭제된 팀은 제거
+      const merged: Record<number, string[]> = {};
+      const allFloors = new Set([...Object.keys(currentFloors).map(Number), ...Object.keys(saved).map(Number)]);
+      for (const f of allFloors) {
+        const current = currentFloors[f] || [];
+        const savedOrder = saved[f] || [];
+        const currentSet = new Set(current);
+        const ordered = savedOrder.filter(id => currentSet.has(id));
+        const newIds = current.filter(id => !savedOrder.includes(id));
+        merged[f] = [...ordered, ...newIds];
+      }
+      setFloorTeams(merged);
+    }, 200);
+    return () => clearInterval(timer);
+  }, [teams]);
+
+  // floorTeams 변경 시 localStorage 저장
+  useEffect(() => {
+    if (Object.keys(floorTeams).length === 0) return;
+    try {
+      localStorage.setItem("hq-floor-teams-order", JSON.stringify(floorTeams));
+    } catch {}
+  }, [floorTeams]);
+
+  const handleDragStart = useCallback((e: React.DragEvent, teamId: string, floor: number) => {
+    dragItem.current = { teamId, fromFloor: floor };
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", teamId);
+    (e.currentTarget as HTMLElement).style.opacity = "0.4";
+  }, []);
+
+  const handleDragEnd = useCallback((e: React.DragEvent) => {
+    (e.currentTarget as HTMLElement).style.opacity = "1";
+    dragItem.current = null;
+    setDropTarget(null);
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent, floor: number, index: number) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setDropTarget({ floor, index });
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent, targetFloor: number, targetIndex: number) => {
+    e.preventDefault();
+    const drag = dragItem.current;
+    if (!drag) return;
+
+    setFloorTeams(prev => {
+      const next = { ...prev };
+      // Remove from source floor
+      const srcList = [...(next[drag.fromFloor] || [])];
+      const srcIdx = srcList.indexOf(drag.teamId);
+      if (srcIdx !== -1) srcList.splice(srcIdx, 1);
+      next[drag.fromFloor] = srcList;
+
+      // Insert into target floor
+      const dstList = [...(next[targetFloor] || [])];
+      // Clamp index to valid range
+      const insertAt = Math.min(targetIndex, dstList.length);
+      dstList.splice(insertAt, 0, drag.teamId);
+      next[targetFloor] = dstList;
+
+      return next;
+    });
+
+    // If floor changed, update game scene
+    if (drag.fromFloor !== targetFloor) {
+      gameRef.current?.moveTeamToFloor(drag.teamId, targetFloor);
+    }
+
+    dragItem.current = null;
+    setDropTarget(null);
+  }, []);
+
+  // 층 섹션 헤더 위로 드롭 → 해당 층 맨 끝에 추가
+  const handleFloorHeaderDrop = useCallback((e: React.DragEvent, floor: number) => {
+    e.preventDefault();
+    const drag = dragItem.current;
+    if (!drag) return;
+    const targetIndex = (floorTeams[floor] || []).length;
+    handleDrop(e, floor, targetIndex);
+  }, [floorTeams, handleDrop]);
+
   const handleTeamClick = useCallback((teamId: string, screenX?: number, screenY?: number) => {
     const mobile = typeof window !== "undefined" && window.innerWidth < 768;
     if (mobile) {
@@ -976,97 +1089,143 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
               + 추가
             </button>
           </div>
-          <div className="flex md:flex-col gap-1 md:gap-1">
-            {teams.map((team) => {
-              const info = teamInfoMap[team.id];
-              return (
-                <div key={team.id} className="flex items-center gap-1">
-                  <button
-                    onClick={() => handleTeamClick(team.id)}
-                    className={`shrink-0 flex-1 text-left px-2.5 py-1.5 rounded text-[12px] transition-all min-h-[36px] ${
-                      openWindows.includes(team.id)
-                        ? "bg-yellow-500/10 text-yellow-400 border border-yellow-500/20"
-                        : "text-gray-400 border border-transparent hover:bg-[#1a1a3a] active:bg-[#2a2a4a]"
-                    }`}
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <span>{team.emoji} {team.name}</span>
-                      {info?.version && (
-                        <span className="text-[8px] text-gray-600 font-mono">{info.version}</span>
-                      )}
+          <div className="flex flex-col gap-0">
+            {(() => {
+              const floors = Object.keys(floorTeams).map(Number).sort((a, b) => a - b);
+              if (floors.length === 0) {
+                // fallback: floorTeams not yet initialized, show flat list
+                return teams.map((team) => {
+                  const info = teamInfoMap[team.id];
+                  return (
+                    <div key={team.id} className="flex items-center gap-1">
+                      <button onClick={() => handleTeamClick(team.id)}
+                        className={`shrink-0 flex-1 text-left px-2.5 py-1.5 rounded text-[12px] transition-all min-h-[36px] ${
+                          openWindows.includes(team.id)
+                            ? "bg-yellow-500/10 text-yellow-400 border border-yellow-500/20"
+                            : "text-gray-400 border border-transparent hover:bg-[#1a1a3a] active:bg-[#2a2a4a]"
+                        }`}>
+                        <div className="flex items-center gap-1.5">
+                          <span>{team.emoji} {team.name}</span>
+                          {info?.version && <span className="text-[8px] text-gray-600 font-mono">{info.version}</span>}
+                        </div>
+                      </button>
                     </div>
-                    {info?.last_commit_date && (
-                      <div className="text-[8px] text-gray-600 mt-0.5 truncate">
-                        {formatRelativeDate(info.last_commit_date)}
-                        {info.last_commit && <span className="text-gray-700"> · {info.last_commit.slice(0, 30)}</span>}
-                      </div>
-                    )}
-                  </button>
-                  {/* 사이트 링크 */}
-                  <div className="flex shrink-0 gap-0.5">
-                    {team.siteUrl && (
-                      <a href={team.siteUrl} target="_blank" rel="noopener noreferrer"
-                        onClick={(e) => e.stopPropagation()}
-                        className="w-6 h-6 flex items-center justify-center rounded text-gray-600 hover:text-blue-400 hover:bg-[#1a1a3a] transition-all"
-                        title={`${team.name} 사이트`}>
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
-                        </svg>
-                      </a>
-                    )}
-                    {team.githubUrl && (
-                      <a href={team.githubUrl} target="_blank" rel="noopener noreferrer"
-                        onClick={(e) => e.stopPropagation()}
-                        className="w-6 h-6 flex items-center justify-center rounded text-gray-600 hover:text-gray-300 hover:bg-[#1a1a3a] transition-all"
-                        title="GitHub">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                          <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/>
-                        </svg>
-                      </a>
-                    )}
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setGuideTeamId(team.id); }}
-                      className="w-6 h-6 flex items-center justify-center rounded text-gray-600 hover:text-yellow-400 hover:bg-[#1a1a3a] transition-all"
-                      title={`${team.name} 가이드`}>
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
-                      </svg>
-                    </button>
-                    {team.id !== "server-monitor" && team.id !== "cpo-claude" && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          const currentFloor = gameRef.current?.getTeamFloor(team.id) || 1;
-                          const nextFloor = currentFloor >= 2 ? 1 : currentFloor + 1;
-                          gameRef.current?.moveTeamToFloor(team.id, nextFloor);
-                          // 이동한 층으로 화면 전환
-                          gameRef.current?.changeFloor(nextFloor);
-                        }}
-                        className="w-6 h-6 flex items-center justify-center rounded text-[8px] text-gray-600 hover:text-blue-400 hover:bg-[#1a1a3a] transition-all"
-                        title="층 이동"
-                      >
-                        ↕
-                      </button>
-                    )}
-                    {team.id !== "server-monitor" && team.id !== "cpo-claude" && (
-                      <button
-                        onClick={async (e) => {
-                          e.stopPropagation();
-                          if (!confirm(`${team.emoji} ${team.name} 에이전트를 삭제할까요?`)) return;
-                          await fetch(`${getApiBase()}/api/teams/${team.id}`, { method: "DELETE" });
-                          window.location.reload();
-                        }}
-                        className="w-6 h-6 flex items-center justify-center rounded text-gray-700 hover:text-red-400 hover:bg-red-500/10 transition-all"
-                        title="에이전트 삭제">
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/>
-                        </svg>
-                      </button>
+                  );
+                });
+              }
+              return floors.map((floor) => {
+                const teamIds = floorTeams[floor] || [];
+                return (
+                  <div key={floor}>
+                    {/* ── 층 헤더 (드롭 대상) ── */}
+                    <div
+                      className="flex items-center gap-1.5 py-1 mt-1 select-none"
+                      onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
+                      onDrop={(e) => handleFloorHeaderDrop(e, floor)}
+                    >
+                      <span className="flex-1 h-px bg-[#2a2a5a]" />
+                      <span className="text-[9px] text-gray-600 font-semibold tracking-wider whitespace-nowrap">{floor}F</span>
+                      <span className="flex-1 h-px bg-[#2a2a5a]" />
+                    </div>
+                    {teamIds.map((teamId, idx) => {
+                      const team = teams.find(t => t.id === teamId);
+                      if (!team) return null;
+                      const info = teamInfoMap[team.id];
+                      const isPinned = PINNED_IDS.includes(team.id);
+                      const isDropHere = dropTarget?.floor === floor && dropTarget?.index === idx;
+                      return (
+                        <div key={team.id}>
+                          {/* 드롭 인디케이터 */}
+                          {isDropHere && <div className="h-[2px] bg-blue-500 rounded mx-1 my-0.5" />}
+                          <div
+                            className="flex items-center gap-1"
+                            draggable={!isPinned}
+                            onDragStart={isPinned ? undefined : (e) => handleDragStart(e, team.id, floor)}
+                            onDragEnd={isPinned ? undefined : handleDragEnd}
+                            onDragOver={(e) => handleDragOver(e, floor, idx)}
+                            onDrop={(e) => handleDrop(e, floor, idx)}
+                          >
+                            <button
+                              onClick={() => handleTeamClick(team.id)}
+                              className={`shrink-0 flex-1 text-left px-2.5 py-1.5 rounded text-[12px] transition-all min-h-[36px] ${
+                                isPinned ? "cursor-default " : "cursor-grab active:cursor-grabbing "
+                              }${
+                                openWindows.includes(team.id)
+                                  ? "bg-yellow-500/10 text-yellow-400 border border-yellow-500/20"
+                                  : "text-gray-400 border border-transparent hover:bg-[#1a1a3a] active:bg-[#2a2a4a]"
+                              }`}
+                            >
+                              <div className="flex items-center gap-1.5">
+                                <span>{team.emoji} {team.name}</span>
+                                {info?.version && (
+                                  <span className="text-[8px] text-gray-600 font-mono">{info.version}</span>
+                                )}
+                              </div>
+                              {info?.last_commit_date && (
+                                <div className="text-[8px] text-gray-600 mt-0.5 truncate">
+                                  {formatRelativeDate(info.last_commit_date)}
+                                  {info.last_commit && <span className="text-gray-700"> · {info.last_commit.slice(0, 30)}</span>}
+                                </div>
+                              )}
+                            </button>
+                            {/* 사이트 링크 */}
+                            <div className="flex shrink-0 gap-0.5">
+                              {team.siteUrl && (
+                                <a href={team.siteUrl} target="_blank" rel="noopener noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="w-6 h-6 flex items-center justify-center rounded text-gray-600 hover:text-blue-400 hover:bg-[#1a1a3a] transition-all"
+                                  title={`${team.name} 사이트`}>
+                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+                                  </svg>
+                                </a>
+                              )}
+                              {team.githubUrl && (
+                                <a href={team.githubUrl} target="_blank" rel="noopener noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="w-6 h-6 flex items-center justify-center rounded text-gray-600 hover:text-gray-300 hover:bg-[#1a1a3a] transition-all"
+                                  title="GitHub">
+                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/>
+                                  </svg>
+                                </a>
+                              )}
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setGuideTeamId(team.id); }}
+                                className="w-6 h-6 flex items-center justify-center rounded text-gray-600 hover:text-yellow-400 hover:bg-[#1a1a3a] transition-all"
+                                title={`${team.name} 가이드`}>
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
+                                </svg>
+                              </button>
+                              {!isPinned && (
+                                <button
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    if (!confirm(`${team.emoji} ${team.name} 에이전트를 삭제할까요?`)) return;
+                                    await fetch(`${getApiBase()}/api/teams/${team.id}`, { method: "DELETE" });
+                                    window.location.reload();
+                                  }}
+                                  className="w-6 h-6 flex items-center justify-center rounded text-gray-700 hover:text-red-400 hover:bg-red-500/10 transition-all"
+                                  title="에이전트 삭제">
+                                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/>
+                                  </svg>
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {/* 마지막 아이템 뒤 드롭 인디케이터 */}
+                    {dropTarget?.floor === floor && dropTarget?.index === teamIds.length && (
+                      <div className="h-[2px] bg-blue-500 rounded mx-1 my-0.5" />
                     )}
                   </div>
-                </div>
-              );
-            })}
+                );
+              });
+            })()}
           </div>
         </div>
 
