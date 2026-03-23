@@ -5,6 +5,9 @@ import sys
 import asyncio
 import time
 import shutil
+import json
+import uuid
+from datetime import datetime
 from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
@@ -13,7 +16,7 @@ from ws_handler import handle_chat, AGENT_STATUS, RECENT_ACTIVITY, _log_activity
 from project_scanner import scan_all
 from github_manager import create_repo, list_repos, _generate_system_prompt, PROJECT_TYPES
 from system_monitor import get_all as get_system, get_process_stats
-from claude_runner import TEAM_SESSIONS, TEAM_MODELS, AGENT_PIDS, MODEL_IDS, get_claude_version, _save_sessions, AGENT_TOKENS
+from claude_runner import TEAM_SESSIONS, TEAM_MODELS, AGENT_PIDS, MODEL_IDS, get_claude_version, _save_sessions, AGENT_TOKENS, run_claude
 from auth import (
     register_user, verify_token, create_invite_code,
     get_all_codes, get_all_users, ensure_owner_code, ROLES, owner_login,
