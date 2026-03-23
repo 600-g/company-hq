@@ -1269,7 +1269,7 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
                                             className={`w-full text-left text-[10px] px-2 py-1 rounded transition-colors ${
                                               isCurrent ? "text-yellow-400 bg-yellow-500/10" : isFull ? "text-gray-600 cursor-not-allowed" : "text-gray-300 hover:bg-[#2a2a4a]"
                                             }`}>
-                                            {isCurrent ? "●" : "○"} {f}F{isFull ? " (꽉 참)" : ""}
+                                            <span className="whitespace-nowrap">{isCurrent ? "●" : "○"} {f}F{isFull ? " 꽉참" : ""}</span>
                                           </button>
                                         );
                                       })}
