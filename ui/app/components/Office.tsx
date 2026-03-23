@@ -868,17 +868,32 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
     const drag = dragItem.current;
     if (!drag) return;
 
-    // 같은 층 내 순서 변경만 허용
-    if (drag.fromFloor !== targetFloor) { dragItem.current = null; setDropTarget(null); return; }
-
     setFloorTeams(prev => {
       const next = { ...prev };
+      // 원래 층에서 제거
       const srcList = [...(next[drag.fromFloor] || [])];
       const srcIdx = srcList.indexOf(drag.teamId);
       if (srcIdx !== -1) srcList.splice(srcIdx, 1);
-      const insertAt = Math.min(targetIndex, srcList.length);
-      srcList.splice(insertAt, 0, drag.teamId);
       next[drag.fromFloor] = srcList;
+
+      if (drag.fromFloor === targetFloor) {
+        // 같은 층: 순서만 변경
+        const insertAt = Math.min(targetIndex, srcList.length);
+        srcList.splice(insertAt, 0, drag.teamId);
+      } else {
+        // 다른 층: 층 이동
+        const dstList = [...(next[targetFloor] || [])];
+        const insertAt = Math.min(targetIndex, dstList.length);
+        dstList.splice(insertAt, 0, drag.teamId);
+        next[targetFloor] = dstList;
+        // Phaser 씬에도 반영
+        gameRef.current?.moveTeamToFloor(drag.teamId, targetFloor);
+      }
+
+      // 빈 층 제거
+      for (const f of Object.keys(next)) {
+        if (next[Number(f)]?.length === 0 && Number(f) > 1) delete next[Number(f)];
+      }
       return next;
     });
 
