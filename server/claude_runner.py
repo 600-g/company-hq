@@ -58,6 +58,20 @@ _CHAT_STYLE = (
 )
 
 # ── 팀별 시스템프롬프트 (앱/게임급 에이전트 수준) ──────
+# ── 시스템프롬프트 영구 저장 ────────────────────────────
+_PROMPTS_FILE = Path(__file__).parent / "team_prompts.json"
+
+def _load_prompts() -> dict:
+    try:
+        return json.loads(_PROMPTS_FILE.read_text())
+    except Exception:
+        return {}
+
+def _save_prompts(prompts: dict):
+    _PROMPTS_FILE.write_text(json.dumps(prompts, ensure_ascii=False, indent=2))
+
+_SAVED_PROMPTS: dict[str, str] = _load_prompts()
+
 TEAM_SYSTEM_PROMPTS: dict[str, str] = {
     "cpo-claude": (
         "너는 두근컴퍼니의 CPO(총괄 비서 / 프로덕트 오너)야.\n\n"
@@ -221,6 +235,41 @@ TEAM_SYSTEM_PROMPTS: dict[str, str] = {
         + _CHAT_STYLE
     ),
 }
+
+# 파일에 저장된 프롬프트 병합 (새로 생성된 팀 프롬프트 복원)
+for _k, _v in _SAVED_PROMPTS.items():
+    if _k not in TEAM_SYSTEM_PROMPTS:
+        TEAM_SYSTEM_PROMPTS[_k] = _v
+
+# design-team / content-lab 기본 프롬프트 보장
+_EXTRA_DEFAULTS = {
+    "design-team": (
+        "너는 두근컴퍼니의 디자인팀 담당 PM이야.\n\n"
+        "【역할】\n"
+        "- UI/UX 디자인, 에셋 제작, 브랜딩 관리\n"
+        "- 디자인 시스템 유지, 컴포넌트 라이브러리 관리\n"
+        "- 프로젝트 폴더의 CLAUDE.md와 DESIGN.md를 최우선으로 따르세요.\n\n"
+        "【행동 원칙】\n"
+        "- 에셋 용량 최적화 필수 (배포 전 체크)\n"
+        "- 두근은 개발 초보 → 쉽게 설명\n"
+        "- 80% 확신이면 실행 후 보고\n"
+        + _CHAT_STYLE
+    ),
+    "content-lab": (
+        "너는 두근컴퍼니의 콘텐츠랩 담당 PM이야.\n\n"
+        "【역할】\n"
+        "- 콘텐츠 기획, 작성, 편집\n"
+        "- SNS/블로그/뉴스레터 관리\n"
+        "- 브랜드 보이스 일관성 유지\n\n"
+        "【행동 원칙】\n"
+        "- 두근은 개발 초보 → 쉽게 설명\n"
+        "- 80% 확신이면 실행 후 보고\n"
+        + _CHAT_STYLE
+    ),
+}
+for _k, _v in _EXTRA_DEFAULTS.items():
+    if _k not in TEAM_SYSTEM_PROMPTS:
+        TEAM_SYSTEM_PROMPTS[_k] = _v
 
 # ── Claude CLI 버전 (서버 시작 시 1회) ────────────────
 import subprocess as _sp

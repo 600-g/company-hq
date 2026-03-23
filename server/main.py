@@ -206,10 +206,12 @@ async def add_team(body: dict):
         TEAMS.append(new_team)
         _save_teams(TEAMS)  # JSON 영구 저장
 
-    # 시스템프롬프트 자동 등록 (claude_runner에 동적 추가)
-    from claude_runner import TEAM_SYSTEM_PROMPTS
+    # 시스템프롬프트 자동 등록 (claude_runner에 동적 추가 + 파일 영구 저장)
+    from claude_runner import TEAM_SYSTEM_PROMPTS, _save_prompts, _SAVED_PROMPTS
     if result.get("system_prompt"):
         TEAM_SYSTEM_PROMPTS[repo_name] = result["system_prompt"]
+        _SAVED_PROMPTS[repo_name] = result["system_prompt"]
+        _save_prompts(_SAVED_PROMPTS)
 
     return {
         "ok": True,
@@ -412,7 +414,20 @@ async def restart_agent(team_id: str):
 async def ws_chat(ws: WebSocket, team_id: str):
     """팀별 채팅 WebSocket 엔드포인트"""
     team = next((t for t in TEAMS if t["id"] == team_id), None)
-    project_path = team["localPath"] if team else None
+    if not team:
+        await ws.accept()
+        await ws.send_json({"type": "error", "content": "❌ 팀을 찾을 수 없습니다"})
+        await ws.close()
+        return
+
+    project_path = team["localPath"]
+    local_path = os.path.expanduser(project_path)
+    if not os.path.isdir(local_path):
+        await ws.accept()
+        await ws.send_json({"type": "error", "content": f"❌ 프로젝트 경로를 찾을 수 없습니다: {local_path}"})
+        await ws.close()
+        return
+
     await handle_chat(ws, team_id, project_path)
 
 

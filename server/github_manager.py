@@ -297,17 +297,30 @@ def create_repo(
         )
     except GithubException as e:
         if e.status == 422:
-            return {"ok": False, "error": f"레포 '{name}'이 이미 존재합니다."}
-        raise
+            # 이미 존재하면 기존 레포를 사용
+            try:
+                repo = user.get_repo(name)
+            except Exception:
+                return {"ok": False, "error": f"레포 '{name}'이 이미 존재하지만 접근할 수 없습니다."}
+        else:
+            raise
 
     # 로컬 클론
     local_path = os.path.join(PROJECTS_ROOT, name)
     if not os.path.isdir(local_path):
-        subprocess.run(
-            ["git", "clone", repo.clone_url, local_path],
-            check=True,
-            capture_output=True,
-        )
+        try:
+            subprocess.run(
+                ["git", "clone", repo.clone_url, local_path],
+                check=True,
+                capture_output=True,
+            )
+        except subprocess.CalledProcessError as e:
+            # 클론 실패 시 GitHub 레포 삭제 (orphan 방지)
+            try:
+                repo.delete()
+            except Exception:
+                pass
+            return {"ok": False, "error": f"로컬 클론 실패: {e.stderr.decode('utf-8', errors='replace') if e.stderr else str(e)}"}
 
     # CLAUDE.md 자동 생성
     claude_md_path = os.path.join(local_path, "CLAUDE.md")
@@ -316,15 +329,30 @@ def create_repo(
         with open(claude_md_path, "w", encoding="utf-8") as f:
             f.write(claude_md)
 
-        # git commit
-        subprocess.run(
-            ["git", "add", "CLAUDE.md"],
-            cwd=local_path, capture_output=True,
-        )
-        subprocess.run(
-            ["git", "commit", "-m", f"feat: CLAUDE.md 자동 생성 ({project_type})"],
-            cwd=local_path, capture_output=True,
-        )
+        # git config (커밋 에러 방지)
+        subprocess.run(["git", "config", "user.name", "두근컴퍼니"], cwd=local_path, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "admin@600g.net"], cwd=local_path, capture_output=True)
+
+        # git commit + push
+        try:
+            subprocess.run(
+                ["git", "add", "CLAUDE.md"],
+                cwd=local_path, capture_output=True, check=True,
+            )
+            subprocess.run(
+                ["git", "commit", "-m", f"feat: CLAUDE.md 자동 생성 ({project_type})"],
+                cwd=local_path, capture_output=True, check=True,
+            )
+            subprocess.run(
+                ["git", "push"],
+                cwd=local_path, capture_output=True, check=True,
+            )
+        except subprocess.CalledProcessError as e:
+            import logging
+            logging.getLogger("company-hq").error(
+                "CLAUDE.md git 커밋/푸시 실패: %s",
+                e.stderr.decode("utf-8", errors="replace") if e.stderr else str(e),
+            )
 
     # 시스템프롬프트 생성
     system_prompt = _generate_system_prompt(name, description, project_type)
