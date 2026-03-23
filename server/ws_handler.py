@@ -135,6 +135,7 @@ async def handle_chat(ws: WebSocket, team_id: str, project_path: str | None):
 
             # Claude 응답 스트리밍
             await manager.send_json(team_id, {"type": "ai_start"})
+            await manager.send_json(team_id, {"type": "status", "content": "🧠 생각 중..."})
             _update_status(team_id, working=True, tool=None, last_active=datetime.now().strftime("%H:%M:%S"), last_prompt=prompt[:60])
             _log_activity(team_id, f"📨 {prompt[:50]}")
 

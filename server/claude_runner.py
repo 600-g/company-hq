@@ -47,14 +47,7 @@ TEAM_MODELS: dict[str, str] = {
 
 # ── 공통 보조 프롬프트 (CLAUDE.md가 메인, 이건 보조) ──
 _CHAT_STYLE = (
-    "\n\n【필수 응답 규칙】\n"
-    "- 프로젝트 폴더의 CLAUDE.md를 최우선으로 따르세요.\n"
-    "- ⚠️ 절대 무응답 금지! 어떤 작업이든 반드시 텍스트로 결과를 알려주세요.\n"
-    "- 작업 완료 시: '✅ (뭘 했는지 한 줄 요약)' 형식으로 반드시 보고\n"
-    "- 진행 중: 뭘 하고 있는지 간단히 알려주세요 (예: '파일 3개 수정 중...')\n"
-    "- 에러 발생 시: '❌ (에러 내용)' 으로 즉시 알려주세요\n"
-    "- 질문에는 반드시 답변하세요. 파일 수정만 하고 끝내지 마세요.\n"
-    "- 한국어로 자연스럽게 대화하세요.\n"
+    "\n\n【응답규칙】CLAUDE.md 최우선. 무응답 금지. 완료→✅요약, 에러→❌내용, 한국어.\n"
 )
 
 # ── 팀별 시스템프롬프트 (앱/게임급 에이전트 수준) ──────
@@ -396,7 +389,7 @@ async def run_claude(prompt: str, project_path: str | None = None, team_id: str 
 
     buf = b""
     while True:
-        chunk = await proc.stdout.read(256)
+        chunk = await proc.stdout.read(1024)
         if not chunk:
             if buf:
                 text = buf.decode("utf-8", errors="replace")
