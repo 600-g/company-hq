@@ -1141,12 +1141,29 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
                 const teamIds = floorTeams[floor] || [];
                 return (
                   <div key={floor}>
-                    {/* ── 층 헤더 ── */}
-                    <div className="flex items-center gap-1.5 py-1 mt-1 select-none">
-                      <span className="flex-1 h-px bg-[#2a2a5a]" />
-                      <span className="text-[9px] text-gray-600 font-semibold tracking-wider whitespace-nowrap">{floor}F</span>
-                      <span className="flex-1 h-px bg-[#2a2a5a]" />
-                    </div>
+                    {/* ── 층 헤더 (클릭 → 해당 층으로 이동, 드롭 → 팀 층 이동) ── */}
+                    <button
+                      onClick={() => gameRef.current?.changeFloor(floor)}
+                      onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add("bg-blue-500/10"); }}
+                      onDragLeave={(e) => { e.currentTarget.classList.remove("bg-blue-500/10"); }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        e.currentTarget.classList.remove("bg-blue-500/10");
+                        const draggedId = e.dataTransfer.getData("text/plain");
+                        if (draggedId && !PINNED_IDS.includes(draggedId)) {
+                          const srcFloor = Object.entries(floorTeams).find(([, ids]) => ids.includes(draggedId));
+                          if (srcFloor && Number(srcFloor[0]) !== floor) {
+                            moveToFloor(draggedId, floor);
+                          }
+                        }
+                      }}
+                      className="flex items-center gap-1.5 py-1.5 mt-1 w-full rounded hover:bg-[#1a1a3a] transition-colors cursor-pointer group"
+                      title={`${floor}F로 이동 (클릭)`}
+                    >
+                      <span className="flex-1 h-px bg-[#2a2a5a] group-hover:bg-blue-500/30" />
+                      <span className="text-[9px] text-gray-600 group-hover:text-blue-400 font-semibold tracking-wider whitespace-nowrap">{floor}F</span>
+                      <span className="flex-1 h-px bg-[#2a2a5a] group-hover:bg-blue-500/30" />
+                    </button>
                     {teamIds.map((teamId, idx) => {
                       const team = teams.find(t => t.id === teamId);
                       if (!team) return null;
