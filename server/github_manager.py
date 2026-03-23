@@ -288,6 +288,19 @@ def create_repo(
     # GitHub API는 latin-1 인코딩 → 이모지/비ASCII 제거
     safe_desc = description.encode("ascii", "ignore").decode("ascii").strip() or name
 
+    # GitHub 레포 이름은 영문/숫자/하이픈만 허용 → 한글이면 로마자 변환
+    import re as _re
+    if not _re.match(r'^[a-zA-Z0-9._-]+$', name):
+        # 한글 이름을 영문 kebab-case로 변환 시도
+        ascii_name = name.encode("ascii", "ignore").decode("ascii").strip()
+        if not ascii_name or len(ascii_name) < 2:
+            # ASCII 변환 불가 → 타임스탬프 기반 이름 생성
+            from datetime import datetime as _dt
+            ascii_name = f"project-{_dt.now().strftime('%Y%m%d-%H%M%S')}"
+        name = _re.sub(r'[^a-zA-Z0-9-]', '-', ascii_name).strip('-').lower()
+        if not name:
+            name = f"project-{_dt.now().strftime('%Y%m%d-%H%M%S')}"
+
     try:
         repo = user.create_repo(
             name=name,
