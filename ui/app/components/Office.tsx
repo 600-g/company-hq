@@ -1037,8 +1037,10 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
                         onClick={(e) => {
                           e.stopPropagation();
                           const currentFloor = gameRef.current?.getTeamFloor(team.id) || 1;
-                          const nextFloor = currentFloor === 1 ? 2 : 1;
+                          const nextFloor = currentFloor >= 2 ? 1 : currentFloor + 1;
                           gameRef.current?.moveTeamToFloor(team.id, nextFloor);
+                          // 이동한 층으로 화면 전환
+                          gameRef.current?.changeFloor(nextFloor);
                         }}
                         className="w-6 h-6 flex items-center justify-center rounded text-[8px] text-gray-600 hover:text-blue-400 hover:bg-[#1a1a3a] transition-all"
                         title="층 이동"

@@ -609,7 +609,9 @@ export default class OfficeScene extends Phaser.Scene {
   }
 
   changeFloor(floor: number) {
-    if (floor < 1 || floor > 3) return;
+    const maxFloor = Math.max(3, ...Object.keys(ALL_FLOORS).map(Number).filter(f => (ALL_FLOORS[f]?.length || 0) > 0));
+    if (floor < 1 || floor > maxFloor) return;
+    if (!ALL_FLOORS[floor]) ALL_FLOORS[floor] = [];
     this.currentFloor = floor;
     this.floorLabel?.setText(`${floor}F`);
     this.buildFloor(floor);
@@ -1094,9 +1096,35 @@ export default class OfficeScene extends Phaser.Scene {
     const targetTeams = ALL_FLOORS[targetFloor];
     if (!targetTeams) return;
 
-    // Reset grid position to auto-find on next build
-    teamConfig.gridX = 1;
-    teamConfig.gridY = 4;
+    // 대상 층의 기존 팀 위치를 기반으로 빈 자리 계산
+    const occupied = new Set<string>();
+    for (const t of targetTeams) {
+      for (let dy = 0; dy < t.gridH; dy++) {
+        for (let dx = 0; dx < t.gridW; dx++) {
+          occupied.add(`${t.gridX + dx},${t.gridY + dy}`);
+        }
+      }
+    }
+    // 빈 4x4 슬롯 탐색
+    let placed = false;
+    for (let gy = WALL_H; gy <= ROWS - teamConfig.gridH - 3; gy++) {
+      for (let gx = 0; gx <= COLS - teamConfig.gridW; gx++) {
+        let free = true;
+        for (let dy = 0; dy < teamConfig.gridH && free; dy++) {
+          for (let dx = 0; dx < teamConfig.gridW && free; dx++) {
+            if (occupied.has(`${gx + dx},${gy + dy}`)) free = false;
+          }
+        }
+        if (free) {
+          teamConfig.gridX = gx;
+          teamConfig.gridY = gy;
+          placed = true;
+          break;
+        }
+      }
+      if (placed) break;
+    }
+    if (!placed) { teamConfig.gridX = 1; teamConfig.gridY = 4; }
     targetTeams.push(teamConfig);
 
     // 3. Remove saved position from source floor, set default in target
