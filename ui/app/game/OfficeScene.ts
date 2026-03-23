@@ -40,7 +40,6 @@ const ALL_FLOORS: Record<number, TeamConfig[]> = {
     { id: "frontend-team", name: "프론트엔드", emoji: "🖼", chars: [3, 1, 0, 2], gridX: 6, gridY: 4, gridW: 4, gridH: 4 },
     { id: "backend-team", name: "백엔드", emoji: "⚙️", chars: [0, 3, 2, 1], gridX: 11, gridY: 4, gridW: 4, gridH: 4 },
   ],
-  3: [],
 };
 
 interface MemberSprite { char: Phaser.GameObjects.Sprite; charIdx: number; baseX: number; baseY: number; bubble?: Phaser.GameObjects.Graphics; }
@@ -609,7 +608,7 @@ export default class OfficeScene extends Phaser.Scene {
   }
 
   changeFloor(floor: number) {
-    const maxFloor = Math.max(3, ...Object.keys(ALL_FLOORS).map(Number).filter(f => (ALL_FLOORS[f]?.length || 0) > 0));
+    const maxFloor = Math.max(1, ...Object.keys(ALL_FLOORS).map(Number).filter(f => (ALL_FLOORS[f]?.length || 0) > 0));
     if (floor < 1 || floor > maxFloor) return;
     if (!ALL_FLOORS[floor]) ALL_FLOORS[floor] = [];
     this.currentFloor = floor;
@@ -1059,9 +1058,18 @@ export default class OfficeScene extends Phaser.Scene {
       chars: charIndices, gridX: pos.x, gridY: pos.y, gridW, gridH,
     };
 
-    // ALL_FLOORS에도 추가 (층 전환 시 유지)
-    const floorTeams = ALL_FLOORS[this.currentFloor];
-    if (floorTeams) floorTeams.push(config);
+    // 가장 낮은 층 중 여유 있는 곳에 배치 (6팀/층 제한)
+    let targetFloor = 1;
+    for (let f = 1; f <= 10; f++) {
+      const teams = ALL_FLOORS[f];
+      if (!teams) { ALL_FLOORS[f] = []; targetFloor = f; break; }
+      if (teams.length < 6) { targetFloor = f; break; }
+    }
+    ALL_FLOORS[targetFloor].push(config);
+    // 해당 층으로 이동
+    if (this.currentFloor !== targetFloor) {
+      this.changeFloor(targetFloor);
+    }
 
     this.createTeamGroup(config);
     this.occupyGrid(pos.x, pos.y, gridW, gridH, true);
@@ -1076,7 +1084,7 @@ export default class OfficeScene extends Phaser.Scene {
   }
 
   moveTeamToFloor(teamId: string, targetFloor: number) {
-    if (targetFloor < 1 || targetFloor > 3) return;
+    if (targetFloor < 1 || targetFloor > 10) return;
 
     // 1. Find current floor
     let sourceFloor: number | null = null;
@@ -1093,8 +1101,8 @@ export default class OfficeScene extends Phaser.Scene {
     if (!teamConfig || sourceFloor === null || sourceFloor === targetFloor) return;
 
     // 2. Add to target floor with default grid position (will be auto-placed on build)
+    if (!ALL_FLOORS[targetFloor]) ALL_FLOORS[targetFloor] = [];
     const targetTeams = ALL_FLOORS[targetFloor];
-    if (!targetTeams) return;
 
     // 대상 층의 기존 팀 위치를 기반으로 빈 자리 계산
     const occupied = new Set<string>();

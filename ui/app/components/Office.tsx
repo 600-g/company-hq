@@ -771,6 +771,36 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
   });
   const dragItem = useRef<{ teamId: string; fromFloor: number } | null>(null);
   const [dropTarget, setDropTarget] = useState<{ floor: number; index: number } | null>(null);
+  const [floorDropdownTeam, setFloorDropdownTeam] = useState<string | null>(null);
+
+  // 층 이동 드롭다운: 바깥 클릭 시 닫기
+  useEffect(() => {
+    if (!floorDropdownTeam) return;
+    const handler = () => setFloorDropdownTeam(null);
+    window.addEventListener("click", handler);
+    return () => window.removeEventListener("click", handler);
+  }, [floorDropdownTeam]);
+
+  const moveToFloor = useCallback((teamId: string, targetFloor: number) => {
+    setFloorTeams(prev => {
+      const next = { ...prev };
+      // Remove from current floor
+      for (const f of Object.keys(next)) {
+        const fl = Number(f);
+        if (next[fl]?.includes(teamId)) {
+          next[fl] = next[fl].filter(id => id !== teamId);
+          // 빈 층 제거
+          if (next[fl].length === 0) delete next[fl];
+          break;
+        }
+      }
+      // Add to target floor
+      if (!next[targetFloor]) next[targetFloor] = [];
+      next[targetFloor] = [...next[targetFloor], teamId];
+      return next;
+    });
+    gameRef.current?.moveTeamToFloor(teamId, targetFloor);
+  }, []);
 
   // floorTeams 초기화: gameRef에서 실제 층 정보 읽어서 구성
   useEffect(() => {
@@ -798,7 +828,8 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
         const currentSet = new Set(current);
         const ordered = savedOrder.filter(id => currentSet.has(id));
         const newIds = current.filter(id => !savedOrder.includes(id));
-        merged[f] = [...ordered, ...newIds];
+        const floorList = [...ordered, ...newIds];
+        if (floorList.length > 0) merged[f] = floorList; // 빈 층 제거
       }
       setFloorTeams(merged);
     }, 200);
@@ -837,41 +868,23 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
     const drag = dragItem.current;
     if (!drag) return;
 
+    // 같은 층 내 순서 변경만 허용
+    if (drag.fromFloor !== targetFloor) { dragItem.current = null; setDropTarget(null); return; }
+
     setFloorTeams(prev => {
       const next = { ...prev };
-      // Remove from source floor
       const srcList = [...(next[drag.fromFloor] || [])];
       const srcIdx = srcList.indexOf(drag.teamId);
       if (srcIdx !== -1) srcList.splice(srcIdx, 1);
+      const insertAt = Math.min(targetIndex, srcList.length);
+      srcList.splice(insertAt, 0, drag.teamId);
       next[drag.fromFloor] = srcList;
-
-      // Insert into target floor
-      const dstList = [...(next[targetFloor] || [])];
-      // Clamp index to valid range
-      const insertAt = Math.min(targetIndex, dstList.length);
-      dstList.splice(insertAt, 0, drag.teamId);
-      next[targetFloor] = dstList;
-
       return next;
     });
-
-    // If floor changed, update game scene
-    if (drag.fromFloor !== targetFloor) {
-      gameRef.current?.moveTeamToFloor(drag.teamId, targetFloor);
-    }
 
     dragItem.current = null;
     setDropTarget(null);
   }, []);
-
-  // 층 섹션 헤더 위로 드롭 → 해당 층 맨 끝에 추가
-  const handleFloorHeaderDrop = useCallback((e: React.DragEvent, floor: number) => {
-    e.preventDefault();
-    const drag = dragItem.current;
-    if (!drag) return;
-    const targetIndex = (floorTeams[floor] || []).length;
-    handleDrop(e, floor, targetIndex);
-  }, [floorTeams, handleDrop]);
 
   const handleTeamClick = useCallback((teamId: string, screenX?: number, screenY?: number) => {
     const mobile = typeof window !== "undefined" && window.innerWidth < 768;
@@ -898,7 +911,18 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
 
   const handleAddTeam = useCallback((newTeam: Team) => {
     setTeams(prev => [...prev, newTeam]);
-    // 사무실 씬에 팀 자동 배치
+    // 가장 낮은 층 중 여유 있는 곳에 배치 (6팀/층 제한)
+    setFloorTeams(prev => {
+      const next = { ...prev };
+      let targetFloor = 1;
+      for (let f = 1; f <= 10; f++) {
+        if (!next[f]) { targetFloor = f; break; }
+        if (next[f].length < 6) { targetFloor = f; break; }
+      }
+      if (!next[targetFloor]) next[targetFloor] = [];
+      next[targetFloor] = [...next[targetFloor], newTeam.id];
+      return next;
+    });
     gameRef.current?.addTeam(newTeam.id, newTeam.name, newTeam.emoji);
   }, []);
 
@@ -1117,12 +1141,8 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
                 const teamIds = floorTeams[floor] || [];
                 return (
                   <div key={floor}>
-                    {/* ── 층 헤더 (드롭 대상) ── */}
-                    <div
-                      className="flex items-center gap-1.5 py-1 mt-1 select-none"
-                      onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
-                      onDrop={(e) => handleFloorHeaderDrop(e, floor)}
-                    >
+                    {/* ── 층 헤더 ── */}
+                    <div className="flex items-center gap-1.5 py-1 mt-1 select-none">
                       <span className="flex-1 h-px bg-[#2a2a5a]" />
                       <span className="text-[9px] text-gray-600 font-semibold tracking-wider whitespace-nowrap">{floor}F</span>
                       <span className="flex-1 h-px bg-[#2a2a5a]" />
@@ -1198,6 +1218,33 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
                                   <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
                                 </svg>
                               </button>
+                              {!isPinned && (
+                                <div className="relative">
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); setFloorDropdownTeam(floorDropdownTeam === team.id ? null : team.id); }}
+                                    className="w-6 h-6 flex items-center justify-center rounded text-gray-600 hover:text-yellow-400 hover:bg-[#1a1a3a] transition-all text-[10px]"
+                                    title="층 이동">
+                                    🏢
+                                  </button>
+                                  {floorDropdownTeam === team.id && (
+                                    <div className="absolute right-0 top-full mt-1 bg-[#1a1a2e] border border-[#3a3a5a] rounded p-1 z-50 min-w-[80px]" onClick={e => e.stopPropagation()}>
+                                      {Object.keys(floorTeams).map(Number).sort((a, b) => a - b).map(f => {
+                                        const isCurrent = floorTeams[f]?.includes(team.id);
+                                        const isFull = (floorTeams[f]?.length || 0) >= 6 && !isCurrent;
+                                        return (
+                                          <button key={f} disabled={isFull || isCurrent}
+                                            onClick={() => { moveToFloor(team.id, f); setFloorDropdownTeam(null); }}
+                                            className={`w-full text-left text-[10px] px-2 py-1 rounded transition-colors ${
+                                              isCurrent ? "text-yellow-400 bg-yellow-500/10" : isFull ? "text-gray-600 cursor-not-allowed" : "text-gray-300 hover:bg-[#2a2a4a]"
+                                            }`}>
+                                            {isCurrent ? "●" : "○"} {f}F{isFull ? " (꽉 참)" : ""}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
                               {!isPinned && (
                                 <button
                                   onClick={async (e) => {
