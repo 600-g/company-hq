@@ -26,16 +26,21 @@ interface TeamConfig {
 
 const ALL_FLOORS: Record<number, TeamConfig[]> = {
   1: [
+    // 1F: 핵심 운영 (서버실은 별도 drawServerRoom)
     { id: "cpo-claude", name: "CPO", emoji: "🧠", chars: [1], gridX: 13, gridY: 10, gridW: 2, gridH: 2 },
     { id: "trading-bot", name: "매매봇", emoji: "🤖", chars: [0, 3, 1, 2], gridX: 1, gridY: 4, gridW: 4, gridH: 4 },
     { id: "date-map", name: "데이트지도", emoji: "🗺️", chars: [1, 2, 3, 0], gridX: 6, gridY: 4, gridW: 4, gridH: 4 },
     { id: "claude-biseo", name: "클로드비서", emoji: "🤵", chars: [2, 0, 1, 3], gridX: 11, gridY: 4, gridW: 4, gridH: 4 },
     { id: "ai900", name: "AI900", emoji: "📚", chars: [3, 1, 0, 2], gridX: 16, gridY: 4, gridW: 4, gridH: 4 },
-    { id: "cl600g", name: "CL600G", emoji: "⚡", chars: [0, 2, 3, 1], gridX: 3, gridY: 10, gridW: 4, gridH: 4 },
-    { id: "design-team", name: "디자인팀", emoji: "🎨", chars: [1, 3, 0, 2], gridX: 8, gridY: 10, gridW: 4, gridH: 4 },
-    { id: "content-lab", name: "콘텐츠랩", emoji: "🔬", chars: [2, 0, 3, 1], gridX: 16, gridY: 10, gridW: 4, gridH: 4 },
   ],
-  2: [],
+  2: [
+    // 2F: 개발 & 크리에이티브
+    { id: "cl600g", name: "CL600G", emoji: "⚡", chars: [0, 2, 3, 1], gridX: 1, gridY: 4, gridW: 4, gridH: 4 },
+    { id: "design-team", name: "디자인팀", emoji: "🎨", chars: [1, 3, 0, 2], gridX: 6, gridY: 4, gridW: 4, gridH: 4 },
+    { id: "content-lab", name: "콘텐츠랩", emoji: "🔬", chars: [2, 0, 3, 1], gridX: 11, gridY: 4, gridW: 4, gridH: 4 },
+    { id: "frontend-team", name: "프론트엔드", emoji: "🖼", chars: [3, 1, 0, 2], gridX: 16, gridY: 4, gridW: 4, gridH: 4 },
+    { id: "backend-team", name: "백엔드", emoji: "⚙️", chars: [0, 3, 2, 1], gridX: 4, gridY: 10, gridW: 4, gridH: 4 },
+  ],
   3: [],
 };
 
@@ -774,22 +779,21 @@ export default class OfficeScene extends Phaser.Scene {
 
     // 2x2 등맞대기 배치
     // 윗줄: PC → 데스크 → 캐릭(정면) | 아랫줄: 캐릭(뒷면) → 데스크 → PC뒷면
-    // LimeZu(0~3)=16x32 — 원본 크기로 선명하게
+    // 2× 업스케일 스프라이트 (32×64) — 정수 배율만 사용해야 선명
     const members: MemberSprite[] = [];
-    // 2x2 등맞대기 — 2× 업스케일 스프라이트 (32×64 프레임)
-    const S = 0.75;      // 2× 스프라이트(32×64) × 0.75 = 24px 캐릭 (기존 16px보다 1.5배)
-    const gapX = 36;     // dy = ±18 (약간 겹침 — 탑뷰 원근감으로 자연스러움)
+    const S = 0.5;       // 32×64 × 0.5 = 16×32 (원본 크기, 픽셀 퍼펙트)
+    const gapX = 30;
 
-    // 모니터 옆모습 (2× 업스케일 캐릭에 맞게 1.5× 크기)
+    // 모니터 옆모습 (16x32 캐릭에 맞는 크기)
     const drawMonSide = (g: Phaser.GameObjects.Graphics, facing: number) => {
       const f = facing;
-      g.fillStyle(0x2a2a2a, 1); g.fillRect(-4, -14, 8, 20);           // 모니터 본체
-      g.fillStyle(0x1a2a40, 1); g.fillRect(f > 0 ? -4 : 1, -12, 4, 14); // 화면
-      g.fillStyle(0x50d070, 0.8); g.fillRect(f > 0 ? -3 : 2, -9, 3, 2);  // 초록선
-      g.fillStyle(0x60a0e0, 0.6); g.fillRect(f > 0 ? -3 : 2, -5, 3, 2);  // 파란선
-      g.fillStyle(0x50d070, 0.5); g.fillRect(f > 0 ? -3 : 2, -1, 3, 2);  // 초록선2
-      g.fillStyle(0x444444, 1); g.fillRect(-2, 6, 3, 4);               // 스탠드
-      g.fillStyle(0x555555, 1); g.fillRect(-5, 10, 10, 2);             // 받침
+      g.fillStyle(0x2a2a2a, 1); g.fillRect(-3, -8, 6, 12);            // 모니터 본체
+      g.fillStyle(0x1a2a40, 1); g.fillRect(f > 0 ? -3 : 1, -7, 3, 9); // 화면
+      g.fillStyle(0x50d070, 0.8); g.fillRect(f > 0 ? -2 : 1, -5, 2, 1); // 초록선
+      g.fillStyle(0x60a0e0, 0.6); g.fillRect(f > 0 ? -2 : 1, -3, 2, 1); // 파란선
+      g.fillStyle(0x50d070, 0.5); g.fillRect(f > 0 ? -2 : 1, -1, 2, 1); // 초록선2
+      g.fillStyle(0x444444, 1); g.fillRect(-1, 4, 2, 3);               // 스탠드
+      g.fillStyle(0x555555, 1); g.fillRect(-4, 7, 8, 2);               // 받침
     };
 
     const isSolo = t.chars.length === 1;
@@ -815,24 +819,24 @@ export default class OfficeScene extends Phaser.Scene {
 
       if (isLeft) {
         // 왼쪽: 캐릭(→) → 책상 → 모니터(→)
-        const deskX = -13;
-        container.add(this.add.image(deskX, dy + 6, "desk_front").setScale(0.75));
+        const deskX = -10;
+        container.add(this.add.image(deskX, dy + 4, "desk_front").setScale(0.55));
         const mon = this.add.graphics();
-        drawMonSide(mon, 1); mon.setPosition(deskX + 2, dy - 8);
+        drawMonSide(mon, 1); mon.setPosition(deskX + 1, dy - 6);
         container.add(mon);
-        const charX = deskX - 26;
+        const charX = deskX - 18;
         const char = this.add.sprite(charX, dy, `char_${charIdx}`, cols * 2)
           .setScale(S).setOrigin(0.5, 0.75);
         container.add(char);
         members.push({ char, charIdx, baseX: charX, baseY: dy });
       } else {
         // 오른쪽: 모니터(←) → 책상 → 캐릭(←)
-        const deskX = 13;
-        container.add(this.add.image(deskX, dy + 6, "desk_front").setScale(0.75));
+        const deskX = 10;
+        container.add(this.add.image(deskX, dy + 4, "desk_front").setScale(0.55));
         const mon = this.add.graphics();
-        drawMonSide(mon, -1); mon.setPosition(deskX - 2, dy - 8);
+        drawMonSide(mon, -1); mon.setPosition(deskX - 1, dy - 6);
         container.add(mon);
-        const charX = deskX + 26;
+        const charX = deskX + 18;
         const char = this.add.sprite(charX, dy, `char_${charIdx}`, cols)
           .setScale(S).setOrigin(0.5, 0.75);
         container.add(char);
