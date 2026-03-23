@@ -657,7 +657,7 @@ function SideMenu({ user, open, onClose, onLogout }: {
             className="w-full px-3 py-2 text-[11px] text-red-400/70 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors text-left">
             로그아웃
           </button>
-          <p className="text-[7px] text-gray-700 mt-2 text-center">v0.1.0 · (주)두근 컴퍼니</p>
+          <p className="text-[7px] text-gray-700 mt-2 text-center">v2.0 · (주)두근 컴퍼니</p>
         </div>
       </div>
     </>
@@ -1013,7 +1013,7 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
           }}
           title="더블클릭: 새로고침 및 업데이트 반영"
         >
-          Claude Code CLI · $0 · <span className="text-gray-500">v0.1.0</span>
+          Claude Code CLI · $0 · <span className="text-gray-500">v2.0</span>
         </div>
       </aside>
     </div>

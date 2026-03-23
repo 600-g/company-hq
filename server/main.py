@@ -4,6 +4,7 @@ import os
 import sys
 import asyncio
 import time
+import shutil
 from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
@@ -224,7 +225,9 @@ async def add_team(body: dict):
 
 @app.delete("/api/teams/{team_id}")
 async def delete_team(team_id: str):
-    """에이전트 삭제 — teams.json에서 제거 (로컬/GitHub은 유지)"""
+    """에이전트 삭제 — teams.json + 로컬 폴더 + GitHub 레포 + 프롬프트 정리"""
+    import json
+    import logging
     global TEAMS
     if team_id in ("server-monitor", "cpo-claude"):
         return {"ok": False, "error": "서버실과 CPO는 삭제할 수 없습니다."}
@@ -233,7 +236,35 @@ async def delete_team(team_id: str):
     if len(TEAMS) == before:
         return {"ok": False, "error": "팀을 찾을 수 없습니다."}
     _save_teams(TEAMS)
-    _log_activity(team_id, "🗑️ 에이전트 삭제됨")
+
+    # 1) 로컬 폴더 삭제
+    local_dir = os.path.expanduser(f"~/Developer/my-company/{team_id}")
+    shutil.rmtree(local_dir, ignore_errors=True)
+    logging.info(f"[DELETE] 로컬 폴더 삭제: {local_dir}")
+
+    # 2) GitHub 레포 삭제
+    try:
+        from github import Github
+        gh_token = os.getenv("GITHUB_TOKEN", "")
+        if gh_token:
+            g = Github(gh_token)
+            g.get_repo(f"600-g/{team_id}").delete()
+            logging.info(f"[DELETE] GitHub 레포 삭제: 600-g/{team_id}")
+    except Exception as e:
+        logging.warning(f"[DELETE] GitHub 레포 삭제 실패: {e}")
+
+    # 3) team_prompts.json에서 제거
+    try:
+        from claude_runner import _SAVED_PROMPTS, _save_prompts, TEAM_SYSTEM_PROMPTS
+        if team_id in _SAVED_PROMPTS:
+            del _SAVED_PROMPTS[team_id]
+            _save_prompts(_SAVED_PROMPTS)
+        TEAM_SYSTEM_PROMPTS.pop(team_id, None)
+        logging.info(f"[DELETE] 프롬프트 정리 완료: {team_id}")
+    except Exception as e:
+        logging.warning(f"[DELETE] 프롬프트 정리 실패: {e}")
+
+    _log_activity(team_id, "🗑️ 에이전트 완전 삭제됨 (로컬+GitHub+프롬프트)")
     return {"ok": True, "team_id": team_id}
 
 
