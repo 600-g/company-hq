@@ -575,8 +575,8 @@ export default class OfficeScene extends Phaser.Scene {
     this.envGroup.add(this.add.image(30, wallY + 35, "o_bookshelf").setDepth(5));
     this.envGroup.add(this.add.image(30, wallY + 110, "o_bookshelf").setDepth(5));
 
-    // ── 우측 벽면 — 화이트보드 ──
-    this.envGroup.add(this.add.image(WORLD_W - 80, wallY + 20, "o_whiteboard").setDepth(5));
+    // ── 우측 벽면 — 화이트보드 (서버 모니터 아래) ──
+    this.envGroup.add(this.add.image(WORLD_W - 130, wallY + 20, "o_whiteboard").setDepth(5));
 
     // ── 벽면 에어컨 ──
     this.envGroup.add(this.add.image(14 * TILE, wallY - 8, "o_ac").setDepth(5));
