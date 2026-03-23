@@ -65,11 +65,11 @@
     "status": "운영중"
   },
   {
-    "id": "경주데이트-정리",
-    "name": "경주데이트 정리",
-    "emoji": "🆕",
-    "repo": "경주데이트-정리",
-    "localPath": "~/Developer/my-company/경주데이트-정리",
+    "id": "content-lab",
+    "name": "콘텐츠랩",
+    "emoji": "🔬",
+    "repo": "content-lab",
+    "localPath": "~/Developer/my-company/content-lab",
     "status": "운영중"
   }
 ]

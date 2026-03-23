@@ -145,17 +145,12 @@ function AgentCard({ agent, onRestart }: { agent: AgentInfo; onRestart: (id: str
           ) : agent.pid ? (
             <span className="flex items-center gap-0.5">
               <span className="w-1.5 h-1.5 bg-green-400 rounded-full" />
-              <span className="text-[8px] text-green-400">정상</span>
-            </span>
-          ) : agent.session ? (
-            <span className="flex items-center gap-0.5">
-              <span className="w-1.5 h-1.5 bg-gray-500 rounded-full" />
-              <span className="text-[8px] text-gray-500">대기</span>
+              <span className="text-[8px] text-green-400">대기</span>
             </span>
           ) : (
             <span className="flex items-center gap-0.5">
-              <span className="w-1.5 h-1.5 bg-red-400/60 rounded-full" />
-              <span className="text-[8px] text-red-400">미연결</span>
+              <span className="w-1.5 h-1.5 bg-gray-500 rounded-full" />
+              <span className="text-[8px] text-gray-500">대기</span>
             </span>
           )}
           <button

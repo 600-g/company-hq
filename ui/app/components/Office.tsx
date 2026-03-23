@@ -669,22 +669,26 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
 
   // API에서 팀 목록 동적 로드 (teams.json 기반)
   useEffect(() => {
-    fetch(`${getApiBase()}/api/teams`)
-      .then(r => r.json())
-      .then((data: { id: string; name: string; emoji: string; repo: string; localPath: string; status: string }[]) => {
-        if (!Array.isArray(data)) return;
-        const merged: Team[] = data.map(t => {
-          const existing = defaultTeamList.find(d => d.id === t.id);
-          return {
-            id: t.id, name: t.name, emoji: t.emoji, repo: t.repo,
-            localPath: t.localPath, status: t.status,
-            siteUrl: existing?.siteUrl,
-            githubUrl: existing?.githubUrl || `https://github.com/600-g/${t.repo}`,
-          };
+    const loadTeams = () =>
+      fetch(`${getApiBase()}/api/teams`)
+        .then(r => r.json())
+        .then((data: { id: string; name: string; emoji: string; repo: string; localPath: string; status: string }[]) => {
+          if (!Array.isArray(data)) return;
+          const merged: Team[] = data.map(t => {
+            const existing = defaultTeamList.find(d => d.id === t.id);
+            return {
+              id: t.id, name: t.name, emoji: t.emoji, repo: t.repo,
+              localPath: t.localPath, status: t.status,
+              siteUrl: existing?.siteUrl,
+              githubUrl: existing?.githubUrl || `https://github.com/600-g/${t.repo}`,
+            };
+          });
+          setTeams(merged);
         });
-        setTeams(merged);
-      })
-      .catch(() => {}); // 실패 시 기본 목록 유지
+    loadTeams().catch(() => {
+      // 첫 시도 실패 시 2초 후 1회 재시도
+      setTimeout(() => loadTeams().catch(() => {}), 2000);
+    });
   }, []);
   const [teamInfoMap, setTeamInfoMap] = useState<Record<string, TeamInfo>>({});
   const [showAddModal, setShowAddModal] = useState(false);
