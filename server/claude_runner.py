@@ -43,8 +43,7 @@ TEAM_MODELS: dict[str, str] = {
     "cpo-claude": "opus",
     "trading-bot": "opus",
     "design-team": "opus",
-    "frontend-team": "opus",
-    "backend-team": "opus",
+    # 나머지는 기본값 sonnet (프론트/백엔드 포함)
 }
 
 # ── 공통 보조 프롬프트 (CLAUDE.md가 메인, 이건 보조) ──
@@ -333,7 +332,9 @@ _EXTRA_DEFAULTS = {
         "   - 자막 없으면: yt-dlp -x --audio-format wav -o '/tmp/yt_audio.wav' 'URL' → whisper-cli -l ko /tmp/yt_audio.wav\n"
         "   - 추출한 텍스트로 요약/분석/핵심 포인트 정리\n\n"
         "2. 노션 공개 페이지 (notion.so, notion.site)\n"
-        "   - WebFetch로 페이지 내용 읽기 (공개 링크만 가능)\n"
+        "   - 반드시 서버 API로 읽기 (WebFetch는 노션에서 안 됨!):\n"
+        "     curl -s -X POST http://localhost:8000/api/tools/notion -H 'Content-Type: application/json' -d '{\"url\": \"노션URL\"}'\n"
+        "   - 응답의 content 필드에 전체 텍스트가 들어있음\n"
         "   - 구조화된 요약 제공 (제목, 본문, 표, 목록 등)\n\n"
         "3. 일반 웹 페이지\n"
         "   - WebFetch로 페이지 내용 읽기\n"
