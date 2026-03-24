@@ -126,6 +126,23 @@ async def handle_chat(ws: WebSocket, team_id: str, project_path: str | None):
                 await manager.send_json(team_id, {"type": "history_cleared"})
                 continue
 
+            # 작업 취소 요청
+            if msg.get("action") == "cancel":
+                from claude_runner import AGENT_PIDS
+                import signal
+                pid = AGENT_PIDS.get(team_id)
+                if pid:
+                    try:
+                        import os
+                        os.kill(pid, signal.SIGTERM)
+                    except Exception:
+                        pass
+                    AGENT_PIDS.pop(team_id, None)
+                _update_status(team_id, working=False, tool=None)
+                await manager.send_json(team_id, {"type": "ai_chunk", "content": "\n⏹ 작업이 취소되었습니다."})
+                await manager.send_json(team_id, {"type": "ai_end", "content": "⏹ 취소됨"})
+                continue
+
             if not prompt:
                 continue
 

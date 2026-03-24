@@ -240,18 +240,34 @@ function DispatchChat({ teams, onOpenChat }: { teams: Team[]; onOpenChat?: (team
         </div>
       )}
 
-      {/* 입력 */}
+      {/* 입력 (Shift+Enter=줄바꿈) */}
       <form onSubmit={(e) => { e.preventDefault(); dispatch(); }} className="flex gap-1">
-        <input
+        <textarea
           value={input}
           onChange={e => setInput(e.target.value)}
-          placeholder="명령 입력 (자동 라우팅)..."
-          className="flex-1 bg-[#1a1a2e] border border-[#3a3a5a] text-white text-[11px] px-2 py-1.5 rounded focus:outline-none focus:border-yellow-400/50"
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+              e.preventDefault();
+              dispatch();
+            }
+          }}
+          rows={1}
+          placeholder="명령 입력 (Shift+Enter 줄바꿈)..."
+          className="flex-1 bg-[#1a1a2e] border border-[#3a3a5a] text-white text-[11px] px-2 py-1.5 rounded focus:outline-none focus:border-yellow-400/50 resize-none max-h-20 overflow-y-auto"
+          style={{ minHeight: "32px" }}
         />
-        <button type="submit" disabled={!input.trim()}
-          className="px-2 py-1.5 bg-yellow-500/20 text-yellow-400 text-[10px] font-bold border border-yellow-500/30 rounded hover:bg-yellow-500/30 disabled:opacity-30 transition-colors shrink-0">
-          {sending ? "⏳" : "▶"}
-        </button>
+        {sending ? (
+          <button type="button" onClick={() => { /* 취소: 현재 전송 중단 */ setSending(false); setInput(""); }}
+            className="px-2 py-1.5 bg-red-500/20 text-red-400 text-[10px] font-bold border border-red-500/30 rounded hover:bg-red-500/30 transition-colors shrink-0"
+            title="취소">
+            ■
+          </button>
+        ) : (
+          <button type="submit" disabled={!input.trim()}
+            className="px-2 py-1.5 bg-yellow-500/20 text-yellow-400 text-[10px] font-bold border border-yellow-500/30 rounded hover:bg-yellow-500/30 disabled:opacity-30 transition-colors shrink-0">
+            ▶
+          </button>
+        )}
       </form>
     </div>
   );

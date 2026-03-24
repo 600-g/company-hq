@@ -481,10 +481,18 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
             rows={input.includes("\n") ? Math.min(input.split("\n").length, 4) : 1}
             className="flex-1 bg-[#1a1a2e] border border-[#3a3a5a] text-white px-3 py-2 text-sm rounded
                        focus:outline-none focus:border-yellow-400/50 resize-none" />
-          <button onClick={send} disabled={!input.trim()}
-            className="bg-yellow-500 text-black px-4 py-2 text-sm font-bold rounded hover:bg-yellow-400 disabled:opacity-30 shrink-0">
-            전송
-          </button>
+          {streaming ? (
+            <button onClick={() => { wsRef.current?.send(JSON.stringify({ action: "cancel" })); setStreaming(false); }}
+              className="bg-red-500/80 text-white px-4 py-2 text-sm font-bold rounded hover:bg-red-500 shrink-0"
+              title="작업 취소">
+              ■ 중지
+            </button>
+          ) : (
+            <button onClick={send} disabled={!input.trim()}
+              className="bg-yellow-500 text-black px-4 py-2 text-sm font-bold rounded hover:bg-yellow-400 disabled:opacity-30 shrink-0">
+              전송
+            </button>
+          )}
         </div>
       </div>
     </div>
