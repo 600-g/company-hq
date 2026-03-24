@@ -1028,17 +1028,17 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
           const team = teams.find(t => t.id === mobileChat);
           if (!team) return null;
           return (
-            <div className="md:hidden flex-1 flex flex-col min-h-0 border-t border-[#2a2a5a] bg-[#0a0a18]">
-              {/* 채팅 헤더 */}
-              <div className="flex items-center justify-between px-3 py-1.5 bg-[#0e0e20] border-b border-[#2a2a5a] shrink-0">
+            <div className="md:hidden flex-1 flex flex-col min-h-0 overflow-hidden border-t border-[#2a2a5a] bg-[#0a0a18]">
+              {/* 채팅 헤더 (항상 고정) */}
+              <div className="flex items-center justify-between px-3 py-2 bg-[#0e0e20] border-b border-[#2a2a5a] shrink-0 z-10">
                 <div className="flex items-center gap-2">
                   <span className="text-sm">{team.emoji}</span>
                   <span className="text-xs font-semibold text-white">{team.name}</span>
                 </div>
-                <button onClick={() => setMobileChat(null)} className="text-gray-500 hover:text-white text-[10px] px-2 py-0.5 rounded bg-[#1a1a3a]">닫기</button>
+                <button onClick={() => setMobileChat(null)} className="text-white text-[11px] px-3 py-1 rounded bg-red-500/30 border border-red-500/40 active:bg-red-500/50">✕ 닫기</button>
               </div>
-              {/* 채팅 본문 */}
-              <div className="flex-1 min-h-0">
+              {/* 채팅 본문 (스크롤은 여기 안에서만) */}
+              <div className="flex-1 min-h-0 overflow-hidden">
                 <ChatPanel
                   team={team}
                   onClose={() => setMobileChat(null)}
@@ -1069,7 +1069,7 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
         )}
 
         {/* ── 모바일 하단 에이전트 바 ── */}
-        <div className="md:hidden border-t border-[#2a2a5a] bg-[#0e0e20] px-2 pt-2 shrink-0" style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}>
+        <div className="md:hidden border-t border-[#2a2a5a] bg-[#0e0e20] px-2 pt-2 shrink-0" style={{ paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom, 0px))" }}>
           <div className="flex gap-1.5 overflow-x-auto pb-0.5 scrollbar-hide">
             {/* 통합채팅 버튼 */}
             <button
