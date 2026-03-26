@@ -57,6 +57,7 @@ const OfficeGame = forwardRef<OfficeGameHandle, Props>(({ onTeamClick }, ref) =>
       const Phaser = await import("phaser");
       const { default: OfficeScene } = await import("./OfficeScene");
       const { default: OutdoorScene } = await import("./OutdoorScene");
+      const { default: LoginScene } = await import("./LoginScene");
 
       if (destroyed || !containerRef.current) return;
 
@@ -91,7 +92,7 @@ const OfficeGame = forwardRef<OfficeGameHandle, Props>(({ onTeamClick }, ref) =>
           autoCenter: Phaser.Scale.CENTER_BOTH,
           zoom: dpr,
         },
-        scene: [scene, new OutdoorScene()],
+        scene: [scene, new OutdoorScene(), new LoginScene()],
       });
 
       game.scene.start("OfficeScene", { onTeamClick: stableCallback, weatherCode });

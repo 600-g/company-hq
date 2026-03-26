@@ -585,7 +585,7 @@ export default class OfficeScene extends Phaser.Scene {
       this.cameras.main.fadeOut(200, 0, 0, 0);
       this.cameras.main.once("camerafadeoutcomplete", () => {
         this.scene.pause("OfficeScene");
-        this.scene.launch("OutdoorScene", { weatherCode: this.weatherCode });
+        this.scene.launch("LoginScene", { weatherCode: this.weatherCode, showReturnBtn: true });
       });
     });
     this.envGroup.add(exitLabel);

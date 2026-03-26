@@ -36,10 +36,13 @@ export default class LoginScene extends Phaser.Scene {
   private leaves:     { x: number; y: number; s: number; dx: number; r: number; rs: number }[] = [];
   private particleG!: Phaser.GameObjects.Graphics;
 
+  private showReturnBtn = false;
+
   constructor() { super({ key: "LoginScene" }); }
 
-  init(data: { weatherCode?: number }) {
+  init(data: { weatherCode?: number; showReturnBtn?: boolean }) {
     this.weatherCode = data.weatherCode ?? 0;
+    this.showReturnBtn = data.showReturnBtn ?? false;
     const now = new Date();
     const mon = now.getMonth() + 1;
     const hr  = now.getHours();
@@ -102,6 +105,32 @@ export default class LoginScene extends Phaser.Scene {
 
     this.cameras.main.setBounds(0, 0, W, H);
     this.time.addEvent({ delay: 40, loop: true, callback: () => this.moveWalkers() });
+
+    // 사무실 복귀 버튼 (EXIT에서 진입 시만)
+    if (this.showReturnBtn) {
+      this.cameras.main.fadeIn(300, 0, 0, 0);
+      const bw = 160, bh = 32;
+      const bx = W / 2 - bw / 2, by = H - 60;
+      const bg = this.add.graphics().setDepth(200);
+      bg.fillStyle(0x1a1a2e, 0.9);
+      bg.fillRoundedRect(bx, by, bw, bh, 6);
+      bg.lineStyle(1.5, 0xf5c842, 0.8);
+      bg.strokeRoundedRect(bx, by, bw, bh, 6);
+      const btn = this.add.text(bx + bw / 2, by + bh / 2, "🏢 사무실로 돌아가기", {
+        fontSize: "11px", fontFamily: FONT, color: "#f5c842", resolution: DPR * 2,
+      }).setOrigin(0.5).setDepth(201).setInteractive({ useHandCursor: true });
+      btn.on("pointerover", () => { bg.clear(); bg.fillStyle(0x2a2a4e, 0.95); bg.fillRoundedRect(bx, by, bw, bh, 6); bg.lineStyle(1.5, 0xf5c842, 1); bg.strokeRoundedRect(bx, by, bw, bh, 6); });
+      btn.on("pointerout",  () => { bg.clear(); bg.fillStyle(0x1a1a2e, 0.9); bg.fillRoundedRect(bx, by, bw, bh, 6); bg.lineStyle(1.5, 0xf5c842, 0.8); bg.strokeRoundedRect(bx, by, bw, bh, 6); });
+      btn.on("pointerdown", () => {
+        this.cameras.main.fadeOut(200, 0, 0, 0);
+        this.cameras.main.once("camerafadeoutcomplete", () => {
+          this.scene.stop("LoginScene");
+          this.scene.resume("OfficeScene");
+          const officeScene = this.scene.get("OfficeScene");
+          if (officeScene) officeScene.cameras.main.fadeIn(300, 0, 0, 0);
+        });
+      });
+    }
   }
 
   // ═══════════════════════════════
