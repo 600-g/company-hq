@@ -3,7 +3,6 @@
     "server-monitor",
     "cpo-claude",
     "date-map",
-    "cl600g",
     "trading-bot",
     "ai900"
   ],
@@ -12,6 +11,7 @@
     "design-team",
     "content-lab",
     "frontend-team",
-    "backend-team"
+    "backend-team",
+    "cl600g"
   ]
 }

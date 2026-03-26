@@ -106,22 +106,20 @@ export default class LoginScene extends Phaser.Scene {
     this.cameras.main.setBounds(0, 0, W, H);
     this.time.addEvent({ delay: 40, loop: true, callback: () => this.moveWalkers() });
 
-    // 사무실 복귀 버튼 (EXIT에서 진입 시만)
+    // 사무실 복귀 — 건물 문 클릭 (EXIT에서 진입 시만)
     if (this.showReturnBtn) {
       this.cameras.main.fadeIn(300, 0, 0, 0);
-      const bw = 160, bh = 32;
-      const bx = W / 2 - bw / 2, by = H - 60;
-      const bg = this.add.graphics().setDepth(200);
-      bg.fillStyle(0x1a1a2e, 0.9);
-      bg.fillRoundedRect(bx, by, bw, bh, 6);
-      bg.lineStyle(1.5, 0xf5c842, 0.8);
-      bg.strokeRoundedRect(bx, by, bw, bh, 6);
-      const btn = this.add.text(bx + bw / 2, by + bh / 2, "🏢 사무실로 돌아가기", {
-        fontSize: "11px", fontFamily: FONT, color: "#f5c842", resolution: DPR * 2,
-      }).setOrigin(0.5).setDepth(201).setInteractive({ useHandCursor: true });
-      btn.on("pointerover", () => { bg.clear(); bg.fillStyle(0x2a2a4e, 0.95); bg.fillRoundedRect(bx, by, bw, bh, 6); bg.lineStyle(1.5, 0xf5c842, 1); bg.strokeRoundedRect(bx, by, bw, bh, 6); });
-      btn.on("pointerout",  () => { bg.clear(); bg.fillStyle(0x1a1a2e, 0.9); bg.fillRoundedRect(bx, by, bw, bh, 6); bg.lineStyle(1.5, 0xf5c842, 0.8); bg.strokeRoundedRect(bx, by, bw, bh, 6); });
-      btn.on("pointerdown", () => {
+      // 건물 문 영역에 인터랙티브 히트박스
+      const doorX = W / 2, doorY = GROUND_Y - 13;
+      const doorHit = this.add.rectangle(doorX, doorY, 44, 30, 0x000000, 0).setDepth(200).setInteractive({ useHandCursor: true });
+      const doorLabel = this.add.text(doorX, doorY - 22, "▶ 입장", {
+        fontSize: "9px", fontFamily: FONT, color: "#f5c842", resolution: DPR * 2,
+        backgroundColor: "#0008", padding: { x: 4, y: 2 },
+      }).setOrigin(0.5).setDepth(201).setAlpha(0);
+
+      doorHit.on("pointerover", () => doorLabel.setAlpha(1));
+      doorHit.on("pointerout",  () => doorLabel.setAlpha(0));
+      doorHit.on("pointerdown", () => {
         this.cameras.main.fadeOut(200, 0, 0, 0);
         this.cameras.main.once("camerafadeoutcomplete", () => {
           this.scene.stop("LoginScene");

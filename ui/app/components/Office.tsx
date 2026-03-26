@@ -1148,21 +1148,8 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
       return next;
     });
 
-    // 게임 씬에 층 정보 동기화 (약간 지연) + 1층 강제 표시
-    const syncTimer = setTimeout(() => {
-      if (!gameRef.current) return;
-      setFloorTeams(current => {
-        for (const [f, ids] of Object.entries(current)) {
-          for (const id of ids as string[]) {
-            gameRef.current?.moveTeamToFloor(id, Number(f));
-          }
-        }
-        return current;
-      });
-      // 동기화 후 항상 1층 표시 (초기 진입 시 2층으로 보이는 버그 방지)
-      setTimeout(() => gameRef.current?.changeFloor(1), 100);
-    }, 500);
-    return () => clearTimeout(syncTimer);
+    // Phaser는 ALL_FLOORS 하드코딩으로 자체 관리 — React에서 moveTeamToFloor 호출 금지
+    // (moveTeamToFloor가 같은 층 이동 시 팀을 삭제하는 버그 있음)
   }, [teams]);
 
   // floorTeams 변경 시 localStorage + 서버 동시 저장
