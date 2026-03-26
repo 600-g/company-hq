@@ -87,30 +87,10 @@ export default class OfficeScene extends Phaser.Scene {
   init(data: {
     onTeamClick?: (id: string, screenX?: number, screenY?: number) => void;
     weatherCode?: number;
-    floorLayout?: Record<number, string[]>; // 서버 floor_layout.json 전달
   }) {
     this.onTeamClick = data.onTeamClick;
     this.weatherCode = data.weatherCode ?? 0;
-
-    // 서버 floor_layout이 있으면 ALL_FLOORS 재구성 (서버가 소스오브트루스)
-    if (data.floorLayout && Object.keys(data.floorLayout).length > 0) {
-      const AUTO_GRID = [
-        { gridX: 1,  gridY: 4 }, { gridX: 6,  gridY: 4 },
-        { gridX: 11, gridY: 4 }, { gridX: 16, gridY: 4 },
-        { gridX: 1,  gridY: 9 }, { gridX: 6,  gridY: 9 },
-      ];
-      for (const [floorStr, teamIds] of Object.entries(data.floorLayout)) {
-        const floor = Number(floorStr);
-        const configs: TeamConfig[] = [];
-        (teamIds as string[]).forEach((id, idx) => {
-          const meta = TEAM_META[id];
-          if (!meta) return; // cpo-claude, server-monitor 등 제외
-          const pos = AUTO_GRID[idx] ?? { gridX: 1 + (idx % 4) * 5, gridY: 4 + Math.floor(idx / 4) * 5 };
-          configs.push({ id, gridX: pos.gridX, gridY: pos.gridY, ...meta });
-        });
-        if (configs.length > 0) ALL_FLOORS[floor] = configs;
-      }
-    }
+    // ALL_FLOORS 하드코딩 그대로 사용 — 서버 동기화로 꼬이는 문제 방지
   }
 
   preload() { preloadAssets(this); }

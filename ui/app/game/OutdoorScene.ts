@@ -303,6 +303,11 @@ export default class OutdoorScene extends Phaser.Scene {
         this.onReturn?.();
         this.scene.stop("OutdoorScene");
         this.scene.resume("OfficeScene");
+        // OfficeScene 카메라 fadeIn (exit 시 fadeOut 된 상태 복구)
+        const officeScene = this.scene.get("OfficeScene");
+        if (officeScene) {
+          officeScene.cameras.main.fadeIn(300, 0, 0, 0);
+        }
       });
     });
 

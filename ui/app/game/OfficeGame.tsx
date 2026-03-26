@@ -12,10 +12,9 @@ export interface OfficeGameHandle {
 
 interface Props {
   onTeamClick: (teamId: string, screenX?: number, screenY?: number) => void;
-  floorLayout?: Record<number, string[]>;
 }
 
-const OfficeGame = forwardRef<OfficeGameHandle, Props>(({ onTeamClick, floorLayout }, ref) => {
+const OfficeGame = forwardRef<OfficeGameHandle, Props>(({ onTeamClick }, ref) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const gameRef = useRef<unknown>(null);
   const sceneRef = useRef<unknown>(null);
@@ -95,7 +94,7 @@ const OfficeGame = forwardRef<OfficeGameHandle, Props>(({ onTeamClick, floorLayo
         scene: [scene, new OutdoorScene()],
       });
 
-      game.scene.start("OfficeScene", { onTeamClick: stableCallback, weatherCode, floorLayout });
+      game.scene.start("OfficeScene", { onTeamClick: stableCallback, weatherCode });
       gameRef.current = game;
       setLoading(false);
     })();

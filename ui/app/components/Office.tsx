@@ -1420,7 +1420,7 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
         {/* Phaser — 항상 풀 */}
         <main className={`relative min-h-0 flex-1${(mobileSide || mobileChat) ? " pointer-events-none" : ""}`}>
           {GameComponent ? (
-            <GameComponent ref={gameRef} onTeamClick={handleTeamClick} floorLayout={floorTeams} />
+            <GameComponent ref={gameRef} onTeamClick={handleTeamClick} />
           ) : (
             <div className="w-full h-full flex items-center justify-center">
               <p className="text-xs text-gray-500">🏢 사무실 로딩중...</p>
