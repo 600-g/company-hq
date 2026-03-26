@@ -1,5 +1,5 @@
 # 두근컴퍼니 에셋 생성 가이드
-> 버전: v1.0 | 업데이트: 2026-03-19
+> 버전: v2.0 | 업데이트: 2026-03-27
 
 ## 모델 & 설정
 
@@ -14,7 +14,7 @@
 모든 이미지 생성 시 아래 스타일 접미사를 반드시 붙인다:
 
 ```
-semi-pixel art style, clean detailed illustration with retro game aesthetic, vibrant warm colors, crisp lines
+modern pixel art style, clean and polished, Stardew Valley meets Pokemon aesthetic, soft warm palette, no heavy outlines, subtle shading, cozy indie game feel
 ```
 
 ### 뷰별 추가 키워드
@@ -77,7 +77,7 @@ semi-pixel art style, clean detailed illustration with retro game aesthetic, vib
 ```python
 import fal_client
 
-STYLE = "semi-pixel art style, clean detailed illustration with retro game aesthetic, vibrant warm colors, crisp lines"
+STYLE = "modern pixel art style, clean and polished, Stardew Valley meets Pokemon aesthetic, soft warm palette, no heavy outlines, subtle shading, cozy indie game feel"
 
 result = fal_client.subscribe(
     "fal-ai/nano-banana",
@@ -89,10 +89,39 @@ result = fal_client.subscribe(
 url = result["images"][0]["url"]
 ```
 
+### 캐릭터 스프라이트시트 (Gemini/전용 도구)
+- **크기**: 224x384 (32x64 프레임, 7열x6행)
+- **행0**: 아래(정면) idle + walk 3프레임
+- **행1**: 왼쪽 walk 3프레임
+- **행2**: 오른쪽 walk 3프레임
+- **행3**: 위(뒷모습) walk 3프레임
+- **행4**: 타이핑 좌/우
+- **행5**: 기타
+- **스타일**: 2등신(머리:몸=1:1), 귀여운 사무실 직원
+- **프롬프트 예시**: `pixel art character sprite sheet, 7x6 grid, 32x64 per frame, cute chibi office worker, 2-head-tall proportions, walk cycle animation, typing pose, transparent background, modern clean pixel art`
+- **현재 파일**: `ui/public/assets/char_0.png` ~ `char_6.png`
+
+### 가구 (탑뷰 3/4, 개별 PNG)
+- **프롬프트 예시**: `pixel art office desk with monitor, 3/4 top-down view, 64x64, transparent background, modern clean style, warm colors`
+- **현재 위치**: `ui/public/assets/furniture/`
+
+## 교체 우선순위
+1. 로그인 배경 (계절/시간대별 5장) — 가장 첫인상
+2. 캐릭터 (7장) — 가장 눈에 띔
+3. 창밖 파노라마 (3장) — 사무실 분위기
+4. 가구 (10종) — 사무실 디테일
+
+## 생성 도구
+| 도구 | 용도 | 무료 |
+|------|------|------|
+| **fal.ai (nano-banana)** | 배경/건물/풍경 | O (제한적) |
+| **Gemini** | 캐릭터/스프라이트 | O |
+| **Piskel/Aseprite** | 스프라이트 편집/조정 | O/유료 |
+
 ## 규칙
 1. **일관성**: 같은 장면은 같은 프롬프트 공식 사용
-2. **모델 고정**: 반드시 `fal-ai/nano-banana` 사용
-3. **스타일 접미사 필수**: 위 공식 빠지면 스타일 깨짐
-4. **크기 통일**: 같은 용도는 같은 해상도
-5. **파일 경로**: `ui/public/assets/gen/` 에 저장
-6. **캐릭터/가구**: AI 생성 X, 기존 스프라이트시트 유지 (애니메이션 필요)
+2. **스타일 접미사 필수**: 위 공식 빠지면 스타일 깨짐
+3. **크기 통일**: 같은 용도는 같은 해상도
+4. **파일 경로**: `ui/public/assets/gen/` (생성), `ui/public/assets/` (적용)
+5. **점진적 교체**: 한번에 다 안 바꿈, 우선순위대로 하나씩
+6. **용량 체크**: 개별 에셋 50KB, 배경 200KB 이내
