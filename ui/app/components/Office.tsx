@@ -1203,7 +1203,7 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
       fetch(`${getApiBase()}/api/layout/floors`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ floors: floorTeams }),
+        body: JSON.stringify({ layout: floorTeams }),
       }).catch(() => {});
     }, 500);
   }, [floorTeams]);

@@ -1016,23 +1016,6 @@ def _save_floor_layout(layout: dict):
         json.dump(layout, f, ensure_ascii=False, indent=2)
 
 
-@app.get("/api/layout/floors")
-async def get_floor_layout():
-    """층 배치 조회"""
-    layout = _load_floor_layout()
-    return {"ok": True, "floors": layout}
-
-
-@app.put("/api/layout/floors")
-async def save_floor_layout(body: dict):
-    """층 배치 저장 — { floors: { "1": ["team-a", ...], "2": [...] } }"""
-    floors = body.get("floors", {})
-    if not isinstance(floors, dict):
-        return {"ok": False, "error": "floors는 객체여야 합니다"}
-    _save_floor_layout(floors)
-    return {"ok": True}
-
-
 # ── 이미지 업로드 ─────────────────────────────────────
 _UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads")
 os.makedirs(_UPLOAD_DIR, exist_ok=True)
