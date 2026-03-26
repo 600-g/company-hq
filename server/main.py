@@ -8,18 +8,27 @@ import shutil
 import json
 import uuid
 from datetime import datetime
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI, WebSocket, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
-from ws_handler import handle_chat, AGENT_STATUS, RECENT_ACTIVITY, _log_activity
+from ws_handler import (
+    handle_chat, AGENT_STATUS, RECENT_ACTIVITY, _log_activity, set_team_lookup,
+    collab_broadcast, CHAR_STATE, ACTIVE_COLLABS, get_char_state,
+)
 from project_scanner import scan_all
 from github_manager import create_repo, list_repos, _generate_system_prompt, PROJECT_TYPES
 from system_monitor import get_all as get_system, get_process_stats
+from notion_reader import fetch_notion_page
 from claude_runner import TEAM_SESSIONS, TEAM_MODELS, AGENT_PIDS, MODEL_IDS, get_claude_version, _save_sessions, AGENT_TOKENS, run_claude
 from auth import (
     register_user, verify_token, create_invite_code,
     get_all_codes, get_all_users, ensure_owner_code, ROLES, owner_login,
+)
+from push_notifications import (
+    get_vapid_public_key, add_subscription, remove_subscription,
+    send_push, send_agent_complete, send_server_error,
+    get_notifications, get_unread_count, mark_read, mark_all_read, delete_notification,
 )
 
 load_dotenv()
@@ -66,6 +75,57 @@ def _save_teams(teams: list):
         json.dump(teams, f, ensure_ascii=False, indent=2)
 
 TEAMS = _load_teams()
+set_team_lookup(TEAMS)  # 푸시 알림용 팀 정보 초기화
+
+# ── 층 배치 (floor_layout.json) ───────────────────────
+_LAYOUT_FILE = os.path.join(os.path.dirname(__file__), "floor_layout.json")
+
+# 기본 층 배치 (teams.json에서 서버실·CPO 제외한 팀 순서대로 배분)
+_DEFAULT_LAYOUT: dict[str, list[str]] = {
+    "1": ["trading-bot", "date-map", "claude-biseo", "ai900", "cl600g", "design-team"],
+    "2": ["content-lab", "frontend-team", "backend-team"],
+}
+
+def _load_layout() -> dict[str, list[str]]:
+    if os.path.isfile(_LAYOUT_FILE):
+        try:
+            with open(_LAYOUT_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    _save_layout(_DEFAULT_LAYOUT)
+    return dict(_DEFAULT_LAYOUT)
+
+def _save_layout(layout: dict[str, list[str]]):
+    with open(_LAYOUT_FILE, "w", encoding="utf-8") as f:
+        json.dump(layout, f, ensure_ascii=False, indent=2)
+
+def _sync_layout_with_teams(teams: list[dict], layout: dict[str, list[str]]) -> dict[str, list[str]]:
+    """teams.json 변경 시 floor_layout.json에서 삭제된 팀 제거, 신규 팀 자동 배치"""
+    team_ids = {t["id"] for t in teams} - {"server-monitor", "cpo-claude"}
+    # 레이아웃에 있는 팀 ID 수집
+    assigned: set[str] = set()
+    new_layout: dict[str, list[str]] = {}
+    for floor, ids in sorted(layout.items(), key=lambda x: int(x[0])):
+        cleaned = [tid for tid in ids if tid in team_ids]
+        if cleaned:
+            new_layout[floor] = cleaned
+        assigned.update(cleaned)
+    # 미배치 팀은 가장 적은 층에 추가
+    for tid in team_ids - assigned:
+        # 팀이 6개 미만인 층 찾기, 없으면 새 층 생성
+        placed = False
+        for floor in sorted(new_layout.keys(), key=int):
+            if len(new_layout[floor]) < 6:
+                new_layout[floor].append(tid)
+                placed = True
+                break
+        if not placed:
+            next_floor = str(max((int(f) for f in new_layout), default=0) + 1)
+            new_layout[next_floor] = [tid]
+    return new_layout
+
+FLOOR_LAYOUT = _load_layout()
 
 app = FastAPI(title="AI Company HQ", version="1.0.0")
 
@@ -209,6 +269,7 @@ async def add_team(body: dict):
     if not any(t["id"] == repo_name for t in TEAMS):
         TEAMS.append(new_team)
         _save_teams(TEAMS)  # JSON 영구 저장
+        set_team_lookup(TEAMS)  # 푸시 룩업 갱신
 
     # 시스템프롬프트 자동 등록 (claude_runner에 동적 추가 + 파일 영구 저장)
     from claude_runner import TEAM_SYSTEM_PROMPTS, _save_prompts, _SAVED_PROMPTS
@@ -216,6 +277,11 @@ async def add_team(body: dict):
         TEAM_SYSTEM_PROMPTS[repo_name] = result["system_prompt"]
         _SAVED_PROMPTS[repo_name] = result["system_prompt"]
         _save_prompts(_SAVED_PROMPTS)
+
+    # 층 배치 동기화 (신규 팀 자동 배치)
+    global FLOOR_LAYOUT
+    FLOOR_LAYOUT = _sync_layout_with_teams(TEAMS, FLOOR_LAYOUT)
+    _save_layout(FLOOR_LAYOUT)
 
     return {
         "ok": True,
@@ -239,6 +305,7 @@ async def delete_team(team_id: str):
     if len(TEAMS) == before:
         return {"ok": False, "error": "팀을 찾을 수 없습니다."}
     _save_teams(TEAMS)
+    set_team_lookup(TEAMS)  # 푸시 룩업 갱신
 
     # 1) 로컬 폴더 삭제
     local_dir = os.path.expanduser(f"~/Developer/my-company/{team_id}")
@@ -267,6 +334,11 @@ async def delete_team(team_id: str):
     except Exception as e:
         logging.warning(f"[DELETE] 프롬프트 정리 실패: {e}")
 
+    # 층 배치 동기화 (삭제된 팀 제거)
+    global FLOOR_LAYOUT
+    FLOOR_LAYOUT = _sync_layout_with_teams(TEAMS, FLOOR_LAYOUT)
+    _save_layout(FLOOR_LAYOUT)
+
     _log_activity(team_id, "🗑️ 에이전트 완전 삭제됨 (로컬+GitHub+프롬프트)")
     return {"ok": True, "team_id": team_id}
 
@@ -275,6 +347,111 @@ async def delete_team(team_id: str):
 async def get_repos():
     """GitHub 레포 목록"""
     return list_repos()
+
+
+# ── 층 배치 API ────────────────────────────────────────
+
+@app.get("/api/layout/floors")
+async def get_floor_layout():
+    """층 배치 반환 — 각 층에 어떤 팀이 있는지 + 팀 메타 포함
+
+    응답:
+    {
+      "ok": true,
+      "floors": [
+        {"floor": 1, "teams": [{"id":"trading-bot","name":"매매봇","emoji":"🤖",...}]},
+        ...
+      ]
+    }
+    """
+    team_map = {t["id"]: t for t in TEAMS}
+    floors = []
+    for floor_str, team_ids in sorted(FLOOR_LAYOUT.items(), key=lambda x: int(x[0])):
+        teams_in_floor = []
+        for tid in team_ids:
+            team = team_map.get(tid)
+            if team:
+                teams_in_floor.append({
+                    "id": team["id"],
+                    "name": team.get("name", ""),
+                    "emoji": team.get("emoji", ""),
+                    "status": team.get("status", "운영중"),
+                    "model": team.get("model", "sonnet"),
+                })
+        floors.append({"floor": int(floor_str), "teams": teams_in_floor})
+    return {"ok": True, "floors": floors}
+
+
+@app.put("/api/layout/floors")
+async def update_floor_layout(body: dict):
+    """층 배치 업데이트 — 프론트에서 팀 드래그 후 저장 시 호출
+
+    body: {"layout": {"1": ["team-a","team-b"], "2": ["team-c"]}}
+    """
+    global FLOOR_LAYOUT
+    new_layout: dict[str, list[str]] = body.get("layout", {})
+    if not new_layout:
+        return {"ok": False, "error": "layout 필드가 필요합니다"}
+    # 유효한 팀만 허용
+    valid_ids = {t["id"] for t in TEAMS}
+    cleaned: dict[str, list[str]] = {}
+    for floor_str, ids in new_layout.items():
+        filtered = [tid for tid in ids if tid in valid_ids]
+        if filtered:
+            cleaned[floor_str] = filtered
+    FLOOR_LAYOUT = cleaned
+    _save_layout(FLOOR_LAYOUT)
+    return {"ok": True, "layout": FLOOR_LAYOUT}
+
+
+# ── 캐릭터 상태 API ────────────────────────────────────
+
+@app.get("/api/agents/status")
+async def get_agents_status():
+    """모든 에이전트의 현재 캐릭터 상태 반환
+
+    응답:
+    {
+      "ok": true,
+      "agents": [
+        {
+          "id": "trading-bot",
+          "name": "매매봇",
+          "emoji": "🤖",
+          "char_state": "idle",        // idle|working|collaborating|moving
+          "collab_with": [],           // 협업 중인 팀 ID 목록
+          "action": null,              // 협업 액션 설명
+          "working": false,
+          "tool": null,
+        },
+        ...
+      ],
+      "active_collabs": [...]          // 진행 중인 협업 세션
+    }
+    """
+    agents = []
+    for team in TEAMS:
+        if team["id"] == "server-monitor":
+            continue
+        tid = team["id"]
+        char = get_char_state(tid)
+        ws_status = AGENT_STATUS.get(tid, {})
+        agents.append({
+            "id": tid,
+            "name": team.get("name", ""),
+            "emoji": team.get("emoji", ""),
+            "char_state": char["state"],
+            "collab_with": char["collab_with"],
+            "action": char["action"],
+            "working": ws_status.get("working", False),
+            "tool": ws_status.get("tool"),
+            "last_active": ws_status.get("last_active"),
+        })
+    return {
+        "ok": True,
+        "agents": agents,
+        "active_collabs": list(ACTIVE_COLLABS.values()),
+    }
 
 
 @app.get("/api/teams/{team_id}/guide")
@@ -513,6 +690,16 @@ async def dispatch_task(body: dict):
     prev_result = ""
     all_results = []
 
+    # 참여 팀 목록 (유효한 팀만)
+    valid_step_teams = [
+        s.get("team", "") for s in steps
+        if any(t["id"] == s.get("team") for t in TEAMS)
+    ]
+
+    # 협업 시작 이벤트 브로드캐스트 (2개 이상 팀 참여 시)
+    if len(valid_step_teams) >= 2:
+        await collab_broadcast(dispatch_id, "collab_start", valid_step_teams, action=instruction[:60])
+
     for i, step in enumerate(steps):
         team_id = step.get("team", "")
         prompt = step.get("prompt", "")
@@ -526,6 +713,10 @@ async def dispatch_task(body: dict):
 
         # {prev_result} 치환
         actual_prompt = prompt.replace("{prev_result}", prev_result)
+
+        # 스텝 시작 이벤트 (현재 실행 팀 강조)
+        if len(valid_step_teams) >= 2:
+            await collab_broadcast(dispatch_id, "collab_step", [team_id], action=f"step {i+1}: {actual_prompt[:40]}")
 
         # 실행
         _log_activity(team_id, f"📨 디스패치 작업 수신: {actual_prompt[:50]}")
@@ -554,6 +745,10 @@ async def dispatch_task(body: dict):
         DISPATCH_TASKS[dispatch_id]["steps"] = all_results
         _log.info(f"[DISPATCH] Step {i+1}/{len(steps)} 완료: {team_id}")
 
+    # 협업 종료 이벤트
+    if len(valid_step_teams) >= 2:
+        await collab_broadcast(dispatch_id, "collab_end", valid_step_teams)
+
     DISPATCH_TASKS[dispatch_id]["status"] = "done"
     DISPATCH_TASKS[dispatch_id]["completed"] = datetime.now().isoformat()
     _log_activity("cpo-claude", f"✅ 디스패치 완료: {instruction[:50]}")
@@ -579,6 +774,294 @@ async def get_dispatch(dispatch_id: str):
 async def list_dispatches():
     """모든 디스패치 작업 목록"""
     return [{"id": k, **v} for k, v in DISPATCH_TASKS.items()]
+
+
+# ── CPO 주도 스마트 디스패치 ─────────────────────────────
+
+@app.post("/api/dispatch/smart")
+async def smart_dispatch(body: dict):
+    """CPO 주도 디스패치: 필터링 → 관련 팀만 실행 → CPO 통합 보고
+
+    body: { "message": "유저 메시지" }
+    returns: SSE stream
+    """
+    from fastapi.responses import StreamingResponse
+
+    message = body.get("message", "")
+    if not message:
+        return {"ok": False, "error": "message가 필요합니다"}
+
+    dispatch_id = str(uuid.uuid4())[:8]
+    DISPATCH_TASKS[dispatch_id] = {
+        "instruction": message,
+        "status": "running",
+        "phase": "routing",
+        "steps": [],
+        "started": datetime.now().isoformat(),
+    }
+
+    async def stream():
+        import re as _re
+
+        # 팀 목록 (server-monitor 제외)
+        available_teams = [t for t in TEAMS if t["id"] not in ("server-monitor", "cpo-claude")]
+        team_list_str = "\n".join(
+            f'- {t["id"]}: {t["emoji"]} {t["name"]}' for t in available_teams
+        )
+
+        # ── Phase 1: CPO가 관련 팀 필터링 ──
+        route_prompt = (
+            f"유저 메시지:\n\"{message}\"\n\n"
+            f"현재 팀 목록:\n{team_list_str}\n\n"
+            "이 메시지에 관련 있는 팀만 골라서 JSON 배열로 답해.\n"
+            "관련 없는 팀은 절대 포함하지 마. 토큰 낭비야.\n"
+            "각 팀에게 줄 구체적 지시도 포함해.\n\n"
+            "형식 (JSON만, 설명 없이):\n"
+            '[{"team": "team-id", "prompt": "이 팀에게 줄 구체적 지시"}]'
+        )
+
+        cpo_team = next((t for t in TEAMS if t["id"] == "cpo-claude"), None)
+        if not cpo_team:
+            yield f"data: {json.dumps({'phase': 'error', 'error': 'CPO 팀 없음'})}\n\n"
+            return
+
+        # CPO 라우팅 실행
+        yield f"data: {json.dumps({'phase': 'routing', 'message': '🧠 CPO가 관련 팀 분석 중...'})}\n\n"
+
+        route_result = ""
+        async for chunk in run_claude(route_prompt, cpo_team["localPath"], "cpo-claude"):
+            if chunk["kind"] == "text":
+                route_result += chunk["content"]
+
+        # JSON 파싱
+        json_match = _re.search(r'\[.*\]', route_result, _re.DOTALL)
+        if not json_match:
+            yield f"data: {json.dumps({'phase': 'error', 'error': 'CPO 라우팅 실패', 'raw': route_result[:500]})}\n\n"
+            return
+
+        try:
+            routed_steps = json.loads(json_match.group())
+        except json.JSONDecodeError:
+            yield f"data: {json.dumps({'phase': 'error', 'error': 'JSON 파싱 실패'})}\n\n"
+            return
+
+        routed_team_ids = [s["team"] for s in routed_steps]
+        skipped_teams = [t for t in available_teams if t["id"] not in routed_team_ids]
+
+        yield f"data: {json.dumps({'phase': 'routed', 'teams': routed_team_ids, 'skipped': [t['id'] for t in skipped_teams]})}\n\n"
+
+        # ── Phase 2: 관련 팀만 병렬 실행 ──
+        yield f"data: {json.dumps({'phase': 'executing', 'message': f'⚡ {len(routed_steps)}개 팀 작업 중...'})}\n\n"
+
+        team_results: dict[str, dict] = {}
+
+        async def run_team(step: dict):
+            team_id = step["team"]
+            prompt = step["prompt"]
+            team = next((t for t in TEAMS if t["id"] == team_id), None)
+            if not team:
+                team_results[team_id] = {"status": "skipped", "error": "팀 없음"}
+                return
+
+            result_text = ""
+            try:
+                async for chunk in run_claude(prompt, team["localPath"], team_id):
+                    if chunk["kind"] == "text":
+                        result_text += chunk["content"]
+                team_results[team_id] = {
+                    "status": "done",
+                    "team_name": team["name"],
+                    "emoji": team["emoji"],
+                    "result": result_text,
+                }
+            except Exception as e:
+                team_results[team_id] = {"status": "error", "error": str(e)}
+
+        # 병렬 실행
+        await asyncio.gather(*[run_team(step) for step in routed_steps])
+
+        # 완료 알림
+        done_teams = list(team_results.keys())
+        yield f"data: {json.dumps({'phase': 'team_done', 'done': len(done_teams), 'total': len(routed_steps), 'teams': done_teams})}\n\n"
+
+        # ── Phase 3: CPO 통합 보고 ──
+        yield f"data: {json.dumps({'phase': 'summarizing', 'message': '🧠 CPO가 통합 보고서 작성 중...'})}\n\n"
+
+        summary_parts = []
+        for tid, result in team_results.items():
+            if result["status"] == "done":
+                summary_parts.append(
+                    f"=== {result['emoji']} {result['team_name']} ({tid}) ===\n"
+                    f"{result['result'][:1500]}"
+                )
+            else:
+                summary_parts.append(f"=== {tid} === ❌ 실패: {result.get('error', '알 수 없음')}")
+
+        summary_prompt = (
+            f"유저의 원래 요청:\n\"{message}\"\n\n"
+            f"각 팀의 답변:\n\n{''.join(s + chr(10) + chr(10) for s in summary_parts)}\n"
+            "위 답변들을 종합해서 유저에게 통합 보고해줘.\n"
+            "형식:\n"
+            "1. 전체 요약 (2-3줄)\n"
+            "2. 팀별 할 일 정리 (팀이름: 할 일)\n"
+            "3. 우선순위 또는 의존성 있으면 언급\n"
+            "짧고 명확하게."
+        )
+
+        summary_text = ""
+        async for chunk in run_claude(summary_prompt, cpo_team["localPath"], "cpo-claude"):
+            if chunk["kind"] == "text":
+                summary_text += chunk["content"]
+                yield f"data: {json.dumps({'phase': 'summary_chunk', 'content': chunk['content']})}\n\n"
+
+        # 최종 결과
+        DISPATCH_TASKS[dispatch_id]["status"] = "done"
+        DISPATCH_TASKS[dispatch_id]["completed"] = datetime.now().isoformat()
+        DISPATCH_TASKS[dispatch_id]["steps"] = [
+            {"team": tid, **r} for tid, r in team_results.items()
+        ]
+        DISPATCH_TASKS[dispatch_id]["summary"] = summary_text
+
+        yield f"data: {json.dumps({'phase': 'done', 'dispatch_id': dispatch_id, 'summary': summary_text, 'team_results': {tid: {'status': r['status'], 'result': r.get('result', '')[:500]} for tid, r in team_results.items()}})}\n\n"
+
+        _log_activity("cpo-claude", f"✅ 스마트 디스패치 완료: {message[:50]}")
+
+    return StreamingResponse(stream(), media_type="text/event-stream")
+
+
+# ── 웹 푸시 알림 ──────────────────────────────────────
+
+@app.get("/api/push/vapid-key")
+async def push_vapid_key():
+    """VAPID 공개키 반환 (프론트에서 구독 시 사용)"""
+    return {"ok": True, "publicKey": get_vapid_public_key()}
+
+
+@app.post("/api/push/subscribe")
+async def push_subscribe(body: dict):
+    """푸시 알림 구독 등록"""
+    sub_info = body.get("subscription")
+    if not sub_info or not sub_info.get("endpoint"):
+        return {"ok": False, "error": "subscription 정보가 필요합니다"}
+    ok = add_subscription(sub_info)
+    return {"ok": ok}
+
+
+@app.post("/api/push/unsubscribe")
+async def push_unsubscribe(body: dict):
+    """푸시 알림 구독 해제"""
+    endpoint = body.get("endpoint", "")
+    if not endpoint:
+        return {"ok": False, "error": "endpoint가 필요합니다"}
+    ok = remove_subscription(endpoint)
+    return {"ok": ok}
+
+
+@app.post("/api/push/test")
+async def push_test():
+    """테스트 푸시 발송"""
+    count = send_push(
+        title="🏢 두근컴퍼니 알림 테스트",
+        body="푸시 알림이 정상적으로 작동합니다!",
+        tag="test",
+    )
+    return {"ok": True, "sent": count}
+
+
+# ── 인앱 알림 ────────────────────────────────────────
+
+@app.get("/api/notifications")
+async def get_notifs():
+    """알림 목록 + 안 읽은 수"""
+    return {"ok": True, "notifications": get_notifications(), "unread": get_unread_count()}
+
+
+@app.post("/api/notifications/{notif_id}/read")
+async def read_notif(notif_id: str):
+    """개별 알림 읽음 처리"""
+    ok = mark_read(notif_id)
+    return {"ok": ok, "unread": get_unread_count()}
+
+
+@app.post("/api/notifications/read-all")
+async def read_all_notifs():
+    """전체 읽음 처리"""
+    count = mark_all_read()
+    return {"ok": True, "marked": count, "unread": 0}
+
+
+@app.delete("/api/notifications/{notif_id}")
+async def del_notif(notif_id: str):
+    """알림 삭제"""
+    ok = delete_notification(notif_id)
+    return {"ok": ok, "unread": get_unread_count()}
+
+
+# ── 층 배치 (서버 영구 저장) ──────────────────────────
+_FLOOR_LAYOUT_FILE = os.path.join(os.path.dirname(__file__), "floor_layout.json")
+
+
+def _load_floor_layout() -> dict:
+    if os.path.isfile(_FLOOR_LAYOUT_FILE):
+        try:
+            with open(_FLOOR_LAYOUT_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+
+def _save_floor_layout(layout: dict):
+    with open(_FLOOR_LAYOUT_FILE, "w", encoding="utf-8") as f:
+        json.dump(layout, f, ensure_ascii=False, indent=2)
+
+
+@app.get("/api/layout/floors")
+async def get_floor_layout():
+    """층 배치 조회"""
+    layout = _load_floor_layout()
+    return {"ok": True, "floors": layout}
+
+
+@app.put("/api/layout/floors")
+async def save_floor_layout(body: dict):
+    """층 배치 저장 — { floors: { "1": ["team-a", ...], "2": [...] } }"""
+    floors = body.get("floors", {})
+    if not isinstance(floors, dict):
+        return {"ok": False, "error": "floors는 객체여야 합니다"}
+    _save_floor_layout(floors)
+    return {"ok": True}
+
+
+# ── 이미지 업로드 ─────────────────────────────────────
+_UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads")
+os.makedirs(_UPLOAD_DIR, exist_ok=True)
+
+@app.post("/api/upload/image")
+async def upload_image(file: UploadFile = File(...)):
+    """이미지 업로드 → 서버 저장 → 경로 반환 (에이전트가 Read 도구로 분석)"""
+    ext = os.path.splitext(file.filename or "img.png")[1].lower()
+    if ext not in (".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"):
+        return {"ok": False, "error": "지원하지 않는 이미지 형식"}
+    fname = f"{uuid.uuid4().hex[:12]}{ext}"
+    fpath = os.path.join(_UPLOAD_DIR, fname)
+    content = await file.read()
+    if len(content) > 10 * 1024 * 1024:  # 10MB 제한
+        return {"ok": False, "error": "파일이 너무 큽니다 (최대 10MB)"}
+    with open(fpath, "wb") as f:
+        f.write(content)
+    return {"ok": True, "path": fpath, "filename": fname, "size": len(content)}
+
+
+# ── 도구 (Notion 등) ──────────────────────────────────
+
+@app.post("/api/tools/notion")
+async def read_notion(body: dict):
+    """공개 Notion 페이지 읽기 — URL만 보내면 콘텐츠 추출"""
+    url = body.get("url", "")
+    if not url:
+        return {"ok": False, "error": "url 필드가 필요합니다"}
+    return await fetch_notion_page(url)
 
 
 # ── WebSocket ─────────────────────────────────────────
