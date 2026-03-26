@@ -1039,21 +1039,29 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
     2: ["content-lab", "frontend-team", "backend-team"],
   };
   const [floorTeams, setFloorTeams] = useState<Record<number, string[]>>(() => {
-    if (typeof window === "undefined") return {};
-    // localStorage는 즉시 로드용 캐시, 서버에서 받으면 덮어씀
+    if (typeof window === "undefined") return DEFAULT_FLOORS;
     try {
       const saved = localStorage.getItem("hq-floor-teams-order");
       if (!saved) return DEFAULT_FLOORS;
       const parsed = JSON.parse(saved);
       if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return DEFAULT_FLOORS;
       const validated: Record<number, string[]> = {};
+      let totalTeams = 0;
       for (const [k, v] of Object.entries(parsed)) {
         if (Array.isArray(v) && v.every(item => typeof item === "string")) {
           validated[Number(k)] = v;
+          totalTeams += v.length;
         }
       }
-      return Object.keys(validated).length > 0 ? validated : DEFAULT_FLOORS;
-    } catch {}
+      // 팀이 3개 미만이면 깨진 데이터 → 초기화
+      if (totalTeams < 3) {
+        localStorage.removeItem("hq-floor-teams-order");
+        return DEFAULT_FLOORS;
+      }
+      return validated;
+    } catch {
+      localStorage.removeItem("hq-floor-teams-order");
+    }
     return DEFAULT_FLOORS;
   });
   const floorLoadedFromServer = useRef(false);
