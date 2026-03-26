@@ -135,142 +135,250 @@ export default class LoginScene extends Phaser.Scene {
   private drawSky(isN: boolean, isS: boolean, isRain: boolean) {
     const g = this.add.graphics().setDepth(0);
     let t: number, b: number;
-    if      (isN)    { t = 0x050918; b = 0x0e1a30; }
-    else if (isS)    { t = 0x2a2058; b = 0xd06848; }
-    else if (isRain) { t = 0x3a4050; b = 0x5a6068; }
-    else             { t = 0x2888c8; b = 0x80c8f8; }
+    if      (isN)    { t = 0x0a0e1a; b = 0x141e35; }
+    else if (isS)    { t = 0x1a1040; b = 0xe06040; }
+    else if (isRain) { t = 0x404855; b = 0x606870; }
+    else             { t = 0x3498db; b = 0x87ceeb; }
     g.fillGradientStyle(t, t, b, b, 1);
     g.fillRect(0, 0, W, GROUND_Y);
 
+    // 별 (야간)
     if (isN) {
-      for (let i = 0; i < 50; i++) {
-        g.fillStyle(0xeeeeff, 0.3 + sR(i, 300) * 0.5);
-        g.fillRect((sR(i, 100) * W) | 0, (sR(i, 200) * GROUND_Y * 0.5) | 0, sR(i, 400) > 0.85 ? 2 : 1, 1);
+      for (let i = 0; i < 80; i++) {
+        const sx = sR(i, 100) * W, sy = sR(i, 200) * GROUND_Y * 0.6;
+        const bright = 0.15 + sR(i, 300) * 0.6;
+        const sz = sR(i, 400) > 0.9 ? 2 : 1;
+        g.fillStyle(0xddeeff, bright);
+        g.fillRect(sx | 0, sy | 0, sz, sz);
       }
-      const mx = W * 0.82, my = GROUND_Y * 0.18;
-      g.fillStyle(0xf0e8cc, 0.06); g.fillCircle(mx, my, 18);
-      g.fillStyle(0xfffae0, 0.85); g.fillCircle(mx, my, 8);
+      // 달
+      const mx = W * 0.82, my = GROUND_Y * 0.15;
+      g.fillStyle(0xf8f0d0, 0.04); g.fillCircle(mx, my, 28);
+      g.fillStyle(0xf8f0d0, 0.08); g.fillCircle(mx, my, 16);
+      g.fillStyle(0xfff8e0, 0.9); g.fillCircle(mx, my, 9);
     }
+    // 태양
     if (!isN && !isRain) {
-      const sx = isS ? W * 0.15 : W * 0.75, sy = isS ? GROUND_Y * 0.4 : GROUND_Y * 0.18;
-      g.fillStyle(isS ? 0xff8844 : 0xffdd88, 0.08); g.fillCircle(sx, sy, 22);
-      g.fillStyle(0xffffff, 0.8); g.fillCircle(sx, sy, 7);
+      const sx = isS ? W * 0.15 : W * 0.78, sy = isS ? GROUND_Y * 0.35 : GROUND_Y * 0.15;
+      g.fillStyle(isS ? 0xff6633 : 0xffee88, 0.06); g.fillCircle(sx, sy, 30);
+      g.fillStyle(isS ? 0xff8844 : 0xffdd66, 0.12); g.fillCircle(sx, sy, 18);
+      g.fillStyle(0xffffff, 0.85); g.fillCircle(sx, sy, 8);
+    }
+    // 석양 그라데이션 밴드
+    if (isS) {
+      g.fillStyle(0xff6030, 0.08);
+      g.fillRect(0, GROUND_Y * 0.55, W, GROUND_Y * 0.15);
+      g.fillStyle(0xff9050, 0.05);
+      g.fillRect(0, GROUND_Y * 0.7, W, GROUND_Y * 0.1);
     }
   }
 
   // ═══════════════════════════════
   private drawBackBuildings(isN: boolean) {
     const g = this.add.graphics().setDepth(1);
-    const bc = isN ? 0x0a1020 : 0x7090b0;
-    const ba = isN ? 0.85 : 0.25;
-    for (let x = 0; x < W; x += 18 + ((x * 7) % 12)) {
-      const bw = 14 + ((x * 3) % 16);
-      const bh = 30 + ((x * 11) % 80);
+    // 원경 스카이라인 — 연한 실루엣
+    const bc = isN ? 0x0e1520 : 0x7f8c8d;
+    const ba = isN ? 0.7 : 0.2;
+    const buildings = [
+      { x: 20,  w: 22, h: 55 }, { x: 50,  w: 30, h: 80 }, { x: 88,  w: 18, h: 45 },
+      { x: 110, w: 35, h: 95 }, { x: 155, w: 25, h: 60 }, { x: 185, w: 40, h: 110 },
+      { x: 230, w: 20, h: 50 }, { x: 260, w: 32, h: 75 }, { x: 300, w: 28, h: 85 },
+      { x: 340, w: 22, h: 55 }, { x: 370, w: 38, h: 100 },
+      { x: 550, w: 35, h: 90 }, { x: 590, w: 22, h: 65 }, { x: 620, w: 42, h: 105 },
+      { x: 670, w: 28, h: 50 }, { x: 705, w: 30, h: 80 }, { x: 745, w: 20, h: 60 },
+      { x: 775, w: 38, h: 95 }, { x: 820, w: 25, h: 70 }, { x: 855, w: 35, h: 85 },
+      { x: 900, w: 28, h: 55 }, { x: 930, w: 22, h: 75 },
+    ];
+    buildings.forEach(b => {
       g.fillStyle(bc, ba);
-      g.fillRect(x, GROUND_Y - bh, bw, bh);
+      g.fillRect(b.x, GROUND_Y - b.h, b.w, b.h);
+      // 야간 창문 불빛
       if (isN) {
-        for (let wy = GROUND_Y - bh + 5; wy < GROUND_Y - 5; wy += 8)
-          for (let wx = x + 2; wx < x + bw - 2; wx += 5)
-            if (sR(wx, wy) > 0.55) {
-              g.fillStyle(0xf0df60, 0.2 + sR(wx + 1, wy) * 0.25);
+        for (let wy = GROUND_Y - b.h + 6; wy < GROUND_Y - 6; wy += 8) {
+          for (let wx = b.x + 3; wx < b.x + b.w - 3; wx += 6) {
+            if (sR(wx, wy) > 0.5) {
+              g.fillStyle(0xf0d860, 0.12 + sR(wx + 1, wy) * 0.18);
               g.fillRect(wx, wy, 3, 3);
             }
+          }
+        }
       }
+    });
+    // 남산타워
+    const tx = W * 0.52, tBase = GROUND_Y - 95;
+    g.fillStyle(bc, ba + 0.15);
+    g.fillRect(tx - 2, tBase - 55, 4, 55);
+    g.fillRect(tx - 10, tBase, 20, 12);
+    g.fillRect(tx - 1, tBase - 72, 2, 17);
+    // 타워 빨간 점멸등
+    if (isN) {
+      g.fillStyle(0xff3333, 0.6);
+      g.fillCircle(tx, tBase - 72, 2);
     }
-    // 남산타워 느낌
-    const tx = W * 0.55, tBase = GROUND_Y - 90;
-    g.fillStyle(bc, ba + 0.1);
-    g.fillRect(tx - 2, tBase - 50, 4, 50);
-    g.fillRect(tx - 8, tBase, 16, 10);
-    g.fillRect(tx - 1, tBase - 65, 2, 15);
   }
 
   // ═══════════════════════════════
   private drawStreet(isN: boolean) {
     const g = this.add.graphics().setDepth(2);
-    const sc = isN ? 0x3a3a48 : 0xc8c8d0;
-    for (let x = 0; x < W; x += 20) {
-      g.fillStyle(x % 40 < 20 ? sc : (isN ? 0x3e3e4c : 0xd0d0d8), 1);
-      g.fillRect(x, GROUND_Y, 20, ROAD_Y - GROUND_Y);
+    // 인도 — 깔끔한 보도블록
+    const sidewalkCol = isN ? 0x2a2a35 : 0xbdc3c7;
+    g.fillStyle(sidewalkCol, 1);
+    g.fillRect(0, GROUND_Y, W, ROAD_Y - GROUND_Y);
+    // 보도블록 패턴
+    for (let x = 0; x < W; x += 24) {
+      g.fillStyle(isN ? 0x252530 : 0xb0b6ba, 1);
+      g.fillRect(x, GROUND_Y, 1, ROAD_Y - GROUND_Y);
     }
-    g.fillStyle(isN ? 0x1a1a24 : 0x3a3a44, 1);
+    // 경계석
+    g.fillStyle(isN ? 0x3a3a45 : 0x95a5a6, 1);
+    g.fillRect(0, ROAD_Y - 3, W, 4);
+
+    // 도로 — 아스팔트
+    g.fillStyle(isN ? 0x1a1a22 : 0x2c3e50, 1);
     g.fillRect(0, ROAD_Y, W, H - ROAD_Y);
-    for (let x = 0; x < W; x += 28) {
-      g.fillStyle(0xf0e060, isN ? 0.3 : 0.5);
-      g.fillRect(x, ROAD_Y + (H - ROAD_Y) / 2 - 1, 14, 2);
+    // 아스팔트 텍스처
+    for (let i = 0; i < 60; i++) {
+      g.fillStyle(isN ? 0x202028 : 0x354a5e, 0.3);
+      g.fillRect(sR(i, 50) * W, ROAD_Y + sR(i, 60) * (H - ROAD_Y), 2 + sR(i, 70) * 4, 1);
     }
-    g.fillStyle(isN ? 0x505060 : 0x9898a0, 1);
-    g.fillRect(0, ROAD_Y - 2, W, 3);
+    // 중앙선 (점선)
+    for (let x = 0; x < W; x += 32) {
+      g.fillStyle(0xf1c40f, isN ? 0.3 : 0.6);
+      g.fillRect(x, ROAD_Y + (H - ROAD_Y) / 2 - 1, 16, 2);
+    }
+    // 겨울 눈
     if (this.season === "winter") {
-      g.fillStyle(0xe8eef4, 0.3);
-      g.fillRect(0, GROUND_Y, W, 15);
+      g.fillStyle(0xe8eef4, 0.25);
+      g.fillRect(0, GROUND_Y, W, 12);
     }
   }
 
   // ═══════════════════════════════
   private drawMainBuilding(isN: boolean) {
     const g  = this.add.graphics().setDepth(5);
-    const bx = W / 2 - 80, bw = 160, bh = 160;
+    const bx = W / 2 - 90, bw = 180, bh = 180;
     const by = GROUND_Y - bh;
 
-    g.fillStyle(isN ? 0x1a2535 : 0x3a4a60, 1);
+    // 건물 본체 — 모던 파사드
+    g.fillStyle(isN ? 0x1a2030 : 0x2c3e50, 1);
     g.fillRect(bx, by, bw, bh);
-    g.fillStyle(isN ? 0x202a3a : 0x4a5a70, 1);
-    g.fillRect(bx + 3, by + 3, bw - 6, bh - 3);
+    // 유리 외벽
+    g.fillStyle(isN ? 0x151c28 : 0x34495e, 1);
+    g.fillRect(bx + 2, by + 2, bw - 4, bh - 2);
 
-    for (let f = 0; f < 3; f++) {
-      const fy = by + 22 + f * 42;
-      for (let c = 0; c < 3; c++) {
-        const fx = bx + 10 + c * 48;
-        g.fillStyle(isN ? 0xf0d860 : 0x88bbdd, isN ? 0.4 : 0.5);
-        g.fillRect(fx, fy, 40, 30);
-        g.fillStyle(isN ? 0x2a3545 : 0x5a6a80, 1);
-        g.fillRect(fx + 19, fy, 2, 30);
-        g.fillRect(fx, fy + 14, 40, 2);
+    // 층별 유리창 (4층)
+    for (let f = 0; f < 4; f++) {
+      const fy = by + 18 + f * 38;
+      // 층 구분 선 (슬래브)
+      g.fillStyle(isN ? 0x222c3a : 0x455a6e, 1);
+      g.fillRect(bx + 2, fy - 2, bw - 4, 3);
+
+      for (let c = 0; c < 4; c++) {
+        const fx = bx + 8 + c * 42;
+        // 유리 — 하늘 반사 느낌
+        const lit = isN ? sR(f * 4 + c, 777) > 0.35 : true;
+        if (isN && lit) {
+          g.fillGradientStyle(0xf0c840, 0xf0a020, 0xf0c840, 0xf0a020, 0.35);
+        } else if (isN) {
+          g.fillStyle(0x0a1018, 0.8);
+        } else {
+          g.fillGradientStyle(0x6db3d0, 0x5a9ab8, 0x88cce8, 0x78bcd8, 0.55);
+        }
+        g.fillRect(fx, fy, 36, 28);
+        // 창틀
+        g.fillStyle(isN ? 0x1a2535 : 0x2c3e50, 1);
+        g.fillRect(fx + 17, fy, 2, 28);
+        g.fillRect(fx, fy + 13, 36, 2);
+        // 유리 반사 하이라이트
+        if (!isN) {
+          g.fillStyle(0xffffff, 0.08);
+          g.fillRect(fx + 1, fy + 1, 16, 12);
+        }
       }
     }
 
-    const dx = bx + bw / 2 - 18, dw = 36, dh = 26;
-    g.fillStyle(0x0a1020, 1);
+    // 입구 — 자동문 느낌
+    const dx = bx + bw / 2 - 22, dw = 44, dh = 32;
+    g.fillStyle(0x0a0e18, 1);
     g.fillRect(dx, GROUND_Y - dh, dw, dh);
-    g.fillStyle(isN ? 0x2a3545 : 0x5a6a80, 1);
-    g.fillRect(dx + dw / 2 - 1, GROUND_Y - dh, 2, dh);
-    g.fillStyle(0xf0d860, isN ? 0.2 : 0.08);
-    g.fillRect(dx - 6, GROUND_Y - dh - 4, dw + 12, 4);
+    // 유리문
+    g.fillStyle(isN ? 0x1a2838 : 0x5588aa, 0.6);
+    g.fillRect(dx + 2, GROUND_Y - dh + 2, dw / 2 - 3, dh - 4);
+    g.fillRect(dx + dw / 2 + 1, GROUND_Y - dh + 2, dw / 2 - 3, dh - 4);
+    // 문 반사
+    if (!isN) {
+      g.fillStyle(0xffffff, 0.1);
+      g.fillRect(dx + 3, GROUND_Y - dh + 3, 8, dh - 6);
+    }
+    // 입구 조명
+    g.fillStyle(0xf0d860, isN ? 0.25 : 0.06);
+    g.fillRect(dx - 8, GROUND_Y - dh - 4, dw + 16, 4);
 
-    const signW = 100, signH = 16;
-    g.fillStyle(0x0a1020, 0.9);
-    g.fillRoundedRect(bx + bw / 2 - signW / 2, by + 3, signW, signH, 2);
-    this.add.text(W / 2, by + 11, "(주)두근 컴퍼니", {
+    // 간판 — 깔끔한 LED 스타일
+    const signW = 120, signH = 18;
+    g.fillStyle(0x0a0e18, 0.95);
+    g.fillRoundedRect(bx + bw / 2 - signW / 2, by + 3, signW, signH, 3);
+    g.lineStyle(1, isN ? 0xf0d860 : 0x2c3e50, 0.4);
+    g.strokeRoundedRect(bx + bw / 2 - signW / 2, by + 3, signW, signH, 3);
+    this.add.text(W / 2, by + 12, "(주)두근 컴퍼니", {
       fontSize: "10px", fontFamily: FONT,
-      color: "#f0d860", resolution: DPR * 2,
+      color: isN ? "#f0d860" : "#ecf0f1", resolution: DPR * 2,
     }).setOrigin(0.5).setDepth(6);
+
+    // 옥상 구조물
+    g.fillStyle(isN ? 0x151c28 : 0x2c3e50, 1);
+    g.fillRect(bx + 30, by - 12, 40, 12);
+    g.fillRect(bx + bw - 55, by - 8, 25, 8);
   }
 
   // ═══════════════════════════════
   private drawSideBuildings(isN: boolean) {
     const g = this.add.graphics().setDepth(4);
+    // 현대식 도시 건물
+    const palette = isN
+      ? [0x141c28, 0x18222e, 0x121a25, 0x162030]
+      : [0x2c3e50, 0x34495e, 0x3a536b, 0x2e4053];
     const leftB  = [
-      { x: 0,   w: 70, h: 130, col: isN ? 0x182030 : 0x3a4858 },
-      { x: 75,  w: 55, h: 100, col: isN ? 0x1a2535 : 0x4a5868 },
-      { x: 135, w: 65, h: 150, col: isN ? 0x152028 : 0x354555 },
-      { x: 205, w: 80, h:  90, col: isN ? 0x1a2838 : 0x3a5060 },
+      { x: 0,   w: 75, h: 135 },
+      { x: 80,  w: 58, h: 105 },
+      { x: 142, w: 68, h: 155 },
+      { x: 215, w: 82, h:  95 },
     ];
     const rightB = [
-      { x: W - 70,  w: 70, h: 120, col: isN ? 0x182030 : 0x3a4858 },
-      { x: W - 130, w: 55, h: 140, col: isN ? 0x1a2535 : 0x4a5868 },
-      { x: W - 200, w: 65, h:  95, col: isN ? 0x152028 : 0x354555 },
-      { x: W - 280, w: 75, h: 110, col: isN ? 0x1a2838 : 0x3a5060 },
+      { x: W - 75,  w: 75, h: 125 },
+      { x: W - 135, w: 58, h: 145 },
+      { x: W - 205, w: 68, h: 100 },
+      { x: W - 285, w: 78, h: 115 },
     ];
-    [...leftB, ...rightB].forEach(b => {
+    [...leftB, ...rightB].forEach((b, i) => {
       const by = GROUND_Y - b.h;
-      g.fillStyle(b.col, 1); g.fillRect(b.x, by, b.w, b.h);
-      for (let wy = by + 8; wy < GROUND_Y - 8; wy += 10)
-        for (let wx = b.x + 4; wx < b.x + b.w - 4; wx += 8) {
-          const lit = isN ? sR(wx, wy) > 0.45 : sR(wx, wy) > 0.7;
-          g.fillStyle(lit ? (isN ? 0xf0d860 : 0x88bbdd) : (isN ? 0x101828 : 0x2a3848), lit ? (isN ? 0.35 : 0.4) : 0.6);
-          g.fillRect(wx, wy, 5, 6);
+      const col = palette[i % palette.length];
+      // 건물 본체
+      g.fillStyle(col, 1);
+      g.fillRect(b.x, by, b.w, b.h);
+      // 옥상 라인
+      g.fillStyle(isN ? 0x1a2535 : 0x455a6e, 1);
+      g.fillRect(b.x, by, b.w, 3);
+      // 창문 — 세련된 그리드
+      for (let wy = by + 8; wy < GROUND_Y - 10; wy += 12) {
+        for (let wx = b.x + 5; wx < b.x + b.w - 5; wx += 10) {
+          const lit = isN ? sR(wx, wy) > 0.4 : false;
+          if (isN) {
+            g.fillStyle(lit ? 0xf0c840 : 0x0a1018, lit ? 0.3 : 0.6);
+          } else {
+            g.fillStyle(0x5dade2, 0.35);
+          }
+          g.fillRect(wx, wy, 7, 8);
+          // 창틀
+          g.fillStyle(col, 1);
+          g.fillRect(wx + 3, wy, 1, 8);
         }
+      }
+      // 1층 상가 느낌
+      if (b.h > 100) {
+        g.fillStyle(isN ? 0xf0c840 : 0xecf0f1, isN ? 0.15 : 0.2);
+        g.fillRect(b.x + 3, GROUND_Y - 22, b.w - 6, 18);
+      }
     });
   }
 
@@ -305,7 +413,7 @@ export default class LoginScene extends Phaser.Scene {
   private drawStreetLights(isN: boolean, isS: boolean) {
     [130, 340, 530, 730, 880].forEach(x => {
       const g = this.add.graphics().setDepth(8);
-      g.fillStyle(isN ? 0x3a4050 : 0x5a6070, 1);
+      g.fillStyle(isN ? 0x3a4555 : 0x7f8c8d, 1);
       g.fillRect(x - 1, GROUND_Y - 50, 3, 50);
       g.fillStyle(isN ? 0x4a5060 : 0x6a7080, 1);
       g.fillRect(x - 5, GROUND_Y - 52, 11, 3);

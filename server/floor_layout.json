@@ -4,6 +4,7 @@
     "cpo-claude",
     "date-map",
     "trading-bot",
+    "cl600g",
     "ai900"
   ],
   "2": [
@@ -11,7 +12,6 @@
     "design-team",
     "content-lab",
     "frontend-team",
-    "backend-team",
-    "cl600g"
+    "backend-team"
   ]
 }
