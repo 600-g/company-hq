@@ -4,6 +4,7 @@ import json
 import os
 import sqlite3
 import subprocess
+import time
 from datetime import datetime, date
 from pathlib import Path
 
@@ -14,6 +15,7 @@ mcp = FastMCP("두근컴퍼니-HQ")
 PROJECTS_ROOT = Path.home() / "Developer" / "my-company"
 UPBIT_ROOT = Path.home() / "Desktop" / "업비트자동"
 UPBIT_DB = UPBIT_ROOT / "trading_bot_v3.db"
+SERVER_DIR = PROJECTS_ROOT / "company-hq" / "server"
 
 TEAM_PATHS = {
     "trading-bot":   UPBIT_ROOT,
@@ -28,6 +30,39 @@ TEAM_LOG_FILES = {
     "trading-bot":  UPBIT_ROOT / "logs" / "bot.log",
     "claude-biseo": PROJECTS_ROOT / "claude-biseo-v1.0" / "claude_task.log",
 }
+
+# ── 서비스 프로세스 관리 설정 ──────────────────────────────
+SERVICE_REGISTRY = {
+    "company-hq": {
+        "display": "본부 서버 (uvicorn)",
+        "keywords": ["uvicorn"],
+        "restart": f"cd {SERVER_DIR} && {SERVER_DIR}/venv/bin/python3 main.py &",
+        "pre_restart": "lsof -ti:8000 | xargs kill -9 2>/dev/null",
+    },
+    "trading-bot": {
+        "display": "업비트 매매봇",
+        "keywords": ["upbit_bot_v3"],
+        "restart": f"cd {UPBIT_ROOT} && {UPBIT_ROOT}/venv/bin/python3 upbit_bot_v3_0_complete.py &",
+        "pre_restart": None,
+    },
+    "claude-biseo": {
+        "display": "비서 텔레그램봇",
+        "keywords": ["telegram_bot"],
+        "restart": None,
+    },
+}
+
+
+def _check_keyword(keyword: str) -> bool:
+    r = subprocess.run(["pgrep", "-f", keyword], capture_output=True, text=True)
+    return bool(r.stdout.strip())
+
+
+def _is_service_alive(service_id: str) -> bool:
+    cfg = SERVICE_REGISTRY.get(service_id)
+    if not cfg:
+        return False
+    return any(_check_keyword(kw) for kw in cfg["keywords"])
 
 
 # ── 1. 업비트 봇 현황 ─────────────────────────────────
@@ -234,25 +269,31 @@ def read_logs(team_id: str, lines: int = 50) -> str:
 
 @mcp.tool()
 def team_summary() -> str:
-    """전체 팀 현황을 한번에 요약 — 커밋/프로세스/봇 상태"""
+    """전체 팀 현황을 한번에 요약 — 프로세스 상태 + 커밋 + 봇 상태"""
     lines = [f"🏢 두근 컴퍼니 현황 ({datetime.now().strftime('%m/%d %H:%M')})", "━" * 40]
 
+    # ── 서비스 프로세스 상태 ──
+    lines.append("\n⚡ 서비스 상태")
+    for svc_id, cfg in SERVICE_REGISTRY.items():
+        alive = _is_service_alive(svc_id)
+        icon = "✅" if alive else "❌"
+        lines.append(f"  {icon} {cfg['display']} ({svc_id})")
+
+    # ── 팀별 최근 커밋 ──
+    lines.append("\n📁 팀 커밋")
     for team_id, path in TEAM_PATHS.items():
         if not path.exists():
             lines.append(f"  ❓ {team_id}: 경로 없음")
             continue
 
-        # 최근 커밋
         r = subprocess.run(
             ["git", "log", "-1", "--pretty=format:%ad %s", "--date=short"],
             cwd=path, capture_output=True, text=True, timeout=5
         )
         commit = r.stdout.strip() if r.returncode == 0 else "커밋 없음"
+        lines.append(f"  {team_id}: {commit}")
 
-        lines.append(f"\n  📁 {team_id}")
-        lines.append(f"     최근: {commit}")
-
-    # 업비트 봇 간략 상태
+    # ── 업비트 봇 간략 상태 ──
     if UPBIT_DB.exists():
         conn = sqlite3.connect(UPBIT_DB)
         try:
@@ -264,10 +305,67 @@ def team_summary() -> str:
                 today = date.today().isoformat()
                 cur.execute("SELECT COALESCE(SUM(profit),0) FROM trades WHERE action='sell' AND timestamp LIKE ?", (f"{today}%",))
                 profit = cur.fetchone()[0]
-                lines.append(f"\n  🤖 매매봇: 잔고 {balance:,.0f}원 | 오늘 {profit:+,.0f}원")
+                lines.append(f"\n  💰 매매봇: 잔고 {balance:,.0f}원 | 오늘 {profit:+,.0f}원")
         finally:
             conn.close()
 
+    return "\n".join(lines)
+
+
+# ── 6. 서비스 복구 ──────────────────────────────────────
+
+@mcp.tool()
+def recover_service(service_id: str = "all") -> str:
+    """죽은 서비스를 감지하고 자동으로 재시작한다
+
+    Args:
+        service_id: 복구할 서비스 ID (company-hq, trading-bot, claude-biseo) 또는 'all'로 전체 복구
+    """
+    targets = SERVICE_REGISTRY if service_id == "all" else {service_id: SERVICE_REGISTRY.get(service_id)}
+
+    if not any(targets.values()):
+        return f"❌ '{service_id}'는 등록된 서비스가 아님. 가능: {', '.join(SERVICE_REGISTRY.keys())}, all"
+
+    lines = ["🔧 서비스 복구 시작\n"]
+    recovered = 0
+    failed = 0
+
+    for svc_id, cfg in targets.items():
+        if not cfg:
+            continue
+
+        alive = _is_service_alive(svc_id)
+        if alive:
+            lines.append(f"  ✅ {cfg['display']} — 이미 정상")
+            continue
+
+        if not cfg.get("restart"):
+            lines.append(f"  ⚠️ {cfg['display']} — 죽어 있음, 자동 재시작 미지원")
+            failed += 1
+            continue
+
+        lines.append(f"  🔄 {cfg['display']} — 재시작 시도...")
+
+        if cfg.get("pre_restart"):
+            subprocess.run(cfg["pre_restart"], shell=True, capture_output=True, timeout=5)
+            time.sleep(1)
+
+        subprocess.run(cfg["restart"], shell=True, capture_output=True, timeout=10)
+        time.sleep(3)
+
+        if _is_service_alive(svc_id):
+            lines.append(f"  ✅ {cfg['display']} — 복구 완료!")
+            recovered += 1
+        else:
+            time.sleep(3)
+            if _is_service_alive(svc_id):
+                lines.append(f"  ✅ {cfg['display']} — 복구 완료! (지연 시작)")
+                recovered += 1
+            else:
+                lines.append(f"  ❌ {cfg['display']} — 복구 실패, 수동 확인 필요")
+                failed += 1
+
+    lines.append(f"\n📊 결과: 복구 {recovered}건 / 실패 {failed}건")
     return "\n".join(lines)
 
 
