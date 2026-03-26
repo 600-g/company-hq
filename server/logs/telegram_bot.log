@@ -1,0 +1,7 @@
+[TG] 서버실 봇 시작됨
+[TG] 폴링 에러: HTTP Error 429: Too Many Requests
+[TG] 폴링 에러: HTTP Error 502: Bad Gateway
+[TG] 폴링 에러: The read operation timed out
+[TG] 8440882806: 서버어때
+2026-03-26 13:45:34,554 [INFO] [tg-server] 프롬프트 수신: 서버어때
+2026-03-26 13:45:52,084 [INFO] [tg-server] 응답 완료 (exit=0)

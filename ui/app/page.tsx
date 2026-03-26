@@ -1,8 +1,45 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import Office from "./components/Office";
 import LoginPage from "./components/LoginPage";
+
+// ── 에러 바운더리 (Office 크래시 시 localStorage 초기화 옵션 제공) ──
+class OfficeBoundary extends React.Component<
+  { children: React.ReactNode },
+  { error: Error | null }
+> {
+  state: { error: Error | null } = { error: null };
+  static getDerivedStateFromError(error: Error) { return { error }; }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="h-screen bg-[#1a1a2e] flex items-center justify-center">
+          <div className="text-center max-w-sm">
+            <span className="text-3xl">⚠️</span>
+            <p className="text-sm text-red-400 mt-3 font-bold">화면 로딩 오류</p>
+            <p className="text-[10px] text-gray-500 mt-1 break-all">{this.state.error.message}</p>
+            <div className="flex gap-2 mt-4 justify-center">
+              <button onClick={() => window.location.reload()}
+                className="px-3 py-1.5 bg-[#2a2a4a] text-gray-300 text-xs rounded hover:bg-[#3a3a5a]">
+                새로고침
+              </button>
+              <button onClick={() => {
+                const keys = ["hq-floor-teams-order", "hq-chat-history", "hq-floor-layout"];
+                keys.forEach(k => localStorage.removeItem(k));
+                window.location.reload();
+              }}
+                className="px-3 py-1.5 bg-yellow-500/20 text-yellow-400 text-xs rounded hover:bg-yellow-500/30">
+                캐시 초기화 + 새로고침
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 interface AuthUser {
   user_id: string;
@@ -86,5 +123,5 @@ export default function Home() {
     setUser(null);
   };
 
-  return <Office user={user} onLogout={handleLogout} />;
+  return <OfficeBoundary><Office user={user} onLogout={handleLogout} /></OfficeBoundary>;
 }

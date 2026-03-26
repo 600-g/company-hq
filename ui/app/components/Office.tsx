@@ -4,45 +4,17 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { teams as defaultTeamList, Team } from "../config/teams";
 import ChatPanel, { Message, getWsStorageKey } from "./ChatPanel";
 import ChatWindow from "./ChatWindow";
+import ServerDashboard from "./ServerDashboard";
 import WeatherBoard from "./WeatherBoard";
 import type { OfficeGameHandle } from "../game/OfficeGame";
 
-// ── 스마트 디스패치 ────────────────────────────────
+// ── CPO 주도 스마트 디스패치 ────────────────────────────
 type DispatchStatus = "pending" | "sending" | "working" | "done" | "skipped" | "error";
+type DispatchPhase = "idle" | "routing" | "executing" | "summarizing" | "done";
 interface DispatchEntry {
   teamId: string; emoji: string; name: string;
   text: string; status: DispatchStatus; routed: boolean;
-  tools: string[]; // 사용한 도구 목록
-}
-
-// 키워드 기반 라우팅
-const ROUTE_KEYWORDS: Record<string, string[]> = {
-  "cpo-claude": ["cpo", "전체", "회사", "조직", "보고", "총괄", "전략"],
-  "trading-bot": ["매매", "트레이딩", "봇", "업비트", "코인", "수익", "전략", "시장"],
-  "date-map": ["데이트", "지도", "맵", "장소", "카페", "음식"],
-  "claude-biseo": ["비서", "일정", "스케줄", "메일", "알림", "정리"],
-  "ai900": ["ai900", "학습", "교육", "문서", "자료"],
-  "cl600g": ["cl600g", "600g", "서버", "인프라"],
-  "design-team": ["디자인", "ui", "ux", "색상", "폰트", "에셋", "픽셀", "화면", "레이아웃"],
-};
-
-function routeMessage(msg: string, teams: Team[]): string[] {
-  const lower = msg.toLowerCase();
-  const matched: string[] = [];
-
-  // "전체", "모두", "각 팀" 등은 전체 전송
-  if (/전체|모두|각\s?팀|다\s?같이|상태\s?보고/.test(lower)) {
-    return teams.filter(t => t.id !== "server-monitor").map(t => t.id);
-  }
-
-  for (const [teamId, keywords] of Object.entries(ROUTE_KEYWORDS)) {
-    if (keywords.some(kw => lower.includes(kw))) {
-      matched.push(teamId);
-    }
-  }
-
-  // 매칭 없으면 CPO에게
-  return matched.length > 0 ? matched : ["cpo-claude"];
+  tools: string[];
 }
 
 interface DispatchMessage {
@@ -60,101 +32,166 @@ function DispatchChat({ teams, onOpenChat }: { teams: Team[]; onOpenChat?: (team
   const [entries, setEntries] = useState<DispatchEntry[]>([]);
   const [messages, setMessages] = useState<DispatchMessage[]>([]);
   const [sending, setSending] = useState(false);
-  const wsRefs = useRef<Map<string, WebSocket>>(new Map());
+  const [phase, setPhase] = useState<DispatchPhase>("idle");
+  const [summaryText, setSummaryText] = useState("");
+  const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [pendingImages, setPendingImages] = useState<{ file: File; path?: string }[]>([]);
+  const dispatchFileRef = useRef<HTMLInputElement>(null);
+  const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
+  const [canUndo, setCanUndo] = useState(false);
+  const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const getWsUrl = (teamId: string) => {
-    const h = typeof window !== "undefined" ? window.location.hostname : "localhost";
-    const isLocal = h === "localhost" || h.startsWith("192.168.");
-    return `${isLocal ? `ws://${h}:8000` : "wss://api.600g.net"}/ws/chat/${teamId}`;
+  const uploadImage = async (file: File): Promise<string | null> => {
+    const form = new FormData();
+    form.append("file", file);
+    try {
+      const res = await fetch(`${getApiBase()}/api/upload/image`, { method: "POST", body: form });
+      const data = await res.json();
+      return data.ok ? data.path : null;
+    } catch { return null; }
   };
 
-  const dispatch = () => {
-    if (!input.trim() || sending) return;
+  const dispatch = async () => {
+    if ((!input.trim() && pendingImages.length === 0) || sending) return;
     const msg = input.trim();
     setInput("");
     setSending(true);
+    setPhase("routing");
+    setSummaryText("");
 
-    // 유저 메시지 히스토리 추가
-    setMessages(prev => [...prev, { role: "user", text: msg }]);
+    // 이미지 업로드
+    const imagePaths: string[] = [];
+    for (const img of pendingImages) {
+      const path = img.path || await uploadImage(img.file);
+      if (path) imagePaths.push(path);
+    }
+    setPendingImages([]);
 
-    const targetIds = routeMessage(msg, teams);
-    const allTeams = teams.filter(t => t.id !== "server-monitor");
+    // 5초 취소 타이머
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+    setCanUndo(true);
+    undoTimerRef.current = setTimeout(() => setCanUndo(false), 5000);
 
-    // 라우팅 결과로 엔트리 생성
-    const newEntries: DispatchEntry[] = allTeams.map(t => ({
-      teamId: t.id, emoji: t.emoji, name: t.name, text: "",
-      status: targetIds.includes(t.id) ? "pending" : "skipped",
-      routed: targetIds.includes(t.id), tools: [],
-    }));
-    setEntries(newEntries);
+    const displayMsg = msg + (imagePaths.length > 0 ? ` 📷${imagePaths.length}` : "");
+    setMessages(prev => [...prev, { role: "user", text: displayMsg }]);
 
-    // 라우팅된 에이전트에만 전송
-    let doneCount = 0;
-    const targets = allTeams.filter(t => targetIds.includes(t.id));
+    // CPO 주도 SSE 디스패치
+    const abort = new AbortController();
+    abortRef.current = abort;
 
-    targets.forEach(team => {
-      setEntries(prev => prev.map(e =>
-        e.teamId === team.id ? { ...e, status: "sending" } : e
-      ));
+    try {
+      const apiBase = getApiBase();
+      const res = await fetch(`${apiBase}/api/dispatch/smart`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: msg }),
+        signal: abort.signal,
+      });
 
-      const ws = new WebSocket(getWsUrl(team.id));
-      wsRefs.current.set(team.id, ws);
+      if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text().catch(() => "")}`);
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error("스트림 리더 없음");
 
-      ws.onopen = () => {
-        ws.send(JSON.stringify({ prompt: msg }));
-        setEntries(prev => prev.map(e =>
-          e.teamId === team.id ? { ...e, status: "working" } : e
-        ));
-      };
+      const decoder = new TextDecoder();
+      let buffer = "";
 
-      ws.onmessage = (e) => {
-        try {
-          const data = JSON.parse(e.data);
-          if (data.type === "status") {
-            setEntries(prev => prev.map(e =>
-              e.teamId === team.id ? { ...e, tools: [...e.tools, data.content] } : e
-            ));
-          } else if (data.type === "ai_chunk") {
-            setEntries(prev => prev.map(e =>
-              e.teamId === team.id ? { ...e, text: e.text + data.content } : e
-            ));
-          } else if (data.type === "ai_end") {
-            setEntries(prev => prev.map(e =>
-              e.teamId === team.id ? { ...e, status: "done" } : e
-            ));
-            ws.close();
-          }
-        } catch { /* ignore */ }
-      };
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
 
-      ws.onerror = () => {
-        setEntries(prev => prev.map(e =>
-          e.teamId === team.id ? { ...e, text: "연결 실패", status: "error" } : e
-        ));
-      };
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
 
-      ws.onclose = () => {
-        wsRefs.current.delete(team.id);
-        doneCount++;
-        if (doneCount >= targets.length) {
-          setSending(false);
-          // 완료된 응답을 히스토리에 추가
-          setEntries(final => {
-            final.filter(e => e.routed && e.text.trim()).forEach(e => {
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const data = JSON.parse(line.slice(6));
+
+            if (data.phase === "routing") {
+              setPhase("routing");
+            } else if (data.phase === "routed") {
+              // CPO가 팀 필터링 완료 → 엔트리 생성
+              const allTeams = teams.filter(t => t.id !== "server-monitor" && t.id !== "cpo-claude");
+              const routedIds: string[] = data.teams;
+              const newEntries: DispatchEntry[] = allTeams.map(t => ({
+                teamId: t.id, emoji: t.emoji, name: t.name, text: "",
+                status: routedIds.includes(t.id) ? "pending" : "skipped",
+                routed: routedIds.includes(t.id), tools: [],
+              }));
+              setEntries(newEntries);
+              setPhase("executing");
+            } else if (data.phase === "team_done") {
+              // 팀 완료 알림 → 상태 업데이트
+              const doneTeams: string[] = data.teams;
+              setEntries(prev => prev.map(e =>
+                doneTeams.includes(e.teamId)
+                  ? { ...e, status: "done" }
+                  : e.routed && !doneTeams.includes(e.teamId)
+                    ? { ...e, status: "working" }
+                    : e
+              ));
+            } else if (data.phase === "summarizing") {
+              setPhase("summarizing");
+            } else if (data.phase === "summary_chunk") {
+              setSummaryText(prev => prev + data.content);
+            } else if (data.phase === "done") {
+              setPhase("done");
+              // 팀별 결과를 엔트리에 반영
+              const teamResults: Record<string, { status: string; result: string }> = data.team_results || {};
+              setEntries(prev => prev.map(e => {
+                const r = teamResults[e.teamId];
+                return r ? { ...e, text: r.result, status: r.status as DispatchStatus } : e;
+              }));
+              // CPO 통합 보고를 히스토리에 추가
               setMessages(prev => [...prev, {
-                role: "agent", text: e.text, teamId: e.teamId,
-                emoji: e.emoji, name: e.name, tools: e.tools, status: e.status,
+                role: "agent", text: data.summary,
+                teamId: "cpo-claude", emoji: "🧠", name: "CPO 통합보고",
               }]);
-            });
-            return final;
-          });
-          setEntries([]);
+              setSending(false);
+              // 지연 후 엔트리 정리
+              setTimeout(() => setEntries([]), 3000);
+            } else if (data.phase === "error") {
+              setMessages(prev => [...prev, {
+                role: "agent", text: `❌ ${data.error}`,
+                teamId: "cpo-claude", emoji: "🧠", name: "CPO",
+              }]);
+              setSending(false);
+              setPhase("idle");
+              setEntries([]);
+            }
+          } catch { /* ignore parse errors */ }
         }
-      };
-    });
+      }
+    } catch (e: unknown) {
+      if (e instanceof Error && e.name !== "AbortError") {
+        setMessages(prev => [...prev, {
+          role: "agent", text: `❌ 연결 실패: ${e.message}`,
+          teamId: "cpo-claude", emoji: "🧠", name: "CPO",
+        }]);
+      }
+      setSending(false);
+      setPhase("idle");
+      setEntries([]);
+    }
+  };
 
-    if (targets.length === 0) setSending(false);
+  const undoDispatch = () => {
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+    setCanUndo(false);
+    // SSE 연결 취소
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setSending(false);
+    setPhase("idle");
+    setSummaryText("");
+    setEntries([]);
+    // 마지막 유저 메시지 제거
+    setMessages(prev => {
+      const lastUserIdx = prev.findLastIndex(m => m.role === "user");
+      return lastUserIdx >= 0 ? prev.slice(0, lastUserIdx) : prev;
+    });
   };
 
   useEffect(() => {
@@ -213,7 +250,31 @@ function DispatchChat({ teams, onOpenChat }: { teams: Team[]; onOpenChat?: (team
             )
           ))}
 
-          {/* 진행중인 응답 */}
+          {/* CPO 진행 상태 */}
+          {phase !== "idle" && phase !== "done" && (
+            <div className="text-[10px] px-2 py-1 rounded border bg-yellow-500/5 border-yellow-500/20 flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 bg-yellow-400 rounded-full animate-pulse" />
+              <span className="text-yellow-400 font-bold">
+                {phase === "routing" && "🧠 CPO가 관련 팀 분석 중..."}
+                {phase === "executing" && `⚡ ${routed.filter(e => e.status === "done").length}/${routed.length}팀 작업 중...`}
+                {phase === "summarizing" && "🧠 CPO 통합 보고서 작성 중..."}
+              </span>
+            </div>
+          )}
+
+          {/* CPO 통합 보고 스트리밍 */}
+          {phase === "summarizing" && summaryText && (
+            <div className="text-[10px] p-1.5 rounded border bg-[#1a1a2e] border-yellow-500/30">
+              <div className="flex items-center gap-1 mb-0.5">
+                <span>🧠</span>
+                <span className="font-bold text-yellow-400">CPO 통합보고</span>
+                <span className="w-1 h-1 bg-yellow-400 rounded-full animate-pulse" />
+              </div>
+              <div className="text-gray-300 whitespace-pre-wrap text-[9px]">{summaryText}</div>
+            </div>
+          )}
+
+          {/* 진행중인 팀 응답 */}
           {entries.length > 0 && (
             <>
               {skipped.length > 0 && (
@@ -240,30 +301,67 @@ function DispatchChat({ teams, onOpenChat }: { teams: Team[]; onOpenChat?: (team
         </div>
       )}
 
+      {/* 이미지 미리보기 */}
+      {pendingImages.length > 0 && (
+        <div className="flex gap-1 flex-wrap">
+          {pendingImages.map((img, i) => (
+            <button key={i} onClick={() => setPendingImages(prev => prev.filter((_, j) => j !== i))}
+              className="relative w-10 h-10 rounded border border-yellow-500/30 overflow-hidden active:opacity-50 transition-opacity"
+              title="탭하여 삭제">
+              <img src={URL.createObjectURL(img.file)} alt="" className="w-full h-full object-cover" />
+              <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* 입력 (Shift+Enter=줄바꿈) */}
+      <input ref={dispatchFileRef} type="file" accept="image/*" multiple hidden
+        onChange={(e) => { Array.from(e.target.files || []).forEach(f => setPendingImages(prev => [...prev, { file: f }])); e.target.value = ""; }} />
       <form onSubmit={(e) => { e.preventDefault(); dispatch(); }} className="flex gap-1">
+        <button type="button" onClick={() => dispatchFileRef.current?.click()}
+          className="px-1.5 py-1.5 text-gray-500 hover:text-yellow-400 shrink-0" title="이미지 첨부"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button>
         <textarea
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+            if (e.key === "Enter" && !isMobile && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault();
               dispatch();
             }
           }}
+          onPaste={(e) => {
+            const items = Array.from(e.clipboardData?.items || []);
+            const imageItems = items.filter(item => item.type.startsWith("image/"));
+            if (imageItems.length > 0) {
+              e.preventDefault();
+              imageItems.forEach(item => {
+                const file = item.getAsFile();
+                if (file) setPendingImages(prev => [...prev, { file }]);
+              });
+            }
+          }}
           rows={1}
-          placeholder="명령 입력 (Shift+Enter 줄바꿈)..."
+          placeholder="명령 입력 (Shift+Enter 줄바꿈, Ctrl+V 이미지 붙여넣기)..."
           className="flex-1 bg-[#1a1a2e] border border-[#3a3a5a] text-white text-[11px] px-2 py-1.5 rounded focus:outline-none focus:border-yellow-400/50 resize-none max-h-20 overflow-y-auto"
           style={{ minHeight: "32px" }}
         />
-        {sending ? (
-          <button type="button" onClick={() => { /* 취소: 현재 전송 중단 */ setSending(false); setInput(""); }}
+        {canUndo ? (
+          <button type="button" onClick={undoDispatch}
+            className="px-2 py-1.5 bg-red-500/20 text-red-400 text-[10px] font-bold border border-red-500/30 rounded hover:bg-red-500/30 transition-colors shrink-0 animate-pulse"
+            title="전송 취소">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 12h18"/><path d="M3 6h18"/><path d="M3 18h18"/><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        ) : sending ? (
+          <button type="button" onClick={undoDispatch}
             className="px-2 py-1.5 bg-red-500/20 text-red-400 text-[10px] font-bold border border-red-500/30 rounded hover:bg-red-500/30 transition-colors shrink-0"
-            title="취소">
+            title="중지">
             ■
           </button>
         ) : (
-          <button type="submit" disabled={!input.trim()}
+          <button type="submit" disabled={!input.trim() && pendingImages.length === 0}
             className="px-2 py-1.5 bg-yellow-500/20 text-yellow-400 text-[10px] font-bold border border-yellow-500/30 rounded hover:bg-yellow-500/30 disabled:opacity-30 transition-colors shrink-0">
             ▶
           </button>
@@ -553,8 +651,9 @@ export interface AuthUser {
 }
 
 // ── 좌측 슬라이드 메뉴 ──────────────────────────────
-function SideMenu({ user, open, onClose, onLogout }: {
+function SideMenu({ user, open, onClose, onLogout, pushEnabled, onTogglePush }: {
   user: AuthUser; open: boolean; onClose: () => void; onLogout: () => void;
+  pushEnabled?: boolean; onTogglePush?: () => void;
 }) {
   const [editingName, setEditingName] = useState(false);
   const [newName, setNewName] = useState(user.nickname);
@@ -610,10 +709,10 @@ function SideMenu({ user, open, onClose, onLogout }: {
                   <button onClick={saveName} className="text-[9px] text-yellow-400">저장</button>
                 </div>
               ) : (
-                <div className="flex items-center gap-1">
-                  <span className="text-sm font-semibold text-white truncate">{user.nickname}</span>
-                  <button onClick={() => setEditingName(true)} className="text-[8px] text-gray-600 hover:text-gray-400">수정</button>
-                </div>
+                <button onClick={() => setEditingName(true)} className="flex items-center gap-1 group cursor-pointer">
+                  <span className="text-sm font-semibold text-white truncate group-hover:text-yellow-400 transition-colors">{user.nickname}</span>
+                  <svg className="w-2.5 h-2.5 text-gray-600 group-hover:text-yellow-400 transition-colors shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                </button>
               )}
               <span className="text-[9px] text-yellow-400/70">{user.permissions.label} (Lv.{user.permissions.level})</span>
             </div>
@@ -622,15 +721,21 @@ function SideMenu({ user, open, onClose, onLogout }: {
 
         {/* 메뉴 항목 */}
         <div className="flex-1 overflow-y-auto p-2 space-y-1">
-          {/* 계정 정보 */}
-          <div className="px-2 py-1">
-            <h3 className="text-[8px] text-gray-600 uppercase tracking-wider mb-1">계정</h3>
-          </div>
-          <button onClick={() => setEditingName(true)}
-            className="w-full text-left px-3 py-2 text-[11px] text-gray-400 hover:bg-[#1a2040] rounded transition-colors">
-            이름 변경
-          </button>
-
+          {/* 알림 설정 */}
+          {onTogglePush && (
+            <button onClick={onTogglePush}
+              className="w-full flex items-center justify-between px-3 py-2 text-[11px] text-gray-400 hover:bg-[#1a2040] rounded transition-colors">
+              <span className="flex items-center gap-2">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
+                </svg>
+                푸시 알림
+              </span>
+              <span className={`w-8 h-4 rounded-full relative transition-colors ${pushEnabled ? "bg-yellow-500" : "bg-gray-700"}`}>
+                <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${pushEnabled ? "right-0.5" : "left-0.5"}`} />
+              </span>
+            </button>
+          )}
           {/* 권한 관리 (오너/관리자만) */}
           {user.permissions.level >= 4 && (
             <>
@@ -712,9 +817,12 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
   const [showMenu, setShowMenu] = useState(false);
   const [openWindows, setOpenWindows] = useState<string[]>([]); // 열린 팀 id 목록
   const [focusedWindow, setFocusedWindow] = useState<string>("");
-  const [mobileChat, setMobileChat] = useState<string | null>(null); // 모바일 풀스크린 채팅 팀 id
-  const [mobileDispatch, setMobileDispatch] = useState(false); // 모바일 통합채팅
+  const [mobileChat, setMobileChat] = useState<string | null>(null); // 모바일 채팅 팀 id
+  const [mobileSide, setMobileSide] = useState(false); // 모바일 사이드패널 (목록/통합채팅)
   const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
+
+  const [toast, setToast] = useState<string | null>(null);
+  const showToast = useCallback((msg: string) => { setToast(msg); setTimeout(() => setToast(null), 2500); }, []);
   const [chatHistory, setChatHistory] = useState<Record<string, Message[]>>(() => {
     if (typeof window === "undefined") return {};
     try {
@@ -729,6 +837,153 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
       localStorage.setItem("hq-chat-history", JSON.stringify(chatHistory));
     } catch {}
   }, [chatHistory]);
+
+  // ── 웹 푸시 알림 구독 ──────────────────────────────
+  const [pushEnabled, setPushEnabled] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined" || !("serviceWorker" in navigator) || !("PushManager" in window)) return;
+    // SW 등록 + 구독 상태 확인
+    navigator.serviceWorker.register("/sw.js").then(async (reg) => {
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) setPushEnabled(true);
+    }).catch(() => {});
+  }, []);
+
+  const togglePush = useCallback(async () => {
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+      showToast("이 브라우저는 푸시 알림을 지원하지 않습니다");
+      return;
+    }
+    try {
+      // SW가 아직 등록 안 됐으면 등록
+      let reg = await navigator.serviceWorker.getRegistration("/sw.js");
+      if (!reg) reg = await navigator.serviceWorker.register("/sw.js");
+      // active 될 때까지 대기
+      if (!reg.active) await navigator.serviceWorker.ready;
+      if (pushEnabled) {
+        // 구독 해제
+        const sub = await reg.pushManager.getSubscription();
+        if (sub) {
+          await fetch(`${getApiBase()}/api/push/unsubscribe`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ endpoint: sub.endpoint }),
+          });
+          await sub.unsubscribe();
+        }
+        setPushEnabled(false);
+        showToast("알림이 꺼졌습니다");
+      } else {
+        // VAPID 공개키 가져오기
+        const keyRes = await fetch(`${getApiBase()}/api/push/vapid-key`);
+        const { publicKey } = await keyRes.json();
+        // base64url → Uint8Array
+        const padding = "=".repeat((4 - (publicKey.length % 4)) % 4);
+        const raw = atob(publicKey.replace(/-/g, "+").replace(/_/g, "/") + padding);
+        const arr = new Uint8Array(raw.length);
+        for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+        // 구독
+        const sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: arr,
+        });
+        // 서버에 등록
+        await fetch(`${getApiBase()}/api/push/subscribe`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ subscription: sub.toJSON() }),
+        });
+        setPushEnabled(true);
+        showToast("알림이 켜졌습니다!");
+      }
+    } catch (e) {
+      showToast("알림 설정 실패: " + (e instanceof Error ? e.message : "권한 거부"));
+    }
+  }, [pushEnabled, showToast]);
+
+  // ── 인앱 알림 시스템 ──────────────────────────────────
+  interface Notification { id: string; title: string; body: string; team_id: string; tag: string; read: boolean; time: string; }
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [showNotifPanel, setShowNotifPanel] = useState(false);
+
+  // 알림 목록 fetch (15초마다)
+  useEffect(() => {
+    const fetchNotifs = async () => {
+      try {
+        const res = await fetch(`${getApiBase()}/api/notifications`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.ok) {
+          setNotifications(data.notifications || []);
+          setUnreadCount(data.unread || 0);
+        }
+      } catch {}
+    };
+    fetchNotifs();
+    const id = setInterval(fetchNotifs, 15000);
+    return () => clearInterval(id);
+  }, []);
+
+  // SW에서 OPEN_TEAM_CHAT 메시지 수신 → 해당 팀 채팅 열기
+  const handleTeamClickRef = useRef<(id: string) => void>(() => {});
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+    const handler = (e: MessageEvent) => {
+      if (e.data?.type === "OPEN_TEAM_CHAT" && e.data.team_id) {
+        handleTeamClickRef.current(e.data.team_id);
+      }
+    };
+    navigator.serviceWorker.addEventListener("message", handler);
+    return () => navigator.serviceWorker.removeEventListener("message", handler);
+  }, []);
+
+  // 알림 패널 열 때 배지 초기화
+  useEffect(() => {
+    if (showNotifPanel && navigator.serviceWorker?.controller) {
+      navigator.serviceWorker.controller.postMessage({ type: "CLEAR_BADGE" });
+    }
+  }, [showNotifPanel]);
+
+  const markNotifRead = async (notifId: string, teamId?: string) => {
+    // 이미 읽은 알림이면 서버 호출 생략 (팀 이동만)
+    const alreadyRead = notifications.find(n => n.id === notifId)?.read;
+    if (!alreadyRead) {
+      try {
+        const res = await fetch(`${getApiBase()}/api/notifications/${notifId}/read`, { method: "POST" });
+        const data = await res.json();
+        setNotifications(prev => prev.map(n => n.id === notifId ? { ...n, read: true } : n));
+        setUnreadCount(typeof data.unread === "number" ? data.unread : Math.max(0, unreadCount - 1));
+      } catch {
+        setNotifications(prev => prev.map(n => n.id === notifId ? { ...n, read: true } : n));
+        setUnreadCount(prev => Math.max(0, prev - 1));
+      }
+    }
+    if (teamId) {
+      // 알림 클릭 시 항상 열기 (토글 아닌 강제 열기)
+      const mobile = typeof window !== "undefined" && window.innerWidth < 768;
+      if (mobile) {
+        setMobileChat(teamId);
+        setMobileSide(true);
+      } else {
+        setOpenWindows(prev => prev.includes(teamId) ? prev : [...prev, teamId]);
+        setFocusedWindow(teamId);
+      }
+      setShowNotifPanel(false);
+    }
+  };
+
+  const markAllRead = async () => {
+    try {
+      const res = await fetch(`${getApiBase()}/api/notifications/read-all`, { method: "POST" });
+      const data = await res.json();
+      setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+      setUnreadCount(typeof data.unread === "number" ? data.unread : 0);
+    } catch {
+      setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+      setUnreadCount(0);
+    }
+  };
 
   // 팀 버전 정보 fetch (30초마다)
   useEffect(() => {
@@ -766,6 +1021,7 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
 
   const [GameComponent, setGameComponent] = useState<React.ComponentType<{
     onTeamClick: (id: string, screenX?: number, screenY?: number) => void;
+    floorLayout?: Record<number, string[]>;
     ref: React.Ref<OfficeGameHandle>;
   }> | null>(null);
   const gameRef = useRef<OfficeGameHandle>(null);
@@ -776,15 +1032,31 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
 
   const [clickPositions, setClickPositions] = useState<Record<string, { x: number; y: number }>>({});
 
-  // ── 에이전트 패널 드래그 앤 드롭 (층별 순서) ──
+  // ── 에이전트 패널 드래그 앤 드롭 (층별 순서) — 서버 영구 저장 ──
   const PINNED_IDS = ["server-monitor", "cpo-claude"];
+  const DEFAULT_FLOORS: Record<number, string[]> = {
+    1: ["server-monitor", "cpo-claude", "trading-bot", "date-map", "claude-biseo", "ai900", "cl600g", "design-team"],
+    2: ["content-lab", "frontend-team", "backend-team"],
+  };
   const [floorTeams, setFloorTeams] = useState<Record<number, string[]>>(() => {
     if (typeof window === "undefined") return {};
+    // localStorage는 즉시 로드용 캐시, 서버에서 받으면 덮어씀
     try {
       const saved = localStorage.getItem("hq-floor-teams-order");
-      return saved ? JSON.parse(saved) : {};
-    } catch { return {}; }
+      if (!saved) return DEFAULT_FLOORS;
+      const parsed = JSON.parse(saved);
+      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return DEFAULT_FLOORS;
+      const validated: Record<number, string[]> = {};
+      for (const [k, v] of Object.entries(parsed)) {
+        if (Array.isArray(v) && v.every(item => typeof item === "string")) {
+          validated[Number(k)] = v;
+        }
+      }
+      return Object.keys(validated).length > 0 ? validated : DEFAULT_FLOORS;
+    } catch {}
+    return DEFAULT_FLOORS;
   });
+  const floorLoadedFromServer = useRef(false);
   const dragItem = useRef<{ teamId: string; fromFloor: number } | null>(null);
   const [dropTarget, setDropTarget] = useState<{ floor: number; index: number } | null>(null);
   const [floorDropdownTeam, setFloorDropdownTeam] = useState<string | null>(null);
@@ -799,13 +1071,19 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
 
   const moveToFloor = useCallback((teamId: string, targetFloor: number) => {
     setFloorTeams(prev => {
+      // 6팀 제한 체크 (이미 그 층에 있는 경우 제외)
+      const dstList = prev[targetFloor] || [];
+      if (dstList.length >= MAX_PER_FLOOR && !dstList.includes(teamId)) {
+        showToast(`${targetFloor}F는 최대 ${MAX_PER_FLOOR}팀까지만 배치 가능해요`);
+        return prev;
+      }
+
       const next = { ...prev };
       // Remove from current floor
       for (const f of Object.keys(next)) {
         const fl = Number(f);
         if (next[fl]?.includes(teamId)) {
           next[fl] = next[fl].filter(id => id !== teamId);
-          // 빈 층 제거
           if (next[fl].length === 0) delete next[fl];
           break;
         }
@@ -818,46 +1096,108 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
     gameRef.current?.moveTeamToFloor(teamId, targetFloor);
   }, []);
 
-  // floorTeams 초기화: gameRef에서 실제 층 정보 읽어서 구성
+  // 서버에서 층 배치 로드 (최초 1회)
   useEffect(() => {
-    const timer = setInterval(() => {
-      if (!gameRef.current || teams.length === 0) return;
-      clearInterval(timer);
+    const loadFromServer = async () => {
+      try {
+        const res = await fetch(`${getApiBase()}/api/layout/floors`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!data.ok || !data.floors) return;
 
-      const savedRaw = localStorage.getItem("hq-floor-teams-order");
-      const saved: Record<number, string[]> = savedRaw ? JSON.parse(savedRaw) : {};
+        const serverFloors: Record<number, string[]> = {};
 
-      // 현재 모든 팀의 층 정보 수집
-      const currentFloors: Record<number, string[]> = {};
-      for (const t of teams) {
-        const floor = gameRef.current!.getTeamFloor(t.id) ?? 1;
-        if (!currentFloors[floor]) currentFloors[floor] = [];
-        currentFloors[floor].push(t.id);
+        if (Array.isArray(data.floors)) {
+          // API 형식: [{floor: 1, teams: [{id: "...", ...}, ...]}, ...]
+          for (const entry of data.floors) {
+            const floor = Number(entry.floor);
+            if (!floor || !Array.isArray(entry.teams)) continue;
+            serverFloors[floor] = entry.teams.map((t: { id: string }) => t.id);
+          }
+        } else if (typeof data.floors === "object") {
+          // 대체 형식: {"1": ["team-id", ...], "2": [...]}
+          for (const [k, v] of Object.entries(data.floors)) {
+            if (Array.isArray(v)) {
+              serverFloors[Number(k)] = (v as unknown[]).map(item =>
+                typeof item === "string" ? item : (item as { id: string })?.id
+              ).filter(Boolean) as string[];
+            }
+          }
+        }
+
+        if (Object.keys(serverFloors).length > 0) {
+          setFloorTeams(serverFloors);
+          localStorage.setItem("hq-floor-teams-order", JSON.stringify(serverFloors));
+          floorLoadedFromServer.current = true;
+        }
+      } catch {}
+    };
+    loadFromServer();
+  }, []);
+
+  // floorTeams 동기화: 저장된 배치를 기준으로 새 팀 추가 / 삭제된 팀 제거
+  // ⚠️ gameRef.getTeamFloor() 사용 금지 — 기본값(1층)이 서버 배치를 덮어쓰는 버그
+  useEffect(() => {
+    if (teams.length === 0) return;
+    const teamIds = new Set(teams.map(t => t.id));
+
+    setFloorTeams(prev => {
+      if (Object.keys(prev).length === 0) return prev;
+      const next: Record<number, string[]> = {};
+      const placed = new Set<string>();
+
+      // 기존 배치에서 현재 존재하는 팀만 유지 (순서 보존)
+      for (const [f, ids] of Object.entries(prev)) {
+        const floor = Number(f);
+        const valid = (ids as string[]).filter(id => teamIds.has(id));
+        valid.forEach(id => placed.add(id));
+        if (valid.length > 0) next[floor] = valid;
       }
 
-      // saved 순서를 존중하되, 새 팀은 끝에 추가, 삭제된 팀은 제거
-      const merged: Record<number, string[]> = {};
-      const allFloors = new Set([...Object.keys(currentFloors).map(Number), ...Object.keys(saved).map(Number)]);
-      for (const f of allFloors) {
-        const current = currentFloors[f] || [];
-        const savedOrder = saved[f] || [];
-        const currentSet = new Set(current);
-        const ordered = savedOrder.filter(id => currentSet.has(id));
-        const newIds = current.filter(id => !savedOrder.includes(id));
-        const floorList = [...ordered, ...newIds];
-        if (floorList.length > 0) merged[f] = floorList; // 빈 층 제거
+      // 새로 추가된 팀은 1층 끝에 추가
+      const newTeams = [...teamIds].filter(id => !placed.has(id));
+      if (newTeams.length > 0) {
+        if (!next[1]) next[1] = [];
+        next[1] = [...next[1], ...newTeams];
       }
-      setFloorTeams(merged);
-    }, 200);
-    return () => clearInterval(timer);
+
+      return next;
+    });
+
+    // 게임 씬에 층 정보 동기화 (약간 지연) + 1층 강제 표시
+    const syncTimer = setTimeout(() => {
+      if (!gameRef.current) return;
+      setFloorTeams(current => {
+        for (const [f, ids] of Object.entries(current)) {
+          for (const id of ids as string[]) {
+            gameRef.current?.moveTeamToFloor(id, Number(f));
+          }
+        }
+        return current;
+      });
+      // 동기화 후 항상 1층 표시 (초기 진입 시 2층으로 보이는 버그 방지)
+      setTimeout(() => gameRef.current?.changeFloor(1), 100);
+    }, 500);
+    return () => clearTimeout(syncTimer);
   }, [teams]);
 
-  // floorTeams 변경 시 localStorage 저장
+  // floorTeams 변경 시 localStorage + 서버 동시 저장
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (Object.keys(floorTeams).length === 0) return;
+    // localStorage 즉시 저장 (빠른 캐시)
     try {
       localStorage.setItem("hq-floor-teams-order", JSON.stringify(floorTeams));
     } catch {}
+    // 서버 저장은 디바운스 (500ms) — 드래그 중 과다 호출 방지
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      fetch(`${getApiBase()}/api/layout/floors`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ floors: floorTeams }),
+      }).catch(() => {});
+    }, 500);
   }, [floorTeams]);
 
   const handleDragStart = useCallback((e: React.DragEvent, teamId: string, floor: number) => {
@@ -879,6 +1219,8 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
     setDropTarget({ floor, index });
   }, []);
 
+  const MAX_PER_FLOOR = 6;
+
   const handleDrop = useCallback((e: React.DragEvent, targetFloor: number, targetIndex: number) => {
     e.preventDefault();
     const drag = dragItem.current;
@@ -897,12 +1239,18 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
         const insertAt = Math.min(targetIndex, srcList.length);
         srcList.splice(insertAt, 0, drag.teamId);
       } else {
-        // 다른 층: 층 이동
+        // 다른 층: 6팀 제한 체크
         const dstList = [...(next[targetFloor] || [])];
+        if (dstList.length >= MAX_PER_FLOOR) {
+          // 꽉 찬 층 → 원래 위치로 복원
+          srcList.splice(srcIdx, 0, drag.teamId);
+          next[drag.fromFloor] = srcList;
+          showToast(`${targetFloor}F는 최대 ${MAX_PER_FLOOR}팀까지만 배치 가능해요`);
+          return next;
+        }
         const insertAt = Math.min(targetIndex, dstList.length);
         dstList.splice(insertAt, 0, drag.teamId);
         next[targetFloor] = dstList;
-        // Phaser 씬에도 반영
         gameRef.current?.moveTeamToFloor(drag.teamId, targetFloor);
       }
 
@@ -921,7 +1269,7 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
     const mobile = typeof window !== "undefined" && window.innerWidth < 768;
     if (mobile) {
       setMobileChat(prev => prev === teamId ? null : teamId);
-      setMobileDispatch(false);
+      setMobileSide(true); // 사이드패널 열기
       return;
     }
     if (screenX != null && screenY != null) {
@@ -934,6 +1282,18 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
       return [...prev, teamId];
     });
     setFocusedWindow(teamId);
+  }, []);
+  handleTeamClickRef.current = handleTeamClick;
+
+  // URL ?team=xxx 파라미터로 팀 채팅 자동 열기 (알림 클릭 시)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const teamParam = params.get("team");
+    if (teamParam) {
+      handleTeamClick(teamParam);
+      window.history.replaceState({}, "", "/"); // 파라미터 제거
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleWorkingChange = useCallback((teamId: string, working: boolean) => {
@@ -972,9 +1332,15 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
 
   return (
     <div className="h-[100dvh] flex flex-col md:flex-row overflow-hidden bg-[#1a1a2e]">
+      {/* 토스트 알림 */}
+      {toast && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[200] bg-[#1a1a3a] border border-yellow-500/30 text-yellow-400 text-[12px] px-4 py-2 rounded-lg shadow-lg animate-bounce">
+          {toast}
+        </div>
+      )}
       {showAddModal && <AddTeamModal onClose={() => setShowAddModal(false)} onCreated={handleAddTeam} />}
       {guideTeamId && <GuideModal teamId={guideTeamId} onClose={() => setGuideTeamId(null)} />}
-      {user && onLogout && <SideMenu user={user} open={showMenu} onClose={() => setShowMenu(false)} onLogout={onLogout} />}
+      {user && onLogout && <SideMenu user={user} open={showMenu} onClose={() => setShowMenu(false)} onLogout={onLogout} pushEnabled={pushEnabled} onTogglePush={togglePush} />}
       {/* ── 사무실 영역 ── */}
       <div className="flex-1 flex flex-col min-w-0 min-h-0">
         {/* HUD */}
@@ -996,6 +1362,17 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
             <h1 className="text-xs font-semibold text-yellow-400 cursor-pointer" onClick={() => window.location.reload()}>(주)두근 컴퍼니</h1>
           </div>
           <div className="flex items-center gap-1.5 text-[9px] text-gray-400">
+            {/* 알림 벨 */}
+            <button onClick={() => setShowNotifPanel(v => !v)} className="relative text-gray-400 hover:text-yellow-400 transition-colors p-1" title="알림">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
+              </svg>
+              {unreadCount > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] bg-red-500 text-white text-[8px] font-bold rounded-full flex items-center justify-center px-0.5">
+                  {unreadCount > 99 ? "99+" : unreadCount}
+                </span>
+              )}
+            </button>
             {/* 네트워크 신호 아이콘 */}
             <div className="flex items-center gap-1 bg-[#1a1a3a] border border-[#2a2a5a] px-2 py-0.5 rounded">
               <svg width="12" height="12" viewBox="0 0 16 16" className="text-green-400">
@@ -1012,10 +1389,54 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
           </div>
         </header>
 
-        {/* Phaser — 모바일에서 채팅 열리면 축소 */}
-        <main className={`relative min-h-0 md:flex-1 ${(mobileChat || mobileDispatch) ? "h-[35%] shrink-0" : "flex-1"}`}>
+        {/* 알림 패널 드롭다운 */}
+        {showNotifPanel && (
+          <>
+            <div className="fixed inset-0 z-[60]" onClick={() => setShowNotifPanel(false)} />
+            <div className="absolute right-2 top-10 z-[70] w-[320px] max-h-[400px] bg-[#0f0f1f] border border-[#3a3a5a] rounded-lg shadow-2xl flex flex-col overflow-hidden">
+              {/* 헤더 */}
+              <div className="flex items-center justify-between px-3 py-2 border-b border-[#2a2a5a]">
+                <span className="text-xs font-bold text-white">알림 {unreadCount > 0 && <span className="text-yellow-400">({unreadCount})</span>}</span>
+                {unreadCount > 0 && (
+                  <button onClick={markAllRead} className="text-[9px] text-yellow-400 hover:text-yellow-300">전체 읽음</button>
+                )}
+              </div>
+              {/* 알림 목록 */}
+              <div className="flex-1 overflow-y-auto">
+                {notifications.length === 0 ? (
+                  <div className="p-6 text-center text-gray-600 text-xs">알림이 없습니다</div>
+                ) : notifications.map(n => (
+                  <button key={n.id}
+                    onClick={() => markNotifRead(n.id, n.team_id || undefined)}
+                    className={`w-full text-left px-3 py-2.5 border-b border-[#1a1a3a] hover:bg-[#1a1a3a] transition-colors ${
+                      n.read ? "opacity-50" : ""
+                    }`}>
+                    <div className="flex items-start gap-2">
+                      {!n.read && <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 mt-1.5 shrink-0" />}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[11px] font-semibold text-white truncate">{n.title}</span>
+                          <span className="text-[8px] text-gray-600 shrink-0">{n.time.split(" ")[1]?.slice(0, 5)}</span>
+                        </div>
+                        <p className="text-[10px] text-gray-400 truncate mt-0.5">{n.body}</p>
+                        {n.team_id && (
+                          <span className="text-[8px] text-yellow-400/60 mt-0.5 inline-block">
+                            {teams.find(t => t.id === n.team_id)?.emoji} {teams.find(t => t.id === n.team_id)?.name || n.team_id} →
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Phaser — 항상 풀 */}
+        <main className={`relative min-h-0 flex-1${(mobileSide || mobileChat) ? " pointer-events-none" : ""}`}>
           {GameComponent ? (
-            <GameComponent ref={gameRef} onTeamClick={handleTeamClick} />
+            <GameComponent ref={gameRef} onTeamClick={handleTeamClick} floorLayout={floorTeams} />
           ) : (
             <div className="w-full h-full flex items-center justify-center">
               <p className="text-xs text-gray-500">🏢 사무실 로딩중...</p>
@@ -1023,89 +1444,196 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
           )}
         </main>
 
-        {/* ── 모바일 인라인 채팅 (사무실 아래, 하단바 위) ── */}
-        {mobileChat && (() => {
-          const team = teams.find(t => t.id === mobileChat);
-          if (!team) return null;
-          return (
-            <div className="md:hidden flex-1 flex flex-col min-h-0 overflow-hidden border-t border-[#2a2a5a] bg-[#0a0a18]">
-              {/* 채팅 헤더 (항상 고정) */}
-              <div className="flex items-center justify-between px-3 py-2 bg-[#0e0e20] border-b border-[#2a2a5a] shrink-0 z-10">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm">{team.emoji}</span>
-                  <span className="text-xs font-semibold text-white">{team.name}</span>
+      </div>
+
+      {/* ── 모바일 플로팅 버튼 ── */}
+      {!mobileSide && !mobileChat && (
+        <button
+          onClick={() => setMobileSide(true)}
+          className="md:hidden fixed right-4 z-[60] w-14 h-14 rounded-full bg-yellow-500 text-[#0a0a18] text-2xl shadow-lg active:scale-90 transition-transform flex items-center justify-center"
+          style={{ bottom: "calc(1.5rem + env(safe-area-inset-bottom, 0px))" }}
+        ><svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></button>
+      )}
+
+      {/* ── 모바일 우측 사이드 패널 ── */}
+      {(mobileSide || mobileChat) && (
+        <div className="md:hidden fixed inset-0 z-[70] bg-black/30" onClick={() => { setMobileChat(null); setMobileSide(false); }}>
+          <div
+            className="absolute top-0 right-0 w-[85vw] max-w-[360px] h-[100dvh] bg-[#0a0e1a] border-l border-[#2a2a5a] flex flex-col shadow-2xl animate-slide-in-right overscroll-contain"
+            style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
+            onClick={e => e.stopPropagation()}
+          >
+            {mobileChat ? (() => {
+              const team = teams.find(t => t.id === mobileChat);
+              if (!team) return null;
+              const isServerMonitor = team.id === "server-monitor";
+              return (
+                <>
+                  {/* 채팅/대시보드 헤더 */}
+                  <div className="flex items-center gap-2 px-3 py-3 bg-[#0e0e20] border-b border-[#2a2a5a] shrink-0">
+                    <button onClick={(e) => { e.stopPropagation(); setMobileChat(null); }} className="text-gray-400 active:text-white text-lg px-1">←</button>
+                    <span className="text-lg">{team.emoji}</span>
+                    <span className="text-sm font-semibold text-white flex-1 truncate">{team.name}</span>
+                    <button onClick={(e) => { e.stopPropagation(); setMobileChat(null); setMobileSide(false); }} className="text-gray-500 active:text-white text-xl px-1">✕</button>
+                  </div>
+                  {/* 서버모니터 → 대시보드, 그 외 → 채팅 */}
+                  <div className="flex-1 min-h-0 flex flex-col">
+                    {isServerMonitor
+                      ? <ServerDashboard onClose={() => setMobileChat(null)} />
+                      : <ChatPanel
+                          team={team}
+                          onClose={() => setMobileChat(null)}
+                          onWorkingChange={(working) => handleWorkingChange(team.id, working)}
+                          inline={true}
+                          messages={chatHistory[team.id] || []}
+                          onMessages={(msgs) => setChatHistory(prev => ({ ...prev, [team.id]: msgs }))}
+                        />
+                    }
+                  </div>
+                </>
+              );
+            })() : (
+              <>
+                {/* 목록 헤더 */}
+                <div className="flex items-center justify-between px-3 py-3 bg-[#0e0e20] border-b border-[#2a2a5a] shrink-0">
+                  <span className="text-sm font-semibold text-white">에이전트</span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setMobileSide(false); setShowAddModal(true); }}
+                      className="text-[9px] px-2 py-0.5 bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 rounded active:bg-yellow-500/20"
+                    >+ 추가</button>
+                    <button onClick={(e) => { e.stopPropagation(); setMobileSide(false); }} className="text-gray-500 active:text-white text-xl px-1">✕</button>
+                  </div>
                 </div>
-                <button onClick={() => setMobileChat(null)} className="text-white text-[11px] px-3 py-1 rounded bg-red-500/30 border border-red-500/40 active:bg-red-500/50">✕ 닫기</button>
-              </div>
-              {/* 채팅 본문 (스크롤은 여기 안에서만) */}
-              <div className="flex-1 min-h-0 overflow-hidden">
-                <ChatPanel
-                  team={team}
-                  onClose={() => setMobileChat(null)}
-                  onWorkingChange={(working) => handleWorkingChange(team.id, working)}
-                  inline={true}
-                  messages={chatHistory[team.id] || []}
-                  onMessages={(msgs) => setChatHistory(prev => ({ ...prev, [team.id]: msgs }))}
-                />
-              </div>
-            </div>
-          );
-        })()}
-
-        {/* ── 모바일 인라인 통합채팅 ── */}
-        {mobileDispatch && !mobileChat && (
-          <div className="md:hidden flex-1 flex flex-col min-h-0 border-t border-[#2a2a5a] bg-[#0a0a18]">
-            <div className="flex items-center justify-between px-3 py-1.5 bg-[#0e0e20] border-b border-[#2a2a5a] shrink-0">
-              <div className="flex items-center gap-2">
-                <span className="text-sm">📡</span>
-                <span className="text-xs font-semibold text-white">통합 채팅</span>
-              </div>
-              <button onClick={() => setMobileDispatch(false)} className="text-gray-500 hover:text-white text-[10px] px-2 py-0.5 rounded bg-[#1a1a3a]">닫기</button>
-            </div>
-            <div className="flex-1 overflow-y-auto p-3">
-              <DispatchChat teams={teams} onOpenChat={(id) => { setMobileDispatch(false); setMobileChat(id); }} />
-            </div>
-          </div>
-        )}
-
-        {/* ── 모바일 하단 에이전트 바 ── */}
-        <div className="md:hidden border-t border-[#2a2a5a] bg-[#0e0e20] px-2 pt-2 shrink-0" style={{ paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom, 0px))" }}>
-          <div className="flex gap-1.5 overflow-x-auto pb-0.5 scrollbar-hide">
-            {/* 통합채팅 버튼 */}
-            <button
-              onClick={() => { setMobileDispatch(v => !v); setMobileChat(null); }}
-              className={`shrink-0 flex items-center gap-1 px-3 py-2.5 rounded-full text-[12px] font-medium transition-all ${
-                mobileDispatch
-                  ? "bg-purple-500/15 text-purple-400 border border-purple-500/30"
-                  : "bg-[#1a1a3a] text-purple-400/60 border border-[#2a2a5a] active:bg-[#2a2a4a]"
-              }`}
-            >
-              <span>📡</span>
-              <span className="whitespace-nowrap">통합</span>
-            </button>
-            {teams.filter(t => t.id !== "server-monitor").map(team => (
-              <button
-                key={team.id}
-                onClick={() => handleTeamClick(team.id)}
-                className={`shrink-0 flex items-center gap-1 px-3 py-2.5 rounded-full text-[12px] font-medium transition-all ${
-                  mobileChat === team.id
-                    ? "bg-yellow-500/15 text-yellow-400 border border-yellow-500/30"
-                    : "bg-[#1a1a3a] text-gray-400 border border-[#2a2a5a] active:bg-[#2a2a4a]"
-                }`}
-              >
-                <span>{team.emoji}</span>
-                <span className="whitespace-nowrap">{team.name}</span>
-              </button>
-            ))}
-            <button
-              onClick={() => setShowAddModal(true)}
-              className="shrink-0 flex items-center gap-1 px-3 py-2.5 rounded-full text-[12px] bg-[#1a1a3a] text-yellow-400/60 border border-dashed border-yellow-500/20 active:bg-[#2a2a4a]"
-            >
-              +
-            </button>
+                {/* 에이전트 목록 (층별 그룹) + 통합채팅 */}
+                <div className="flex-1 overflow-y-auto overscroll-contain" style={{ minHeight: 0, WebkitOverflowScrolling: "touch", touchAction: "pan-y" }}>
+                  <div className="p-2 flex flex-col gap-0">
+                    {(() => {
+                      const floors = Object.keys(floorTeams).map(Number).sort((a, b) => a - b);
+                      if (floors.length === 0) {
+                        return teams.map((team) => {
+                          const info = teamInfoMap[team.id];
+                          return (
+                            <button key={team.id} onClick={() => setMobileChat(team.id)}
+                              className="w-full text-left px-2.5 py-2 rounded text-[12px] active:bg-[#1a2040] transition-colors">
+                              <div className="flex items-center gap-1.5">
+                                <span>{team.emoji} {team.name}</span>
+                                {info?.version && <span className="text-[8px] text-gray-600 font-mono">{info.version}</span>}
+                              </div>
+                            </button>
+                          );
+                        });
+                      }
+                      return floors.map((floor) => {
+                        const teamIds = Array.isArray(floorTeams[floor]) ? floorTeams[floor] : [];
+                        return (
+                          <div key={floor}>
+                            {/* 층 헤더 */}
+                            <button
+                              onClick={() => { gameRef.current?.changeFloor(floor); setMobileSide(false); }}
+                              className="flex items-center gap-1.5 py-1.5 mt-1 w-full rounded active:bg-[#1a1a3a] transition-colors group"
+                            >
+                              <span className="flex-1 h-px bg-[#2a2a5a]" />
+                              <span className="text-[9px] text-gray-600 group-active:text-blue-400 font-semibold tracking-wider whitespace-nowrap">{floor}F</span>
+                              <span className="flex-1 h-px bg-[#2a2a5a]" />
+                            </button>
+                            {teamIds.map((teamId) => {
+                              const team = teams.find(t => t.id === teamId);
+                              if (!team) return null;
+                              const info = teamInfoMap[team.id];
+                              const isPinned = PINNED_IDS.includes(team.id);
+                              return (
+                                <div key={team.id} className="flex items-center gap-1">
+                                  <button
+                                    onClick={() => setMobileChat(team.id)}
+                                    className={`shrink-0 flex-1 text-left px-2.5 py-1.5 rounded text-[12px] transition-all min-h-[36px] ${
+                                      mobileChat === team.id
+                                        ? "bg-yellow-500/10 text-yellow-400 border border-yellow-500/20"
+                                        : "text-gray-400 border border-transparent active:bg-[#1a1a3a]"
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-1.5">
+                                      <span>{team.emoji} {team.name}</span>
+                                      {info?.version && <span className="text-[8px] text-gray-600 font-mono">{info.version}</span>}
+                                    </div>
+                                    {info?.last_commit_date && (
+                                      <div className="text-[8px] text-gray-600 mt-0.5 truncate">
+                                        {formatRelativeDate(info.last_commit_date)}
+                                        {info.last_commit && <span className="text-gray-700"> · {info.last_commit.slice(0, 25)}</span>}
+                                      </div>
+                                    )}
+                                  </button>
+                                  {/* 액션 아이콘: 가이드 / 층이동 / 삭제 */}
+                                  <div className="flex shrink-0 gap-0.5">
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); setGuideTeamId(team.id); }}
+                                      className="w-7 h-7 flex items-center justify-center rounded text-gray-600 active:text-yellow-400 active:bg-[#1a1a3a]"
+                                      title="가이드">
+                                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
+                                      </svg>
+                                    </button>
+                                    {!isPinned && (
+                                      <div className="relative">
+                                        <button
+                                          onClick={(e) => { e.stopPropagation(); setFloorDropdownTeam(floorDropdownTeam === team.id ? null : team.id); }}
+                                          className="w-7 h-7 flex items-center justify-center rounded text-gray-600 active:text-yellow-400 active:bg-[#1a1a3a]"
+                                          title="층 이동">
+                                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M9 22V12h6v10"/><path d="M8 6h.01M16 6h.01M12 6h.01M8 10h.01M16 10h.01M12 10h.01"/></svg>
+                                        </button>
+                                        {floorDropdownTeam === team.id && (
+                                          <div className="absolute right-0 top-full mt-1 bg-[#1a1a2e] border border-[#3a3a5a] rounded p-1 z-50 min-w-[80px]" onClick={e => e.stopPropagation()}>
+                                            {Object.keys(floorTeams).map(Number).sort((a, b) => a - b).map(f => {
+                                              const isCurrent = floorTeams[f]?.includes(team.id);
+                                              const isFull = (floorTeams[f]?.length || 0) >= MAX_PER_FLOOR && !isCurrent;
+                                              return (
+                                                <button key={f} disabled={isFull || isCurrent}
+                                                  onClick={() => { moveToFloor(team.id, f); setFloorDropdownTeam(null); }}
+                                                  className={`w-full text-left text-[10px] px-2 py-1 rounded transition-colors ${
+                                                    isCurrent ? "text-yellow-400 bg-yellow-500/10" : isFull ? "text-gray-600 cursor-not-allowed" : "text-gray-300 active:bg-[#2a2a4a]"
+                                                  }`}>
+                                                  <span className="whitespace-nowrap">{isCurrent ? "●" : "○"} {f}F{isFull ? " 꽉참" : ""}</span>
+                                                </button>
+                                              );
+                                            })}
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
+                                    {!isPinned && (
+                                      <button
+                                        onClick={async (e) => {
+                                          e.stopPropagation();
+                                          if (!confirm(`${team.emoji} ${team.name} 에이전트를 삭제할까요?`)) return;
+                                          await fetch(`${getApiBase()}/api/teams/${team.id}`, { method: "DELETE" });
+                                          window.location.reload();
+                                        }}
+                                        className="w-7 h-7 flex items-center justify-center rounded text-red-500/70 active:text-red-400 active:bg-red-500/10"
+                                        title="삭제">
+                                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                          <path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/>
+                                        </svg>
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      });
+                    })()}
+                  </div>
+                  {/* 통합 디스패치 */}
+                  <div className="border-t border-[#2a2a5a] p-2">
+                    <DispatchChat teams={teams} onOpenChat={(id) => setMobileChat(id)} />
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         </div>
-      </div>
+      )}
 
       {/* ── 채팅 윈도우들 (PC만, 팀 위치 기반) ── */}
       {openWindows.map((teamId, idx) => {
@@ -1169,7 +1697,7 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
                 });
               }
               return floors.map((floor) => {
-                const teamIds = floorTeams[floor] || [];
+                const teamIds = Array.isArray(floorTeams[floor]) ? floorTeams[floor] : [];
                 return (
                   <div key={floor}>
                     {/* ── 층 헤더 (클릭 → 해당 층으로 이동, 드롭 → 팀 층 이동) ── */}
@@ -1183,7 +1711,8 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
                         const draggedId = e.dataTransfer.getData("text/plain");
                         if (draggedId && !PINNED_IDS.includes(draggedId)) {
                           const srcFloor = Object.entries(floorTeams).find(([, ids]) => ids.includes(draggedId));
-                          if (srcFloor && Number(srcFloor[0]) !== floor) {
+                          const dstCount = floorTeams[floor]?.length || 0;
+                          if (srcFloor && Number(srcFloor[0]) !== floor && dstCount < MAX_PER_FLOOR) {
                             moveToFloor(draggedId, floor);
                           }
                         }
@@ -1270,9 +1799,9 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
                                 <div className="relative">
                                   <button
                                     onClick={(e) => { e.stopPropagation(); setFloorDropdownTeam(floorDropdownTeam === team.id ? null : team.id); }}
-                                    className="w-6 h-6 flex items-center justify-center rounded text-gray-600 hover:text-yellow-400 hover:bg-[#1a1a3a] transition-all text-[10px]"
+                                    className="w-6 h-6 flex items-center justify-center rounded text-gray-600 hover:text-yellow-400 hover:bg-[#1a1a3a] transition-all"
                                     title="층 이동">
-                                    🏢
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M9 22V12h6v10"/><path d="M8 6h.01M16 6h.01M12 6h.01M8 10h.01M16 10h.01M12 10h.01"/></svg>
                                   </button>
                                   {floorDropdownTeam === team.id && (
                                     <div className="absolute right-0 top-full mt-1 bg-[#1a1a2e] border border-[#3a3a5a] rounded p-1 z-50 min-w-[80px]" onClick={e => e.stopPropagation()}>
@@ -1301,7 +1830,7 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
                                     await fetch(`${getApiBase()}/api/teams/${team.id}`, { method: "DELETE" });
                                     window.location.reload();
                                   }}
-                                  className="w-6 h-6 flex items-center justify-center rounded text-gray-700 hover:text-red-400 hover:bg-red-500/10 transition-all"
+                                  className="w-6 h-6 flex items-center justify-center rounded text-red-500/70 hover:text-red-400 hover:bg-red-500/10 transition-all"
                                   title="에이전트 삭제">
                                   <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                     <path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/>
