@@ -14,7 +14,8 @@ import * as Phaser from "phaser";
 
 export function preloadAssets(scene: Phaser.Scene) {
   // 캐릭터 0~3: LimeZu 2× 업스케일 (32×64 프레임) — 전 팀 공용
-  for (let i = 0; i <= 3; i++) {
+  // 캐릭터 6: 정장 캐릭터 (suit_1 업스케일) — CPO용
+  for (const i of [0, 1, 2, 3, 6]) {
     scene.load.spritesheet(`char_${i}`, `/assets/char_${i}.png`, {
       frameWidth: 32,
       frameHeight: 64,
@@ -86,7 +87,7 @@ export function preloadAssets(scene: Phaser.Scene) {
 // ═══════════════════════════════════
 
 export function registerCharAnims(scene: Phaser.Scene) {
-  for (let i = 0; i <= 3; i++) {
+  for (let i of [0, 1, 2, 3, 6]) {
     const key = `char_${i}`;
     const cols = 7;
 

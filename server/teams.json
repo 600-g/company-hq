@@ -71,5 +71,21 @@
     "repo": "content-lab",
     "localPath": "~/Developer/my-company/content-lab",
     "status": "운영중"
+  },
+  {
+    "id": "frontend-team",
+    "name": "프론트엔드",
+    "emoji": "🖼",
+    "repo": "frontend-team",
+    "localPath": "~/Developer/my-company/frontend-team",
+    "status": "운영중"
+  },
+  {
+    "id": "backend-team",
+    "name": "백엔드",
+    "emoji": "⚙️",
+    "repo": "backend-team",
+    "localPath": "~/Developer/my-company/backend-team",
+    "status": "운영중"
   }
 ]

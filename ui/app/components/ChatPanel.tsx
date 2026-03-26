@@ -6,6 +6,7 @@ import { Team } from "../config/teams";
 export interface Message {
   type: "user" | "ai";
   content: string;
+  cancelled?: boolean;
 }
 
 interface Props {
@@ -83,7 +84,14 @@ function MarkdownMessage({ content }: { content: string }) {
   return <div className="space-y-0.5">{nodes}</div>;
 }
 
-// ── WebSocket URL ─────────────────────────────────────
+// ── API/WebSocket URL ────────────────────────────────
+function getApiBase(): string {
+  if (typeof window === "undefined") return "";
+  const h = window.location.hostname;
+  const isLocal = h === "localhost" || h.startsWith("192.168.");
+  return isLocal ? `http://${h}:8000` : "https://api.600g.net";
+}
+
 function getWsUrl(teamId: string): string {
   if (typeof window === "undefined") return "";
   const h = window.location.hostname;
@@ -120,12 +128,28 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
   const wsRef = useRef<WebSocket | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
   // 콜백 ref — useEffect deps에 넣지 않아도 항상 최신 참조
   const onWorkingChangeRef = useRef(onWorkingChange);
   onWorkingChangeRef.current = onWorkingChange;
 
-  const scrollToBottom = useCallback(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  const [showScrollBtn, setShowScrollBtn] = useState(false);
+  // history_sync 수신 시 무조건 맨 아래로 스크롤하기 위한 플래그
+  const forceScrollRef = useRef(false);
+  const scrollToBottom = useCallback((smooth?: boolean) => {
+    if (scrollRef.current) {
+      if (smooth) {
+        scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+      } else {
+        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      }
+    }
+  }, []);
+  // 스크롤 위치 감지 → "최신 메시지로" 버튼 표시
+  const handleScroll = useCallback(() => {
+    if (!scrollRef.current) return;
+    const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
+    setShowScrollBtn(scrollHeight - scrollTop - clientHeight > 100);
   }, []);
 
   // 브라우저 알림
@@ -190,6 +214,7 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
         if (data.type === "history_sync") {
           const serverMsgs: Message[] = data.messages || [];
           if (serverMsgs.length > 0) {
+            forceScrollRef.current = true;  // 동기화 후 무조건 맨 아래로
             setMessages(serverMsgs);
           }
           return;
@@ -228,7 +253,19 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
           setToolStatus("");
           setLastDone(prev => ({ sec, tools: (prev?.tools ?? 0) + toolLog.length }));
           onWorkingChangeRef.current(false);
-          setQueued(prev => prev.length > 0 ? prev.slice(1) : prev); // 큐에서 처리된 항목 제거
+          // 큐에 다음 메시지가 있으면 자동 전송
+          setQueued(prev => {
+            if (prev.length > 0) {
+              const next = prev[0];
+              setTimeout(() => {
+                if (wsRef.current) {
+                  wsRef.current.send(JSON.stringify({ prompt: next }));
+                }
+              }, 500);
+              return prev.slice(1);
+            }
+            return prev;
+          });
           // 빈 응답이면 완료 메시지 추가
           setMessages(prev => {
             const last = prev[prev.length - 1];
@@ -256,20 +293,93 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
   // eslint-disable-next-line react-hooks/exhaustive-deps -- onWorkingChange/notify는 ref로 안정화
   }, [team.id]);
 
-  useEffect(() => { scrollToBottom(); }, [messages, scrollToBottom]);
+  // 메시지 변경 시 맨 아래로 (위로 올려놨으면 유지) + 스크롤 버튼 상태 갱신
+  useEffect(() => {
+    if (!scrollRef.current) return;
+    // history_sync 후 강제 스크롤 (서버 재시작/재연결 시 항상 맨 아래로)
+    if (forceScrollRef.current) {
+      forceScrollRef.current = false;
+      // DOM 렌더링 대기 후 스크롤 (여러 번 시도하여 확실하게)
+      requestAnimationFrame(() => {
+        scrollToBottom();
+        setTimeout(() => { scrollToBottom(); setShowScrollBtn(false); }, 100);
+      });
+      return;
+    }
+    const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
+    const isNearBottom = scrollHeight - scrollTop - clientHeight < 150;
+    // 처음 로드이거나 맨 아래 근처면 자동 스크롤
+    if (isNearBottom || messages.length <= 1) {
+      setTimeout(() => scrollToBottom(), 50);
+    }
+    // 스크롤 버튼 표시 여부도 갱신 (초기 로드 시 handleScroll이 안 불리므로)
+    setTimeout(() => {
+      if (!scrollRef.current) return;
+      const el = scrollRef.current;
+      setShowScrollBtn(el.scrollHeight - el.scrollTop - el.clientHeight > 100);
+    }, 100);
+  }, [messages, scrollToBottom]);
 
   const [queued, setQueued] = useState<string[]>([]);
+  const [pendingImages, setPendingImages] = useState<{ file: File; path?: string }[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const send = () => {
-    if (!input.trim() || !wsRef.current) return;
-    const msg = input.trim();
-    if (streaming) {
-      // 작업 중 → 큐에 추가 (WebSocket 버퍼로 전송, 순차 처리됨)
-      setQueued(prev => [...prev, msg]);
-    }
-    wsRef.current.send(JSON.stringify({ prompt: msg }));
-    setInput("");
+  const uploadImage = async (file: File): Promise<string | null> => {
+    const form = new FormData();
+    form.append("file", file);
+    try {
+      const res = await fetch(`${getApiBase()}/api/upload/image`, { method: "POST", body: form });
+      const data = await res.json();
+      return data.ok ? data.path : null;
+    } catch { return null; }
   };
+
+  const sendDirect = useCallback((msg: string, imagePaths?: string[]) => {
+    if (!wsRef.current) return;
+    wsRef.current.send(JSON.stringify({ prompt: msg, images: imagePaths?.length ? imagePaths : undefined }));
+  }, []);
+
+  const send = async () => {
+    if ((!input.trim() && pendingImages.length === 0) || !wsRef.current) return;
+    const msg = input.trim();
+
+    // streaming 중이면 큐에만 넣고 입력 초기화
+    if (streaming) {
+      if (msg) setQueued(prev => [...prev, msg]);
+      setInput("");
+      setPendingImages([]);
+      return;
+    }
+
+    // 이미지 업로드 후 경로 수집
+    const imagePaths: string[] = [];
+    for (const img of pendingImages) {
+      const path = img.path || await uploadImage(img.file);
+      if (path) imagePaths.push(path);
+    }
+
+    sendDirect(msg, imagePaths);
+    setInput("");
+    setPendingImages([]);
+  };
+
+  // 작업 취소 — 진행중 패널에서 호출 (서버에 cancel 전송 + 취소 마킹 + 입력창 복구)
+  const cancelWork = useCallback(() => {
+    wsRef.current?.send(JSON.stringify({ action: "cancel" }));
+    setStreaming(false);
+    if (timerRef.current) clearInterval(timerRef.current);
+    onWorkingChangeRef.current(false);
+    // 마지막 유저 메시지에 취소 표시 + 입력창에 복구, AI 응답(빈 청크) 제거
+    setMessages(prev => {
+      const lastUserIdx = prev.findLastIndex(m => m.type === "user");
+      if (lastUserIdx === -1) return prev;
+      const restored = prev[lastUserIdx].content;
+      setInput(restored);
+      const updated = prev.slice(0, lastUserIdx + 1);  // user 메시지까지만 유지
+      updated[lastUserIdx] = { ...updated[lastUserIdx], cancelled: true };
+      return updated;
+    });
+  }, [setMessages]);
 
   // ── 경과시간 포맷 ──
   const fmtTime = (s: number) => s >= 60 ? `${Math.floor(s / 60)}분 ${s % 60}초` : `${s}초`;
@@ -288,8 +398,8 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
           >🗑 대화 지우기</button>
         </div>
 
-        {/* 메시지 */}
-        <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-2 min-h-0 select-text">
+        {/* 메시지 — 주의: absolute/sticky 금지 (lessons.md 참고), flex-1로 높이 확보 */}
+          <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto space-y-2 min-h-0 select-text overscroll-contain" style={{ WebkitOverflowScrolling: "touch", touchAction: "pan-y" }}>
           {messages.length === 0 && (
             <div className="py-6 text-center">
               <p className="text-[10px] text-gray-600">명령을 입력하거나 아래 바로가기를 사용하세요</p>
@@ -310,7 +420,10 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
               )}
               <div className="flex items-center justify-between mt-0.5">
                 {msg.type === "user" && !streaming && (
-                  <span className="text-[8px] text-blue-400/50">✓ 읽음</span>
+                  <span className="text-[8px]">
+                    <span className="text-blue-400/50">✓ 읽음</span>
+                    {msg.cancelled && <span className="text-red-400/70 ml-1">· ✕ 취소됨</span>}
+                  </span>
                 )}
                 {msg.type === "ai" && !streaming && <span />}
                 {msg.content && !streaming && (
@@ -325,7 +438,7 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
               </div>
             </div>
           ))}
-          {/* 작업 진행 패널 */}
+          {/* 작업 진행 패널 + 취소 버튼 */}
           {streaming && (
             <div className="bg-[#0f1a0f] border border-green-900/40 rounded p-2 space-y-1.5">
               {/* 헤더 */}
@@ -337,15 +450,19 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
                     <span className="w-1 h-1 bg-green-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
                   </div>
                   <span className="text-[10px] text-green-400/70">작업중</span>
+                  <span className="text-[9px] text-gray-600 font-mono">{fmtTime(elapsed)}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   {toolLog.length > 0 && (
                     <button onClick={() => setShowToolLog(v => !v)}
                       className="text-[8px] text-gray-600 hover:text-gray-400 transition-colors">
-                      {showToolLog ? "▲" : "▼"} {toolLog.length}개 작업
+                      {showToolLog ? "▲" : "▼"} {toolLog.length}개
                     </button>
                   )}
-                  <span className="text-[9px] text-gray-600 font-mono">{fmtTime(elapsed)}</span>
+                  <button onClick={cancelWork}
+                    className="bg-red-500/90 hover:bg-red-500 text-white text-[9px] font-bold px-2.5 py-0.5 rounded transition-colors">
+                    ■ 취소
+                  </button>
                 </div>
               </div>
               {/* 현재 툴 */}
@@ -379,7 +496,18 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
               )}
             </div>
           )}
-        </div>
+          </div>
+
+        {/* 최신 메시지로 이동 — 일반 flex 아이템 (CSS 포지셔닝 트릭 금지) */}
+        {showScrollBtn && (
+          <div className="flex justify-center py-0.5 shrink-0">
+            <button onClick={() => scrollToBottom(true)}
+              className="bg-[#1a1a3a] border border-[#3a3a5a] text-yellow-400 text-[10px] px-3 py-0.5 rounded-full shadow-lg hover:bg-[#2a2a4a] transition-colors flex items-center gap-1">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M19 14l-7 7m0 0l-7-7m7 7V3"/></svg>
+              최신 메시지 ↓
+            </button>
+          </div>
+        )}
 
         {/* 바로가기 */}
         <div className="mt-1 flex flex-wrap gap-1 shrink-0">
@@ -416,26 +544,65 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
           </div>
         )}
 
+        {/* 첨부 이미지 미리보기 */}
+        {pendingImages.length > 0 && (
+          <div className="mt-1 flex gap-1 flex-wrap">
+            {pendingImages.map((img, i) => (
+              <button key={i} onClick={() => setPendingImages(prev => prev.filter((_, j) => j !== i))}
+                className="relative w-12 h-12 rounded border border-[#3a3a5a] overflow-hidden active:opacity-50 transition-opacity"
+                title="탭하여 삭제">
+                <img src={URL.createObjectURL(img.file)} alt="" className="w-full h-full object-cover" />
+                <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* 입력 (작업 중에도 입력 가능, Shift+Enter=줄바꿈) */}
+        <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden"
+          onChange={(e) => {
+            const files = Array.from(e.target.files || []);
+            setPendingImages(prev => [...prev, ...files.map(f => ({ file: f }))]);
+            e.target.value = "";
+          }}
+        />
         <div className="mt-1.5 flex gap-1.5 items-end">
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="text-gray-500 hover:text-yellow-400 px-1.5 py-1.5 text-sm transition-colors shrink-0"
+            title="이미지 첨부"
+          ><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button>
           <textarea
             ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+              if (e.key === "Enter" && !isMobile && !e.shiftKey && !e.nativeEvent.isComposing) {
                 e.preventDefault();
                 send();
               }
             }}
-            placeholder={streaming ? "작업중... (추가 입력 가능)" : "명령 입력... (Shift+Enter 줄바꿈)"}
+            onPaste={(e) => {
+              const items = Array.from(e.clipboardData?.items || []);
+              const imageItems = items.filter(item => item.type.startsWith("image/"));
+              if (imageItems.length > 0) {
+                e.preventDefault();
+                imageItems.forEach(item => {
+                  const file = item.getAsFile();
+                  if (file) setPendingImages(prev => [...prev, { file }]);
+                });
+              }
+            }}
+            placeholder={streaming ? "작업중... (추가 입력 가능)" : isMobile ? "명령 입력... (전송 버튼으로 보내기)" : "명령 입력... (Ctrl+V 이미지 붙여넣기)"}
             rows={input.includes("\n") ? Math.min(input.split("\n").length, 4) : 1}
             className="flex-1 bg-[#1a1a2e] border border-[#3a3a5a] text-white px-2 py-1.5 text-[11px] rounded
                        placeholder-gray-600 focus:outline-none focus:border-yellow-400/50 resize-none"
           />
           <button
             onClick={send}
-            disabled={!input.trim()}
+            disabled={!input.trim() && pendingImages.length === 0}
             className="bg-yellow-500 text-black px-3 py-1.5 text-[10px] font-bold rounded
                        hover:bg-yellow-400 disabled:opacity-30 transition-colors shrink-0"
           >
@@ -458,7 +625,8 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-white">✕</button>
         </div>
-        <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-3">
+        <div className="flex-1 min-h-0 flex flex-col">
+          <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0">
           {messages.map((msg, i) => (
             <div key={i} className={`flex ${msg.type === "user" ? "justify-end" : "justify-start"}`}>
               <div className={`max-w-[85%] px-3 py-2 rounded ${
@@ -470,29 +638,55 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
                   ? <MarkdownMessage content={msg.content} />
                   : msg.content
                 }
+                {msg.type === "user" && msg.cancelled && (
+                  <div className="text-[9px] text-red-300/70 mt-0.5">✕ 취소됨</div>
+                )}
               </div>
             </div>
           ))}
+          {/* 작업 진행 패널 + 취소 (모달) */}
+          {streaming && (
+            <div className="bg-[#0f1a0f] border border-green-900/40 rounded p-3 mx-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="flex gap-0.5">
+                    <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+                    <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+                    <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+                  </div>
+                  <span className="text-xs text-green-400/70">작업중</span>
+                  <span className="text-xs text-gray-600 font-mono">{fmtTime(elapsed)}</span>
+                  {toolStatus && <span className="text-[10px] text-yellow-300/80 truncate max-w-[180px]">· {toolStatus}</span>}
+                </div>
+                <button onClick={cancelWork}
+                  className="bg-red-500/90 hover:bg-red-500 text-white text-[10px] font-bold px-3 py-1 rounded transition-colors">
+                  ■ 취소
+                </button>
+              </div>
+            </div>
+          )}
+          </div>
+          {showScrollBtn && (
+            <div className="flex justify-center py-1 shrink-0 border-t border-[#2a2a5a]/50">
+              <button onClick={() => scrollToBottom(true)}
+                className="bg-[#1a1a3a] border border-[#3a3a5a] text-yellow-400 text-[11px] px-4 py-1 rounded-full shadow-lg hover:bg-[#2a2a4a] transition-colors flex items-center gap-1">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M19 14l-7 7m0 0l-7-7m7 7V3"/></svg>
+                최신 메시지 ↓
+              </button>
+            </div>
+          )}
         </div>
         <div className="border-t border-[#2a2a5a] p-3 flex gap-2 items-end">
           <textarea ref={inputRef} value={input} onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(); } }}
+            onKeyDown={(e) => { if (e.key === "Enter" && !isMobile && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(); } }}
             placeholder={streaming ? "작업중... (추가 입력 가능)" : "명령 입력..."}
             rows={input.includes("\n") ? Math.min(input.split("\n").length, 4) : 1}
             className="flex-1 bg-[#1a1a2e] border border-[#3a3a5a] text-white px-3 py-2 text-sm rounded
                        focus:outline-none focus:border-yellow-400/50 resize-none" />
-          {streaming ? (
-            <button onClick={() => { wsRef.current?.send(JSON.stringify({ action: "cancel" })); setStreaming(false); }}
-              className="bg-red-500/80 text-white px-4 py-2 text-sm font-bold rounded hover:bg-red-500 shrink-0"
-              title="작업 취소">
-              ■ 중지
-            </button>
-          ) : (
-            <button onClick={send} disabled={!input.trim()}
-              className="bg-yellow-500 text-black px-4 py-2 text-sm font-bold rounded hover:bg-yellow-400 disabled:opacity-30 shrink-0">
-              전송
-            </button>
-          )}
+          <button onClick={send} disabled={!input.trim()}
+            className="bg-yellow-500 text-black px-4 py-2 text-sm font-bold rounded hover:bg-yellow-400 disabled:opacity-30 shrink-0">
+            전송
+          </button>
         </div>
       </div>
     </div>

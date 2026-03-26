@@ -24,21 +24,35 @@ interface TeamConfig {
   chars: number[]; gridX: number; gridY: number; gridW: number; gridH: number;
 }
 
+// 팀 메타데이터 (서버 floor_layout.json이 층 배치의 소스오브트루스)
+// gridX/gridY = 기본 위치. localStorage로 덮어씌워짐.
+const TEAM_META: Record<string, Omit<TeamConfig, "id" | "gridX" | "gridY">> = {
+  "trading-bot":   { name: "매매봇",    emoji: "🤖", chars: [0, 3, 1, 2], gridW: 4, gridH: 4 },
+  "date-map":      { name: "데이트지도", emoji: "🗺️", chars: [1, 2, 3, 0], gridW: 4, gridH: 4 },
+  "claude-biseo":  { name: "클로드비서", emoji: "🤵", chars: [2, 0, 1, 3], gridW: 4, gridH: 4 },
+  "ai900":         { name: "AI900",     emoji: "📚", chars: [3, 1, 0, 2], gridW: 4, gridH: 4 },
+  "cl600g":        { name: "CL600G",    emoji: "⚡", chars: [0, 2, 3, 1], gridW: 4, gridH: 4 },
+  "design-team":   { name: "디자인팀",  emoji: "🎨", chars: [1, 3, 0, 2], gridW: 4, gridH: 4 },
+  "content-lab":   { name: "콘텐츠랩",  emoji: "🔬", chars: [2, 0, 3, 1], gridW: 4, gridH: 4 },
+  "frontend-team": { name: "프론트엔드",emoji: "🖼",  chars: [3, 1, 0, 2], gridW: 4, gridH: 4 },
+  "backend-team":  { name: "백엔드",    emoji: "⚙️", chars: [0, 3, 2, 1], gridW: 4, gridH: 4 },
+};
+
+// 서버 floor_layout.json과 동기화된 기본 배치
+// ⚠️ 이 값은 서버 PUT /api/layout/floors 결과와 일치해야 함
 const ALL_FLOORS: Record<number, TeamConfig[]> = {
   1: [
-    // 1F: 핵심 운영 — 서버실 제거로 전체 폭 사용 (26칸)
-    { id: "trading-bot", name: "매매봇", emoji: "🤖", chars: [0, 3, 1, 2], gridX: 1, gridY: 4, gridW: 4, gridH: 4 },
-    { id: "date-map", name: "데이트지도", emoji: "🗺️", chars: [1, 2, 3, 0], gridX: 6, gridY: 4, gridW: 4, gridH: 4 },
-    { id: "claude-biseo", name: "클로드비서", emoji: "🤵", chars: [2, 0, 1, 3], gridX: 11, gridY: 4, gridW: 4, gridH: 4 },
-    { id: "ai900", name: "AI900", emoji: "📚", chars: [3, 1, 0, 2], gridX: 16, gridY: 4, gridW: 4, gridH: 4 },
-    { id: "cl600g", name: "CL600G", emoji: "⚡", chars: [0, 2, 3, 1], gridX: 1, gridY: 9, gridW: 4, gridH: 4 },
-    { id: "design-team", name: "디자인팀", emoji: "🎨", chars: [1, 3, 0, 2], gridX: 6, gridY: 9, gridW: 4, gridH: 4 },
+    { id: "trading-bot",  gridX: 1,  gridY: 4, ...TEAM_META["trading-bot"]! },
+    { id: "date-map",     gridX: 6,  gridY: 4, ...TEAM_META["date-map"]! },
+    { id: "claude-biseo", gridX: 11, gridY: 4, ...TEAM_META["claude-biseo"]! },
+    { id: "ai900",        gridX: 16, gridY: 4, ...TEAM_META["ai900"]! },
   ],
   2: [
-    // 2F: 개발 & 크리에이티브
-    { id: "content-lab", name: "콘텐츠랩", emoji: "🔬", chars: [2, 0, 3, 1], gridX: 1, gridY: 4, gridW: 4, gridH: 4 },
-    { id: "frontend-team", name: "프론트엔드", emoji: "🖼", chars: [3, 1, 0, 2], gridX: 6, gridY: 4, gridW: 4, gridH: 4 },
-    { id: "backend-team", name: "백엔드", emoji: "⚙️", chars: [0, 3, 2, 1], gridX: 11, gridY: 4, gridW: 4, gridH: 4 },
+    { id: "cl600g",        gridX: 1,  gridY: 4, ...TEAM_META["cl600g"]! },
+    { id: "design-team",   gridX: 6,  gridY: 4, ...TEAM_META["design-team"]! },
+    { id: "content-lab",   gridX: 11, gridY: 4, ...TEAM_META["content-lab"]! },
+    { id: "frontend-team", gridX: 16, gridY: 4, ...TEAM_META["frontend-team"]! },
+    { id: "backend-team",  gridX: 1,  gridY: 9, ...TEAM_META["backend-team"]! },
   ],
 };
 
@@ -70,9 +84,33 @@ export default class OfficeScene extends Phaser.Scene {
 
   constructor() { super({ key: "OfficeScene" }); }
 
-  init(data: { onTeamClick?: (id: string, screenX?: number, screenY?: number) => void; weatherCode?: number }) {
+  init(data: {
+    onTeamClick?: (id: string, screenX?: number, screenY?: number) => void;
+    weatherCode?: number;
+    floorLayout?: Record<number, string[]>; // 서버 floor_layout.json 전달
+  }) {
     this.onTeamClick = data.onTeamClick;
     this.weatherCode = data.weatherCode ?? 0;
+
+    // 서버 floor_layout이 있으면 ALL_FLOORS 재구성 (서버가 소스오브트루스)
+    if (data.floorLayout && Object.keys(data.floorLayout).length > 0) {
+      const AUTO_GRID = [
+        { gridX: 1,  gridY: 4 }, { gridX: 6,  gridY: 4 },
+        { gridX: 11, gridY: 4 }, { gridX: 16, gridY: 4 },
+        { gridX: 1,  gridY: 9 }, { gridX: 6,  gridY: 9 },
+      ];
+      for (const [floorStr, teamIds] of Object.entries(data.floorLayout)) {
+        const floor = Number(floorStr);
+        const configs: TeamConfig[] = [];
+        (teamIds as string[]).forEach((id, idx) => {
+          const meta = TEAM_META[id];
+          if (!meta) return; // cpo-claude, server-monitor 등 제외
+          const pos = AUTO_GRID[idx] ?? { gridX: 1 + (idx % 4) * 5, gridY: 4 + Math.floor(idx / 4) * 5 };
+          configs.push({ id, gridX: pos.gridX, gridY: pos.gridY, ...meta });
+        });
+        if (configs.length > 0) ALL_FLOORS[floor] = configs;
+      }
+    }
   }
 
   preload() { preloadAssets(this); }
@@ -104,10 +142,10 @@ export default class OfficeScene extends Phaser.Scene {
     // 엘리베이터 (우하단)
     this.drawElevator();
 
-    // 카메라
-    // 경계 여유 32px: 가장자리 팀 캐릭터 컬링 방지
+    // 카메라 — roundPixels 명시적 활성화 (서브픽셀 이동 시 픽셀아트 깨짐 방지)
     this.cameras.main.setBounds(-32, -32, WORLD_W + 64, WORLD_H + 64);
     this.cameras.main.setBackgroundColor(0x1a1a2e);
+    this.cameras.main.roundPixels = true;
 
     // 입력
     this.input.on("pointerdown", this.onDown, this);
@@ -123,12 +161,14 @@ export default class OfficeScene extends Phaser.Scene {
   // ═══════════════════════════════
 
   private buildFloor(floor: number) {
-    // 기존 제거 (말풍선 포함)
+    // 기존 제거 — 트윈 먼저 정리 후 소멸 (stuck 스프라이트 방지)
     this.envGroup.clear(true, true);
     this.teamGroups.forEach(tg => {
       tg.members.forEach(m => {
+        this.tweens.killTweensOf(m.char);
         if (m.bubble) { m.bubble.destroy(); m.bubble = undefined; }
       });
+      if (tg.workGlow) { this.tweens.killTweensOf(tg.workGlow); }
       tg.container.destroy();
     });
     this.teamGroups.clear();
@@ -186,8 +226,9 @@ export default class OfficeScene extends Phaser.Scene {
     const saved = this.loadPositions();
     teams.forEach(t => {
       if (saved && saved[t.id]) {
-        t.gridX = saved[t.id].gx;
-        t.gridY = saved[t.id].gy;
+        // 저장 위치가 벽/복도 영역에 걸치지 않도록 clamp
+        t.gridX = Math.max(0, Math.min(COLS - t.gridW, saved[t.id].gx));
+        t.gridY = Math.max(WALL_H, Math.min(ROWS - t.gridH - 3, saved[t.id].gy));
       }
       this.createTeamGroup(t);
       this.occupyGrid(t.gridX, t.gridY, t.gridW, t.gridH, true);
@@ -196,7 +237,7 @@ export default class OfficeScene extends Phaser.Scene {
     // ── CPO: 모든 층에 공용 배치 (엘리베이터 근처 복도 위) ──
     const cpoConfig: TeamConfig = {
       id: "cpo-claude", name: "CPO", emoji: "🧠",
-      chars: [1], gridX: 22, gridY: 11, gridW: 2, gridH: 2,
+      chars: [6], gridX: 22, gridY: 11, gridW: 2, gridH: 2,
     };
     if (saved && saved[cpoConfig.id]) {
       cpoConfig.gridX = saved[cpoConfig.id].gx;
@@ -455,37 +496,37 @@ export default class OfficeScene extends Phaser.Scene {
 
   private drawServerRoom() {
     // 서버실 비주얼 제거 — 벽걸이 서버 모니터만 우상단에 배치
-    const monX = WORLD_W - 40;
+    const monX = WORLD_W - 52;
     const monY = WALL_H * TILE + 16;
 
-    // 벽걸이 모니터 프레임 (소형)
+    // 벽걸이 모니터 프레임 (중형)
     const monG = this.add.graphics().setDepth(100);
     monG.fillStyle(0x222233, 1);
-    monG.fillRoundedRect(monX - 30, monY - 12, 60, 24, 3);
+    monG.fillRoundedRect(monX - 45, monY - 18, 90, 36, 4);
     monG.fillStyle(0x101828, 1);
-    monG.fillRoundedRect(monX - 27, monY - 9, 54, 18, 2);
+    monG.fillRoundedRect(monX - 41, monY - 15, 82, 30, 3);
     // 미니 대시보드
     monG.fillStyle(0x40d080, 0.8);
-    monG.fillRect(monX - 24, monY - 7, 18, 2);
+    monG.fillRect(monX - 37, monY - 12, 28, 3);
     monG.fillStyle(0x60a0e0, 0.6);
-    monG.fillRect(monX - 24, monY - 3, 28, 1);
+    monG.fillRect(monX - 37, monY - 6, 42, 2);
     monG.fillStyle(0x40d080, 0.5);
-    monG.fillRect(monX - 24, monY, 12, 1);
+    monG.fillRect(monX - 37, monY - 2, 18, 2);
     // 미니 그래프
-    [0, 3, 6, 9, 12].forEach((dx, i) => {
-      const h = 3 + Math.sin(i * 1.2) * 2;
+    [0, 5, 10, 15, 20].forEach((dx, i) => {
+      const h = 5 + Math.sin(i * 1.2) * 3;
       monG.fillStyle(0x40d080, 0.6);
-      monG.fillRect(monX + 6 + dx, monY + 2 - h, 2, h);
+      monG.fillRect(monX + 8 + dx, monY + 4 - h, 3, h);
     });
     this.envGroup.add(monG);
 
     // 모니터 라벨
-    this.envGroup.add(this.add.text(monX, monY - 16, "🖥", {
-      fontSize: "10px", fontFamily: FONT, color: "#50c080", resolution: DPR * 2,
+    this.envGroup.add(this.add.text(monX, monY - 23, "🖥", {
+      fontSize: "12px", fontFamily: FONT, color: "#50c080", resolution: DPR * 2,
     }).setOrigin(0.5).setDepth(101));
 
     // 모니터 클릭
-    const monHit = this.add.zone(monX, monY, 70, 30).setInteractive({ useHandCursor: true }).setDepth(102);
+    const monHit = this.add.zone(monX, monY, 100, 44).setInteractive({ useHandCursor: true }).setDepth(102);
     monHit.on("pointerdown", () => {
       const cam = this.cameras.main;
       const rect = this.game.canvas.getBoundingClientRect();
@@ -553,11 +594,20 @@ export default class OfficeScene extends Phaser.Scene {
 
     this.envGroup.add(g);
 
-    // 비상구 텍스트
+    // 비상구 텍스트 (클릭 시 야외씬 전환)
     const exitLabel = this.add.text(WORLD_W / 2 + 52, corY + 14, "EXIT", {
       fontSize: "10px", fontFamily: FONT,
       color: "#ffffff", resolution: DPR * 2,
-    }).setOrigin(0.5);
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    exitLabel.on("pointerover", () => exitLabel.setColor("#f5c842"));
+    exitLabel.on("pointerout",  () => exitLabel.setColor("#ffffff"));
+    exitLabel.on("pointerdown", () => {
+      this.cameras.main.fadeOut(200, 0, 0, 0);
+      this.cameras.main.once("camerafadeoutcomplete", () => {
+        this.scene.pause("OfficeScene");
+        this.scene.launch("OutdoorScene", { weatherCode: this.weatherCode });
+      });
+    });
     this.envGroup.add(exitLabel);
 
     // 복도 점유
@@ -938,26 +988,38 @@ export default class OfficeScene extends Phaser.Scene {
       if (Phaser.Math.Between(1, 10) > 3) return;
       const m = tg.members[Phaser.Math.Between(0, tg.members.length - 1)];
       const mx = Phaser.Math.Between(-2, 2);
-      if (mx === 0) return; // 이동 없으면 스킵
-      const COLS = 7;
+      if (mx === 0) return;
+      const SPRITE_COLS = 7;
       const isDeskChar = m.baseX !== 0;
+
+      // 진행 중인 트윈 강제 종료 → 위치를 baseX로 리셋 (stuck 방지)
+      if (this.tweens.isTweening(m.char)) {
+        this.tweens.killTweensOf(m.char);
+        m.char.x = m.baseX;
+        if (isDeskChar) {
+          m.char.setFrame(m.baseX < 0 ? SPRITE_COLS * 2 : SPRITE_COLS);
+        } else {
+          m.char.play(`char_${m.charIdx}_idle`);
+        }
+        return; // 이번 tick은 리셋만 하고 다음 tick에 이동
+      }
+
       if (!isDeskChar) {
-        // 솔로 캐릭: 이동 방향에 맞는 워크 애니 (좌우만)
         const anim = mx > 0 ? `char_${m.charIdx}_walk_right` : `char_${m.charIdx}_walk_left`;
         m.char.play(anim);
       }
-      // 움직이는 캐릭터를 컨테이너 맨 앞으로 → 다른 요소에 가려지지 않음
       tg.container.bringToTop(m.char);
-      // 책상 캐릭: 방향 유지, 슬라이드만
-      this.tweens.add({ targets: m.char, x: m.baseX + mx, duration: 350, ease: "Sine.easeInOut",
+
+      // Math.round 보장: 트윈 중간값도 정수 좌표만 사용 (픽셀아트 깨짐 방지)
+      this.tweens.add({ targets: m.char, x: Math.round(m.baseX + mx), duration: 350, ease: "Sine.easeInOut",
         onComplete: () => {
+          if (!m.char.active) return;
           if (isDeskChar) {
-            if (m.baseX < 0) m.char.setFrame(COLS * 2);  // 오른쪽 옆모습 유지
-            else m.char.setFrame(COLS);                    // 왼쪽 옆모습 유지
+            m.char.setFrame(m.baseX < 0 ? SPRITE_COLS * 2 : SPRITE_COLS);
           }
-          // 리턴 트윈 — 솔로는 끝나면 idle로
-          this.tweens.add({ targets: m.char, x: m.baseX, duration: 300, ease: "Sine.easeInOut",
+          this.tweens.add({ targets: m.char, x: Math.round(m.baseX), duration: 300, ease: "Sine.easeInOut",
             onComplete: () => {
+              if (!m.char.active) return;
               if (!isDeskChar) m.char.play(`char_${m.charIdx}_idle`);
             },
           });
