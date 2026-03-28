@@ -528,8 +528,8 @@ def _check_services_sync():
         except Exception as e:
             results.append({"name": name, "desc": desc, "status": "down", "code": None, "error": str(e)[:40]})
 
-    # 로컬 포트 체크
-    for name, port, desc in [("FastAPI", 8000, "백엔드"), ("Next.js", 3000, "프론트 Dev")]:
+    # 로컬 포트 체크 (FastAPI만 — Next.js 개발서버는 프로덕션과 무관, Cloudflare Pages로 서비스)
+    for name, port, desc in [("FastAPI", 8000, "백엔드")]:
         try:
             s = socket.create_connection(("127.0.0.1", port), timeout=1)
             s.close()
