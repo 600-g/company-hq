@@ -619,6 +619,103 @@ async def restart_agent(team_id: str):
     return {"ok": True, "team_id": team_id}
 
 
+# ── 토큰 사용량 ──────────────────────────────────────
+
+def _parse_token_usage_today() -> dict:
+    """~/.claude/projects/ 아래 JSONL 파일에서 오늘 날짜 토큰 사용량 파싱"""
+    import glob as _glob
+
+    projects_root = os.path.expanduser("~/.claude/projects")
+    today = datetime.now().strftime("%Y-%m-%d")
+
+    # 프로젝트 폴더 → 표시 이름 매핑
+    PROJECT_LABEL_MAP = {
+        "-Users-600mac-Developer-my-company-company-hq": "company-hq (CPO)",
+        "-Users-600mac-Developer-my-company-upbit-auto-trading-bot": "매매봇",
+        "-Users-600mac-Developer-my-company-date-map": "데이트지도",
+        "-Users-600mac-Developer-my-company-claude-biseo-v1-0": "클로드비서",
+        "-Users-600mac-Developer-my-company-ai900": "AI900",
+        "-Users-600mac-Developer-my-company-cl600g": "CL600G",
+        "-Users-600mac-Developer-my-company-design-team": "디자인팀",
+        "-Users-600mac-Developer-my-company-content-lab": "콘텐츠랩",
+    }
+
+    totals: dict[str, dict] = {}  # label -> {input, output, cache_read, cache_create}
+
+    for jsonl_path in _glob.glob(f"{projects_root}/**/*.jsonl", recursive=True):
+        # 프로젝트 폴더 이름 추출
+        rel = os.path.relpath(jsonl_path, projects_root)
+        folder = rel.split(os.sep)[0]
+
+        # 표시 이름 결정: 매핑에 있으면 사용, worktree는 company-hq로 병합
+        if folder in PROJECT_LABEL_MAP:
+            label = PROJECT_LABEL_MAP[folder]
+        elif "company-hq--claude-worktrees" in folder or "company-hq-server" in folder:
+            label = "company-hq (CPO)"
+        else:
+            # 알 수 없는 프로젝트는 마지막 부분만 사용
+            label = folder.split("-")[-1] if "-" in folder else folder
+
+        if label not in totals:
+            totals[label] = {"input": 0, "output": 0, "cache_read": 0, "cache_create": 0}
+
+        try:
+            with open(jsonl_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        obj = json.loads(line)
+                    except Exception:
+                        continue
+
+                    # 오늘 날짜 필터
+                    ts = obj.get("timestamp", "")
+                    if not ts.startswith(today):
+                        continue
+
+                    # assistant 메시지의 usage만 파싱
+                    if obj.get("type") != "assistant":
+                        continue
+                    usage = (obj.get("message") or {}).get("usage") or {}
+                    if not usage:
+                        continue
+
+                    totals[label]["input"] += usage.get("input_tokens", 0)
+                    totals[label]["output"] += usage.get("output_tokens", 0)
+                    totals[label]["cache_read"] += usage.get("cache_read_input_tokens", 0)
+                    totals[label]["cache_create"] += (
+                        usage.get("cache_creation_input_tokens", 0)
+                        + (usage.get("cache_creation") or {}).get("ephemeral_1h_input_tokens", 0)
+                        + (usage.get("cache_creation") or {}).get("ephemeral_5m_input_tokens", 0)
+                    )
+        except Exception:
+            continue
+
+    # 합계 계산
+    grand = {"input": 0, "output": 0, "cache_read": 0, "cache_create": 0}
+    projects = []
+    for label, vals in sorted(totals.items(), key=lambda x: -(x[1]["input"] + x[1]["output"])):
+        total_tokens = vals["input"] + vals["output"]
+        if total_tokens == 0:
+            continue
+        projects.append({"label": label, **vals, "total": total_tokens})
+        for k in grand:
+            grand[k] += vals[k]
+
+    grand["total"] = grand["input"] + grand["output"]
+    return {"today": today, "projects": projects, "grand": grand}
+
+
+@app.get("/api/token-usage")
+async def get_token_usage():
+    """오늘 날짜 Claude 토큰 사용량 반환"""
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(None, _parse_token_usage_today)
+    return result
+
+
 # ── 디스패치 (다중 에이전트 협업) ─────────────────────
 
 import logging as _log

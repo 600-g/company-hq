@@ -65,6 +65,21 @@ interface ServiceInfo {
   error: string | null;
 }
 
+interface TokenProject {
+  label: string;
+  input: number;
+  output: number;
+  cache_read: number;
+  cache_create: number;
+  total: number;
+}
+
+interface TokenUsageData {
+  today: string;
+  projects: TokenProject[];
+  grand: { input: number; output: number; cache_read: number; cache_create: number; total: number };
+}
+
 interface DashboardData {
   agents: AgentInfo[];
   system: { cpu: number; memory: number; disk: number; network: NetworkInfo };
@@ -229,9 +244,88 @@ function ServiceStatus({ services }: { services: ServiceInfo[] }) {
   );
 }
 
+function fmtTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return String(n);
+}
+
+// ── 토큰 사용량 패널 ─────────────────────────────────
+function TokenUsagePanel({ data }: { data: TokenUsageData }) {
+  const maxTotal = Math.max(...data.projects.map(p => p.total), 1);
+  const cacheRatio = data.grand.total > 0
+    ? Math.round((data.grand.cache_read / (data.grand.total + data.grand.cache_read)) * 100)
+    : 0;
+
+  return (
+    <div className="space-y-2">
+      {/* 총계 */}
+      <div className="bg-[#1a1a2e] border border-[#2a2a4a] rounded p-2.5 space-y-1.5">
+        <div className="flex items-center justify-between">
+          <span className="text-[9px] text-gray-500">오늘 총 토큰</span>
+          <span className="text-[11px] font-mono font-bold text-purple-400">
+            {fmtTokens(data.grand.total)}
+          </span>
+        </div>
+        <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[8px]">
+          <div className="flex justify-between">
+            <span className="text-gray-600">입력</span>
+            <span className="text-blue-400 font-mono">{fmtTokens(data.grand.input)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-600">출력</span>
+            <span className="text-green-400 font-mono">{fmtTokens(data.grand.output)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-600">캐시 읽기</span>
+            <span className="text-yellow-400 font-mono">{fmtTokens(data.grand.cache_read)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-600">캐시 절감</span>
+            <span className="text-yellow-300 font-mono">{cacheRatio}%</span>
+          </div>
+        </div>
+      </div>
+
+      {/* 프로젝트별 막대 */}
+      {data.projects.length > 0 && (
+        <div className="space-y-1">
+          {data.projects.map(p => (
+            <div key={p.label}>
+              <div className="flex items-center justify-between mb-0.5">
+                <span className="text-[8px] text-gray-500 truncate max-w-[120px]">{p.label}</span>
+                <span className="text-[8px] font-mono text-gray-400 shrink-0">{fmtTokens(p.total)}</span>
+              </div>
+              <div className="w-full h-1.5 bg-[#2a2a3a] rounded-full overflow-hidden flex">
+                <div
+                  className="h-full bg-blue-500/70 rounded-l-full"
+                  style={{ width: `${(p.input / maxTotal) * 100}%` }}
+                />
+                <div
+                  className="h-full bg-green-500/70"
+                  style={{ width: `${(p.output / maxTotal) * 100}%` }}
+                />
+              </div>
+            </div>
+          ))}
+          <div className="flex gap-3 mt-1 text-[7px] text-gray-600">
+            <span className="flex items-center gap-0.5"><span className="w-2 h-1 bg-blue-500/70 rounded-sm inline-block"/>입력</span>
+            <span className="flex items-center gap-0.5"><span className="w-2 h-1 bg-green-500/70 rounded-sm inline-block"/>출력</span>
+          </div>
+        </div>
+      )}
+
+      {data.projects.length === 0 && (
+        <div className="text-[8px] text-gray-600 text-center py-1">오늘 사용 기록 없음</div>
+      )}
+    </div>
+  );
+}
+
 // ── 메인 대시보드 ──────────────────────────────────────
 export default function ServerDashboard({ onClose }: { onClose: () => void }) {
   const [data, setData] = useState<DashboardData | null>(null);
+  const [tokenData, setTokenData] = useState<TokenUsageData | null>(null);
   const [lastUpdated, setLastUpdated] = useState("");
   const [error, setError] = useState(false);
 
@@ -251,11 +345,27 @@ export default function ServerDashboard({ onClose }: { onClose: () => void }) {
     }
   }, []);
 
+  const fetchTokenUsage = useCallback(async () => {
+    try {
+      const res = await fetch(`${getApiBase()}/api/token-usage`);
+      if (!res.ok) return;
+      setTokenData(await res.json());
+    } catch {
+      // 토큰 데이터 오류는 무시 (대시보드 동작에 영향 없음)
+    }
+  }, []);
+
   useEffect(() => {
     fetchData();
     const id = setInterval(fetchData, 2000);
     return () => clearInterval(id);
   }, [fetchData]);
+
+  useEffect(() => {
+    fetchTokenUsage();
+    const id = setInterval(fetchTokenUsage, 60000); // 1분마다 갱신
+    return () => clearInterval(id);
+  }, [fetchTokenUsage]);
 
   const workingCount = data?.agents.filter(a => a.working).length ?? 0;
 
@@ -370,6 +480,17 @@ export default function ServerDashboard({ onClose }: { onClose: () => void }) {
                 </div>
               ))}
             </div>
+          </section>
+        )}
+
+        {/* ── 토큰 사용량 ── */}
+        {tokenData && (
+          <section>
+            <h3 className="text-[9px] text-gray-600 uppercase tracking-wider mb-1.5">
+              🔢 토큰 사용량
+              <span className="text-gray-700 normal-case ml-1">({tokenData.today})</span>
+            </h3>
+            <TokenUsagePanel data={tokenData} />
           </section>
         )}
 
