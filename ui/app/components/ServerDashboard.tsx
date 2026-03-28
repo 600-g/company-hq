@@ -67,17 +67,22 @@ interface ServiceInfo {
 
 interface TokenProject {
   label: string;
+  emoji: string;
   input: number;
   output: number;
   cache_read: number;
   cache_create: number;
   total: number;
+  context_pct: number;
 }
 
 interface TokenUsageData {
   today: string;
+  window_label?: string;
   projects: TokenProject[];
   grand: { input: number; output: number; cache_read: number; cache_create: number; total: number };
+  daily_limit: number;
+  usage_pct: number;
 }
 
 interface DashboardData {
@@ -250,73 +255,156 @@ function fmtTokens(n: number): string {
   return String(n);
 }
 
+function dangerColor(pct: number) {
+  if (pct >= 80) return { bar: "bg-red-500", text: "text-red-400", stroke: "#ef4444" };
+  if (pct >= 50) return { bar: "bg-yellow-500", text: "text-yellow-400", stroke: "#eab308" };
+  return { bar: "bg-emerald-500", text: "text-emerald-400", stroke: "#10b981" };
+}
+
+// ── SVG 원형 게이지 ────────────────────────────────
+function CircleGauge({ pct, size = 72 }: { pct: number; size?: number }) {
+  const r = (size - 10) / 2;
+  const circ = 2 * Math.PI * r;
+  const dash = (Math.min(pct, 100) / 100) * circ;
+  const { stroke, text } = dangerColor(pct);
+
+  return (
+    <svg width={size} height={size} className="shrink-0">
+      {/* 배경 트랙 */}
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#2a2a3a" strokeWidth="6" />
+      {/* 진행 호 */}
+      <circle
+        cx={size / 2} cy={size / 2} r={r}
+        fill="none"
+        stroke={stroke}
+        strokeWidth="6"
+        strokeLinecap="round"
+        strokeDasharray={`${dash} ${circ - dash}`}
+        strokeDashoffset={circ / 4}
+        style={{ transition: "stroke-dasharray 0.6s ease" }}
+      />
+      {/* 텍스트 */}
+      <text
+        x={size / 2} y={size / 2 - 4}
+        textAnchor="middle"
+        dominantBaseline="middle"
+        className={`font-bold ${text}`}
+        style={{ fontSize: size * 0.22, fill: stroke, fontFamily: "monospace", fontWeight: 700 }}
+      >
+        {pct.toFixed(0)}%
+      </text>
+      <text
+        x={size / 2} y={size / 2 + 10}
+        textAnchor="middle"
+        style={{ fontSize: size * 0.13, fill: "#6b7280" }}
+      >
+        사용
+      </text>
+    </svg>
+  );
+}
+
 // ── 토큰 사용량 패널 ─────────────────────────────────
 function TokenUsagePanel({ data }: { data: TokenUsageData }) {
   const maxTotal = Math.max(...data.projects.map(p => p.total), 1);
   const cacheRatio = data.grand.total > 0
     ? Math.round((data.grand.cache_read / (data.grand.total + data.grand.cache_read)) * 100)
     : 0;
+  const usagePct = data.usage_pct ?? 0;
 
   return (
     <div className="space-y-2">
-      {/* 총계 */}
-      <div className="bg-[#1a1a2e] border border-[#2a2a4a] rounded p-2.5 space-y-1.5">
-        <div className="flex items-center justify-between">
-          <span className="text-[9px] text-gray-500">오늘 총 토큰</span>
-          <span className="text-[11px] font-mono font-bold text-purple-400">
-            {fmtTokens(data.grand.total)}
-          </span>
+
+      {/* ── 일일 한도 게이지 ── */}
+      <div className="bg-[#1a1a2e] border border-[#2a2a4a] rounded p-2.5">
+        <div className="flex items-center gap-3">
+          <CircleGauge pct={usagePct} size={72} />
+          <div className="flex-1 min-w-0 space-y-1">
+            <div className="text-[9px] text-gray-500 font-bold">최근 5시간 사용량</div>
+            <div className="flex items-baseline gap-1">
+              <span className={`text-[13px] font-mono font-bold ${dangerColor(usagePct).text}`}>
+                {fmtTokens(data.grand.total)}
+              </span>
+              <span className="text-[8px] text-gray-600">/ {fmtTokens(data.daily_limit)}</span>
+            </div>
+            <div className="grid grid-cols-2 gap-x-2 text-[8px]">
+              <span className="text-gray-600">입력 <span className="text-blue-400 font-mono">{fmtTokens(data.grand.input)}</span></span>
+              <span className="text-gray-600">출력 <span className="text-green-400 font-mono">{fmtTokens(data.grand.output)}</span></span>
+              <span className="text-gray-600">캐시 <span className="text-yellow-400 font-mono">{fmtTokens(data.grand.cache_read)}</span></span>
+              <span className="text-gray-600">절감 <span className="text-yellow-300 font-mono">{cacheRatio}%</span></span>
+            </div>
+            <div className="text-[7px] text-gray-700 pt-0.5">
+              * Max 5x 추정 한도 (WINDOW_TOKEN_LIMIT 환경변수로 조정)
+            </div>
+          </div>
         </div>
-        <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[8px]">
-          <div className="flex justify-between">
-            <span className="text-gray-600">입력</span>
-            <span className="text-blue-400 font-mono">{fmtTokens(data.grand.input)}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-gray-600">출력</span>
-            <span className="text-green-400 font-mono">{fmtTokens(data.grand.output)}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-gray-600">캐시 읽기</span>
-            <span className="text-yellow-400 font-mono">{fmtTokens(data.grand.cache_read)}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-gray-600">캐시 절감</span>
-            <span className="text-yellow-300 font-mono">{cacheRatio}%</span>
-          </div>
+        {/* 전체 프로그레스바 */}
+        <div className="mt-2">
+          <ProgressBar value={usagePct} color={dangerColor(usagePct).bar} />
         </div>
       </div>
 
-      {/* 프로젝트별 막대 */}
+      {/* ── 에이전트별 사용량 랭킹 ── */}
       {data.projects.length > 0 && (
-        <div className="space-y-1">
-          {data.projects.map(p => (
-            <div key={p.label}>
-              <div className="flex items-center justify-between mb-0.5">
-                <span className="text-[8px] text-gray-500 truncate max-w-[120px]">{p.label}</span>
-                <span className="text-[8px] font-mono text-gray-400 shrink-0">{fmtTokens(p.total)}</span>
+        <div className="space-y-1.5">
+          <div className="text-[8px] text-gray-600 font-bold">에이전트별 사용량 (많은 순)</div>
+          {data.projects.map((p, i) => {
+            const barPct = (p.total / maxTotal) * 100;
+            const ctxPct = p.context_pct ?? 0;
+            const colors = dangerColor(ctxPct);
+            return (
+              <div key={p.label} className="bg-[#131325] border border-[#1e1e36] rounded p-1.5 space-y-1">
+                {/* 에이전트 이름 + 순위 + 총 토큰 */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1 min-w-0">
+                    <span className="text-[9px] text-gray-700 font-mono shrink-0 w-3">{i + 1}</span>
+                    <span className="text-[9px] shrink-0">{p.emoji}</span>
+                    <span className="text-[9px] text-gray-300 truncate font-medium">{p.label}</span>
+                  </div>
+                  <span className="text-[9px] font-mono text-purple-400 shrink-0 font-bold">
+                    {fmtTokens(p.total)}
+                  </span>
+                </div>
+
+                {/* 사용량 막대 (입력+출력) */}
+                <div className="w-full h-1.5 bg-[#2a2a3a] rounded-full overflow-hidden flex">
+                  <div
+                    className="h-full bg-blue-500/70"
+                    style={{ width: `${(p.input / maxTotal) * 100}%`, transition: "width 0.5s ease" }}
+                  />
+                  <div
+                    className="h-full bg-green-500/70"
+                    style={{ width: `${(p.output / maxTotal) * 100}%`, transition: "width 0.5s ease" }}
+                  />
+                </div>
+
+                {/* 컨텍스트 사용률 */}
+                <div className="flex items-center justify-between">
+                  <span className="text-[7px] text-gray-600">컨텍스트 창</span>
+                  <div className="flex items-center gap-1">
+                    <div className="w-16 h-1 bg-[#2a2a3a] rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full ${colors.bar}`}
+                        style={{ width: `${ctxPct}%`, transition: "width 0.5s ease" }}
+                      />
+                    </div>
+                    <span className={`text-[7px] font-mono ${colors.text}`}>{ctxPct.toFixed(0)}%</span>
+                  </div>
+                </div>
               </div>
-              <div className="w-full h-1.5 bg-[#2a2a3a] rounded-full overflow-hidden flex">
-                <div
-                  className="h-full bg-blue-500/70 rounded-l-full"
-                  style={{ width: `${(p.input / maxTotal) * 100}%` }}
-                />
-                <div
-                  className="h-full bg-green-500/70"
-                  style={{ width: `${(p.output / maxTotal) * 100}%` }}
-                />
-              </div>
-            </div>
-          ))}
-          <div className="flex gap-3 mt-1 text-[7px] text-gray-600">
+            );
+          })}
+          <div className="flex gap-3 text-[7px] text-gray-600">
             <span className="flex items-center gap-0.5"><span className="w-2 h-1 bg-blue-500/70 rounded-sm inline-block"/>입력</span>
             <span className="flex items-center gap-0.5"><span className="w-2 h-1 bg-green-500/70 rounded-sm inline-block"/>출력</span>
+            <span className="flex items-center gap-0.5"><span className="w-2 h-1 bg-emerald-500 rounded-sm inline-block"/>컨텍스트 정상</span>
+            <span className="flex items-center gap-0.5"><span className="w-2 h-1 bg-red-500 rounded-sm inline-block"/>위험</span>
           </div>
         </div>
       )}
 
       {data.projects.length === 0 && (
-        <div className="text-[8px] text-gray-600 text-center py-1">오늘 사용 기록 없음</div>
+        <div className="text-[8px] text-gray-600 text-center py-2">오늘 사용 기록 없음</div>
       )}
     </div>
   );
@@ -488,7 +576,9 @@ export default function ServerDashboard({ onClose }: { onClose: () => void }) {
           <section>
             <h3 className="text-[9px] text-gray-600 uppercase tracking-wider mb-1.5">
               🔢 토큰 사용량
-              <span className="text-gray-700 normal-case ml-1">({tokenData.today})</span>
+              <span className="text-gray-700 normal-case ml-1 text-[8px]">
+                최근 5시간 {tokenData.window_label ? `(${tokenData.window_label})` : ""}
+              </span>
             </h3>
             <TokenUsagePanel data={tokenData} />
           </section>

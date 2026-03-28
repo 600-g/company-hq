@@ -7,7 +7,7 @@ import time
 import shutil
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from fastapi import FastAPI, WebSocket, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
@@ -621,43 +621,101 @@ async def restart_agent(team_id: str):
 
 # ── 토큰 사용량 ──────────────────────────────────────
 
-def _parse_token_usage_today() -> dict:
-    """~/.claude/projects/ 아래 JSONL 파일에서 오늘 날짜 토큰 사용량 파싱"""
+# 모델별 컨텍스트 윈도우 크기 (토큰)
+MODEL_CONTEXT_WINDOW = {
+    "claude-opus-4-6": 200_000,
+    "claude-opus-4-5": 200_000,
+    "claude-sonnet-4-6": 200_000,
+    "claude-sonnet-4-5": 200_000,
+    "claude-haiku-4-5": 200_000,
+    "default": 200_000,
+}
+
+def _get_context_window(model: str) -> int:
+    for key, size in MODEL_CONTEXT_WINDOW.items():
+        if key in model:
+            return size
+    return MODEL_CONTEXT_WINDOW["default"]
+
+def _get_context_pct_from_folder(folder_path: str) -> float:
+    """해당 프로젝트 폴더의 가장 최근 JSONL에서 마지막 assistant 메시지의 컨텍스트 사용률(%) 반환"""
     import glob as _glob
+    jsonl_files = sorted(
+        _glob.glob(f"{folder_path}/*.jsonl"),
+        key=os.path.getmtime,
+        reverse=True
+    )
+    for jsonl_path in jsonl_files[:3]:  # 최신 3개 파일만 확인
+        try:
+            last_usage = None
+            last_model = "default"
+            with open(jsonl_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        obj = json.loads(line)
+                    except Exception:
+                        continue
+                    if obj.get("type") != "assistant":
+                        continue
+                    msg = obj.get("message") or {}
+                    usage = msg.get("usage") or {}
+                    if usage:
+                        last_usage = usage
+                        last_model = msg.get("model", "default")
+            if last_usage:
+                ctx_size = _get_context_window(last_model)
+                used = (
+                    last_usage.get("input_tokens", 0)
+                    + last_usage.get("cache_read_input_tokens", 0)
+                    + last_usage.get("cache_creation_input_tokens", 0)
+                )
+                return round(min(used / ctx_size * 100, 100), 1)
+        except Exception:
+            continue
+    return 0.0
+
+def _parse_token_usage_today() -> dict:
+    """~/.claude/projects/ 아래 JSONL 파일에서 최근 5시간 슬라이딩 윈도우 기준 토큰 사용량 파싱"""
+    import glob as _glob
+    from datetime import timezone
 
     projects_root = os.path.expanduser("~/.claude/projects")
-    today = datetime.now().strftime("%Y-%m-%d")
+    now_utc = datetime.now(timezone.utc)
+    window_start = now_utc - timedelta(hours=5)
+    today = now_utc.strftime("%Y-%m-%d")  # 표시용
 
-    # 프로젝트 폴더 → 표시 이름 매핑
-    PROJECT_LABEL_MAP = {
-        "-Users-600mac-Developer-my-company-company-hq": "company-hq (CPO)",
-        "-Users-600mac-Developer-my-company-upbit-auto-trading-bot": "매매봇",
-        "-Users-600mac-Developer-my-company-date-map": "데이트지도",
-        "-Users-600mac-Developer-my-company-claude-biseo-v1-0": "클로드비서",
-        "-Users-600mac-Developer-my-company-ai900": "AI900",
-        "-Users-600mac-Developer-my-company-cl600g": "CL600G",
-        "-Users-600mac-Developer-my-company-design-team": "디자인팀",
-        "-Users-600mac-Developer-my-company-content-lab": "콘텐츠랩",
+    # 프로젝트 폴더 → (표시 이름, 이모지) 매핑
+    PROJECT_LABEL_MAP: dict[str, tuple[str, str]] = {
+        "-Users-600mac-Developer-my-company-company-hq": ("company-hq", "🖥"),
+        "-Users-600mac-Developer-my-company-upbit-auto-trading-bot": ("매매봇", "🤖"),
+        "-Users-600mac-Developer-my-company-date-map": ("데이트지도", "🗺️"),
+        "-Users-600mac-Developer-my-company-claude-biseo-v1-0": ("클로드비서", "🤵"),
+        "-Users-600mac-Developer-my-company-ai900": ("AI900", "📚"),
+        "-Users-600mac-Developer-my-company-cl600g": ("CL600G", "⚡"),
+        "-Users-600mac-Developer-my-company-design-team": ("디자인팀", "🎨"),
+        "-Users-600mac-Developer-my-company-content-lab": ("콘텐츠랩", "🔬"),
     }
 
-    totals: dict[str, dict] = {}  # label -> {input, output, cache_read, cache_create}
+    totals: dict[str, dict] = {}  # label -> {input, output, cache_read, cache_create, emoji, folders}
 
     for jsonl_path in _glob.glob(f"{projects_root}/**/*.jsonl", recursive=True):
-        # 프로젝트 폴더 이름 추출
         rel = os.path.relpath(jsonl_path, projects_root)
         folder = rel.split(os.sep)[0]
 
-        # 표시 이름 결정: 매핑에 있으면 사용, worktree는 company-hq로 병합
         if folder in PROJECT_LABEL_MAP:
-            label = PROJECT_LABEL_MAP[folder]
+            label, emoji = PROJECT_LABEL_MAP[folder]
         elif "company-hq--claude-worktrees" in folder or "company-hq-server" in folder:
-            label = "company-hq (CPO)"
+            label, emoji = "company-hq", "🖥"
         else:
-            # 알 수 없는 프로젝트는 마지막 부분만 사용
             label = folder.split("-")[-1] if "-" in folder else folder
+            emoji = "💻"
 
         if label not in totals:
-            totals[label] = {"input": 0, "output": 0, "cache_read": 0, "cache_create": 0}
+            totals[label] = {"input": 0, "output": 0, "cache_read": 0, "cache_create": 0, "emoji": emoji, "folders": set()}
+        totals[label]["folders"].add(os.path.join(projects_root, folder))
 
         try:
             with open(jsonl_path, "r", encoding="utf-8") as f:
@@ -670,12 +728,17 @@ def _parse_token_usage_today() -> dict:
                     except Exception:
                         continue
 
-                    # 오늘 날짜 필터
-                    ts = obj.get("timestamp", "")
-                    if not ts.startswith(today):
+                    # 최근 5시간 슬라이딩 윈도우 필터
+                    ts_str = obj.get("timestamp", "")
+                    if not ts_str:
+                        continue
+                    try:
+                        ts_dt = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+                        if ts_dt < window_start:
+                            continue
+                    except Exception:
                         continue
 
-                    # assistant 메시지의 usage만 파싱
                     if obj.get("type") != "assistant":
                         continue
                     usage = (obj.get("message") or {}).get("usage") or {}
@@ -693,6 +756,16 @@ def _parse_token_usage_today() -> dict:
         except Exception:
             continue
 
+    # 컨텍스트 사용률 계산 (각 에이전트의 가장 최근 세션 기준)
+    context_pcts: dict[str, float] = {}
+    for label, vals in totals.items():
+        best_pct = 0.0
+        for folder_path in vals.get("folders", set()):
+            pct = _get_context_pct_from_folder(folder_path)
+            if pct > best_pct:
+                best_pct = pct
+        context_pcts[label] = best_pct
+
     # 합계 계산
     grand = {"input": 0, "output": 0, "cache_read": 0, "cache_create": 0}
     projects = []
@@ -700,12 +773,38 @@ def _parse_token_usage_today() -> dict:
         total_tokens = vals["input"] + vals["output"]
         if total_tokens == 0:
             continue
-        projects.append({"label": label, **vals, "total": total_tokens})
-        for k in grand:
+        projects.append({
+            "label": label,
+            "emoji": vals["emoji"],
+            "input": vals["input"],
+            "output": vals["output"],
+            "cache_read": vals["cache_read"],
+            "cache_create": vals["cache_create"],
+            "total": total_tokens,
+            "context_pct": context_pcts.get(label, 0.0),
+        })
+        for k in ("input", "output", "cache_read", "cache_create"):
             grand[k] += vals[k]
 
     grand["total"] = grand["input"] + grand["output"]
-    return {"today": today, "projects": projects, "grand": grand}
+
+    # 5시간 창 토큰 한도 (Max 플랜 추정치, 환경변수로 재정의 가능)
+    # Claude Max 5x: 공식 공개 없음. 5시간 단위 rate limit ~200K/5h 추정
+    # 실제 사용 패턴에 따라 WINDOW_TOKEN_LIMIT 환경변수로 조정 가능
+    window_limit = int(os.getenv("WINDOW_TOKEN_LIMIT", "200000"))
+
+    usage_pct = round(grand["total"] / window_limit * 100, 1) if window_limit > 0 else 0.0
+
+    window_label = window_start.strftime("%H:%M") + " ~ " + now_utc.strftime("%H:%M") + " UTC"
+
+    return {
+        "today": today,
+        "window_label": window_label,
+        "projects": projects,
+        "grand": grand,
+        "daily_limit": window_limit,   # 하위 호환용 필드명 유지
+        "usage_pct": usage_pct,
+    }
 
 
 @app.get("/api/token-usage")
