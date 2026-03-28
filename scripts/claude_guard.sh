@@ -15,7 +15,7 @@ MAX_CLAUDE_PROCS=15      # Claude 프로세스 15개 초과 시 경고 (8개 이
 MAX_CPU_TOTAL=200        # Claude 총 CPU 200% 초과 시 경고 (합산, 코어당 100%)
 CPU_SUSTAINED_RUNS=3     # 몇 회 연속 고CPU 시 알람 (3회 × 3분 = 9분 지속 시)
 MAX_MEM_TOTAL_MB=3072    # Claude 총 메모리 3GB 초과 시 경고
-ALERT_COOLDOWN=600       # 알림 쿨다운 10분 (중복 알림 방지)
+ALERT_COOLDOWN=1200      # 알림 쿨다운 20분 (중복 알림 방지)
 
 # 두근컴퍼니 서버
 HQ_API="http://localhost:8000"
@@ -56,7 +56,8 @@ hq_push() {
 # 알림 쿨다운 확인 (중복 알림 방지)
 check_alert_cooldown() {
     if [ -f "$ALERT_COOLDOWN_FILE" ]; then
-        LAST_ALERT=$(cat "$ALERT_COOLDOWN_FILE" 2>/dev/null || echo 0)
+        LAST_ALERT=$(cat "$ALERT_COOLDOWN_FILE" 2>/dev/null | tr -d '[:space:]' || echo 0)
+        LAST_ALERT=${LAST_ALERT:-0}
         NOW=$(date +%s)
         ELAPSED=$(( NOW - LAST_ALERT ))
         if [ "$ELAPSED" -lt "$ALERT_COOLDOWN" ]; then
@@ -77,12 +78,12 @@ set_alert_cooldown() {
 # Claude CLI 프로세스만 (Claude Desktop 앱 제외)
 CLAUDE_PIDS=$(ps -eo pid,command | grep -E "^[[:space:]]*[0-9]+.*claude " | grep -v grep | grep -v "Claude.app" | grep -v "Claude Helper" | grep -v crashpad | awk '{print $1}')
 CLAUDE_COUNT=$(echo "$CLAUDE_PIDS" | grep -c '[0-9]' 2>/dev/null || echo 0)
-CLAUDE_COUNT=$((10#${CLAUDE_COUNT:-0}))
+CLAUDE_COUNT=$(( ${CLAUDE_COUNT:-0} + 0 ))
 
 # npm exec claude-code 프로세스
 NPM_PIDS=$(ps -eo pid,command | grep "npm exec.*claude-code" | grep -v grep | awk '{print $1}')
 NPM_COUNT=$(echo "$NPM_PIDS" | grep -c '[0-9]' 2>/dev/null || echo 0)
-NPM_COUNT=$((10#${NPM_COUNT:-0}))
+NPM_COUNT=$(( ${NPM_COUNT:-0} + 0 ))
 
 TOTAL_COUNT=$(( CLAUDE_COUNT + NPM_COUNT ))
 
@@ -122,10 +123,10 @@ fi
 # 2. CPU 지속성 감지 (순간 스파이크 무시, N회 연속 고CPU만 알람)
 if [ "$CPU_TOTAL" -gt "$MAX_CPU_TOTAL" ]; then
     # 카운터 증가
-    PREV_COUNT=$(cat "$CPU_HIGH_COUNT_FILE" 2>/dev/null || echo 0)
-    PREV_COUNT=$((10#${PREV_COUNT:-0}))
+    PREV_COUNT=$(cat "$CPU_HIGH_COUNT_FILE" 2>/dev/null | tr -d '[:space:]' || echo 0)
+    PREV_COUNT=$(( ${PREV_COUNT:-0} + 0 ))
     NEW_COUNT=$(( PREV_COUNT + 1 ))
-    echo "$NEW_COUNT" > "$CPU_HIGH_COUNT_FILE"
+    printf '%d\n' "$NEW_COUNT" > "$CPU_HIGH_COUNT_FILE"
     if [ "$NEW_COUNT" -ge "$CPU_SUSTAINED_RUNS" ]; then
         SUSTAINED_MIN=$(( NEW_COUNT * 3 ))
         ALERT="${ALERT}🔥 CPU 지속 과다: ${CPU_TOTAL}% — ${SUSTAINED_MIN}분 연속 (한도: ${MAX_CPU_TOTAL}%)\n"
@@ -136,12 +137,12 @@ if [ "$CPU_TOTAL" -gt "$MAX_CPU_TOTAL" ]; then
 else
     # 정상 복귀 시 카운터 리셋
     if [ -f "$CPU_HIGH_COUNT_FILE" ]; then
-        OLD=$(cat "$CPU_HIGH_COUNT_FILE" 2>/dev/null || echo 0)
-        OLD=$((10#${OLD:-0}))
+        OLD=$(cat "$CPU_HIGH_COUNT_FILE" 2>/dev/null | tr -d '[:space:]' || echo 0)
+        OLD=$(( ${OLD:-0} + 0 ))
         if [ "$OLD" -gt 0 ]; then
             log_msg "[CPU정상] ${CPU_TOTAL}% — 카운터 리셋 (이전: ${OLD}회)"
         fi
-        echo "0" > "$CPU_HIGH_COUNT_FILE"
+        printf '0\n' > "$CPU_HIGH_COUNT_FILE"
     fi
 fi
 
@@ -157,7 +158,8 @@ fi
 
 if [ -z "$ALERT" ]; then
     MINUTE=$(date +%-M)
-    if [ "$((10#$MINUTE % 5))" -eq 0 ]; then
+    MINUTE=$(( 10#$MINUTE + 0 ))  # 안전한 십진수 변환
+    if [ $(( MINUTE % 5 )) -eq 0 ]; then
         log_msg "[OK] Claude: ${TOTAL_COUNT}개, CPU: ${CPU_TOTAL}%, MEM: ${MEM_TOTAL_MB}MB"
     fi
     exit 0
