@@ -490,7 +490,7 @@ export default function ServerDashboard({ onClose }: { onClose: () => void }) {
 
       <div className="flex-1 overflow-y-auto space-y-2.5 min-h-0 pr-0.5">
 
-        {/* ── 시스템 리소스 ── */}
+        {/* ── 시스템 리소스 + 토큰 사용량 ── */}
         {data && (
           <section>
             <h3 className="text-[9px] text-gray-600 uppercase tracking-wider mb-1.5">시스템 리소스</h3>
@@ -508,6 +508,19 @@ export default function ServerDashboard({ onClose }: { onClose: () => void }) {
                   <ProgressBar value={value} color={metricColor(value)} />
                 </div>
               ))}
+              {/* 토큰 사용량 (인라인) */}
+              {tokenData && (() => {
+                const tPct = tokenData.usage_pct ?? 0;
+                return (
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[10px] text-gray-400">🔢 토큰 (5h)</span>
+                      <span className={`text-[10px] font-mono font-semibold ${metricText(tPct)}`}>{tPct.toFixed(1)}%</span>
+                    </div>
+                    <ProgressBar value={tPct} color={metricColor(tPct)} />
+                  </div>
+                );
+              })()}
               {/* 네트워크 상태 */}
               <div className="flex items-center justify-between">
                 <span className="text-[10px] text-gray-400">네트워크</span>
@@ -540,6 +553,19 @@ export default function ServerDashboard({ onClose }: { onClose: () => void }) {
           </section>
         )}
 
+        {/* ── 토큰 사용량 상세 ── */}
+        {tokenData && (
+          <section>
+            <h3 className="text-[9px] text-gray-600 uppercase tracking-wider mb-1.5">
+              🔢 토큰 사용량
+              <span className="text-gray-700 normal-case ml-1 text-[8px]">
+                최근 5시간 {tokenData.window_label ? `(${tokenData.window_label})` : ""}
+              </span>
+            </h3>
+            <TokenUsagePanel data={tokenData} />
+          </section>
+        )}
+
         {/* ── 서비스 상태 ── */}
         {data?.services && data.services.length > 0 && (
           <section>
@@ -568,19 +594,6 @@ export default function ServerDashboard({ onClose }: { onClose: () => void }) {
                 </div>
               ))}
             </div>
-          </section>
-        )}
-
-        {/* ── 토큰 사용량 ── */}
-        {tokenData && (
-          <section>
-            <h3 className="text-[9px] text-gray-600 uppercase tracking-wider mb-1.5">
-              🔢 토큰 사용량
-              <span className="text-gray-700 normal-case ml-1 text-[8px]">
-                최근 5시간 {tokenData.window_label ? `(${tokenData.window_label})` : ""}
-              </span>
-            </h3>
-            <TokenUsagePanel data={tokenData} />
           </section>
         )}
 

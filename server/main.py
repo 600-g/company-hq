@@ -789,9 +789,9 @@ def _parse_token_usage_today() -> dict:
     grand["total"] = grand["input"] + grand["output"]
 
     # 5시간 창 토큰 한도 (Max 플랜 추정치, 환경변수로 재정의 가능)
-    # Claude Max 5x: 공식 공개 없음. 5시간 단위 rate limit ~200K/5h 추정
+    # Claude Max 5x: 공식 공개 없음. 실측 기준 ~800K/5h 추정 (200K는 너무 낮음)
     # 실제 사용 패턴에 따라 WINDOW_TOKEN_LIMIT 환경변수로 조정 가능
-    window_limit = int(os.getenv("WINDOW_TOKEN_LIMIT", "200000"))
+    window_limit = int(os.getenv("WINDOW_TOKEN_LIMIT", "800000"))
 
     usage_pct = round(grand["total"] / window_limit * 100, 1) if window_limit > 0 else 0.0
 
