@@ -437,6 +437,42 @@ def _parse_status(text: str) -> str | None:
     return f"{emoji} {tool}({args})"
 
 
+# ── 세션 파일 경로 탐색 ────────────────────────────────
+_SESSION_SIZE_LIMIT = 5 * 1024 * 1024  # 5MB 초과 시 새 세션
+
+def _find_session_file(session_id: str, project_path: str | None = None) -> Path | None:
+    """세션 ID에 해당하는 .jsonl 파일 위치를 반환. 없으면 None."""
+    base = Path.home() / ".claude" / "projects"
+    # project_path 기반 후보 우선
+    candidates: list[Path] = []
+    if project_path:
+        proj_slug = os.path.expanduser(project_path).replace("/", "-").lstrip("-")
+        candidates.append(base / proj_slug / f"{session_id}.jsonl")
+    # 전체 projects 하위 탐색 (최대 2단계)
+    try:
+        for proj_dir in base.iterdir():
+            p = proj_dir / f"{session_id}.jsonl"
+            if p not in candidates:
+                candidates.append(p)
+    except Exception:
+        pass
+    for p in candidates:
+        if p.exists():
+            return p
+    return None
+
+def _session_ok(session_id: str, project_path: str | None = None) -> bool:
+    """세션을 resume해도 안전한지 확인 (파일 존재 + 크기 제한)"""
+    p = _find_session_file(session_id, project_path)
+    if p is None:
+        return False
+    size = p.stat().st_size
+    if size > _SESSION_SIZE_LIMIT:
+        logger.warning("세션 파일 너무 큼 (%.1fMB > 5MB), 새 세션으로 교체: %s", size / 1024 / 1024, session_id)
+        return False
+    return True
+
+
 async def run_claude(prompt: str, project_path: str | None = None, team_id: str = ""):
     """Claude Code CLI 실행 — 세션 영구 유지
 
@@ -444,11 +480,13 @@ async def run_claude(prompt: str, project_path: str | None = None, team_id: str 
     """
     cmd = ["claude", "--dangerously-skip-permissions"]
 
-    # ── 세션 유지 ──
+    # ── 세션 유지 (파일 존재 + 크기 체크 후 resume) ──
     session_id = TEAM_SESSIONS.get(team_id)
-    if session_id:
+    if session_id and _session_ok(session_id, project_path):
         cmd.extend(["--resume", session_id])
     else:
+        if session_id:
+            logger.info("[%s] 세션 초기화 (이전: %s)", team_id, session_id)
         new_id = str(uuid.uuid4())
         TEAM_SESSIONS[team_id] = new_id
         _save_sessions(TEAM_SESSIONS)
