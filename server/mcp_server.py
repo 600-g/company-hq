@@ -452,7 +452,7 @@ def update_guard_config(code: str, key: str, value: str) -> str:
 
     Args:
         code: '119' 또는 '112'
-        key: 변경할 설정 키 (MAX_CLAUDE_PROCS, MAX_CPU_TOTAL, MAX_MEM_TOTAL_MB, ALERT_COOLDOWN 등)
+        key: 변경할 설정 키 (MAX_CLAUDE_PROCS, MAX_CPU_TOTAL, CPU_SUSTAINED_RUNS, MAX_MEM_TOTAL_MB, ALERT_COOLDOWN 등)
         value: 새 값
     """
     cfg = GUARD_SCRIPTS.get(code)
