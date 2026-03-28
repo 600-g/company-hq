@@ -21,7 +21,7 @@ ALERT_COOLDOWN=1200      # 알림 쿨다운 20분 (중복 알림 방지)
 # 토큰 급등 감시
 TOKEN_ALERT_FILE="$HOME/.claude_guard_token_cooldown"
 TOKEN_ALERT_COOLDOWN=1800  # 토큰 알림 쿨다운 30분
-TOKEN_SPIKE_THRESHOLD=50000  # 6분 내 50K 토큰 증가 시 경보
+TOKEN_SPIKE_THRESHOLD=150000 # 6분 내 150K 토큰 증가 시 경보 (일반 코딩의 ~6배 = 진짜 폭주)
 TOKEN_WINDOW_MIN=6           # 감시 윈도우 (분)
 
 # 두근컴퍼니 서버

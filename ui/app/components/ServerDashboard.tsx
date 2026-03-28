@@ -435,7 +435,10 @@ export default function ServerDashboard({ onClose }: { onClose: () => void }) {
 
   const fetchTokenUsage = useCallback(async () => {
     try {
-      const res = await fetch(`${getApiBase()}/api/token-usage`);
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 8000);
+      const res = await fetch(`${getApiBase()}/api/token-usage`, { signal: ctrl.signal });
+      clearTimeout(t);
       if (!res.ok) return;
       setTokenData(await res.json());
     } catch {
@@ -451,7 +454,7 @@ export default function ServerDashboard({ onClose }: { onClose: () => void }) {
 
   useEffect(() => {
     fetchTokenUsage();
-    const id = setInterval(fetchTokenUsage, 60000); // 1분마다 갱신
+    const id = setInterval(fetchTokenUsage, 30000); // 30초마다 갱신
     return () => clearInterval(id);
   }, [fetchTokenUsage]);
 
@@ -459,6 +462,7 @@ export default function ServerDashboard({ onClose }: { onClose: () => void }) {
 
   const handleHardRefresh = () => {
     fetchData();
+    fetchTokenUsage();
     window.location.reload();
   };
 
