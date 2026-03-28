@@ -1,21 +1,28 @@
 #!/bin/bash
 # ============================================
-# 🚒 119 (claude_guard.sh) - Claude 프로세스 폭주 감시 + 자동 정리
+# 🚒 119 (claude_guard.sh) - Claude 프로세스 폭주 + 토큰 급등 감시
 # 3분마다 실행, 비정상 감지 시:
 #   1) 유령 프로세스 자동 종료
 #   2) 두근컴퍼니 푸시알림 + 텔레그램 상황 보고
+#   3) 토큰 급등(6분 내 50K+) 감지 시 텔레그램 경보
 # ============================================
 
 LOG="$HOME/claude_guard.log"
 ALERT_COOLDOWN_FILE="$HOME/.claude_guard_cooldown"
 CPU_HIGH_COUNT_FILE="$HOME/.claude_guard_cpu_high"  # CPU 지속성 카운터
 
-# 임계값
+# 임계값 — 프로세스/CPU/메모리
 MAX_CLAUDE_PROCS=15      # Claude 프로세스 15개 초과 시 경고 (8개 이상 에이전트 운영 중)
 MAX_CPU_TOTAL=200        # Claude 총 CPU 200% 초과 시 경고 (합산, 코어당 100%)
 CPU_SUSTAINED_RUNS=3     # 몇 회 연속 고CPU 시 알람 (3회 × 3분 = 9분 지속 시)
 MAX_MEM_TOTAL_MB=3072    # Claude 총 메모리 3GB 초과 시 경고
 ALERT_COOLDOWN=1200      # 알림 쿨다운 20분 (중복 알림 방지)
+
+# 토큰 급등 감시
+TOKEN_ALERT_FILE="$HOME/.claude_guard_token_cooldown"
+TOKEN_ALERT_COOLDOWN=1800  # 토큰 알림 쿨다운 30분
+TOKEN_SPIKE_THRESHOLD=50000  # 6분 내 50K 토큰 증가 시 경보
+TOKEN_WINDOW_MIN=6           # 감시 윈도우 (분)
 
 # 두근컴퍼니 서버
 HQ_API="http://localhost:8000"
@@ -150,6 +157,98 @@ fi
 if [ "$MEM_TOTAL_MB" -gt "$MAX_MEM_TOTAL_MB" ]; then
     ALERT="${ALERT}💾 메모리 과다: ${MEM_TOTAL_MB}MB (한도: ${MAX_MEM_TOTAL_MB}MB)\n"
     ALERT_PLAIN="${ALERT_PLAIN}메모리 ${MEM_TOTAL_MB}MB. "
+fi
+
+# ========================================
+# 4. 토큰 급등 감시 (독립 알림 — 프로세스 쿨다운과 별개)
+# ========================================
+
+TOKEN_SPIKE_MSG=""
+if command -v python3 &>/dev/null; then
+    # 최근 N분 내 토큰 합산 (Python 인라인)
+    RECENT_TOKENS=$(python3 - <<'PYEOF'
+import json, os, glob
+from datetime import datetime, timezone, timedelta
+
+projects_dir = os.path.expanduser("~/.claude/projects")
+window_min = int(os.environ.get("TOKEN_WINDOW_MIN", "6"))
+cutoff = datetime.now(timezone.utc) - timedelta(minutes=window_min)
+total = 0
+
+for jsonl_file in glob.glob(f"{projects_dir}/**/*.jsonl", recursive=True):
+    try:
+        # 수정 시간이 윈도우 이내인 파일만 열기 (속도 최적화)
+        mtime = os.path.getmtime(jsonl_file)
+        if mtime < cutoff.timestamp() - 60:
+            continue
+        with open(jsonl_file, encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                try:
+                    entry = json.loads(line)
+                    if entry.get("type") != "assistant":
+                        continue
+                    ts = entry.get("timestamp", "")
+                    if not ts:
+                        continue
+                    entry_time = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                    if entry_time < cutoff:
+                        continue
+                    usage = entry.get("message", {}).get("usage", {})
+                    total += (
+                        usage.get("input_tokens", 0) +
+                        usage.get("output_tokens", 0) +
+                        usage.get("cache_creation_input_tokens", 0)
+                    )
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+print(total)
+PYEOF
+    )
+    RECENT_TOKENS=$(( ${RECENT_TOKENS:-0} + 0 ))
+
+    if [ "$RECENT_TOKENS" -gt "$TOKEN_SPIKE_THRESHOLD" ]; then
+        # 토큰 알림 쿨다운 별도 관리
+        TOKEN_ALERT_OK=true
+        if [ -f "$TOKEN_ALERT_FILE" ]; then
+            LAST_TK=$(cat "$TOKEN_ALERT_FILE" 2>/dev/null | tr -d '[:space:]' || echo 0)
+            LAST_TK=${LAST_TK:-0}
+            NOW_TS=$(date +%s)
+            TK_ELAPSED=$(( NOW_TS - LAST_TK ))
+            if [ "$TK_ELAPSED" -lt "$TOKEN_ALERT_COOLDOWN" ]; then
+                TOKEN_ALERT_OK=false
+            fi
+        fi
+
+        if [ "$TOKEN_ALERT_OK" = true ]; then
+            TK_K=$(( RECENT_TOKENS / 1000 ))
+            TK_THRESHOLD_K=$(( TOKEN_SPIKE_THRESHOLD / 1000 ))
+            TOKEN_SPIKE_MSG="🔥 토큰 급등: ${TK_K}K / ${TOKEN_WINDOW_MIN}분"
+            log_msg "[토큰경보] ${RECENT_TOKENS} tokens / ${TOKEN_WINDOW_MIN}분 — 알림 발송"
+
+            TG_NOW=$(date '+%m/%d %H:%M')
+            TG_TOKEN_MSG="⚡ <b>토큰 급등 경보</b> (${TG_NOW})
+
+🔥 최근 ${TOKEN_WINDOW_MIN}분 내 <b>${TK_K}K 토큰</b> 소모
+⚠️ 임계값: ${TK_THRESHOLD_K}K
+
+Claude 에이전트 폭주 또는 대형 작업 가능성
+📋 프로세스: ${TOTAL_COUNT}개 | CPU: ${CPU_TOTAL}% | MEM: ${MEM_TOTAL_MB}MB"
+
+            curl -s -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
+                -d "chat_id=${TG_CHAT_ID}" \
+                -d "parse_mode=HTML" \
+                -d "text=${TG_TOKEN_MSG}" > /dev/null 2>&1
+
+            date +%s > "$TOKEN_ALERT_FILE"
+        else
+            log_msg "[토큰경보] ${RECENT_TOKENS} tokens / ${TOKEN_WINDOW_MIN}분 — 쿨다운 중"
+        fi
+    else
+        log_msg "[토큰정상] ${RECENT_TOKENS} tokens / ${TOKEN_WINDOW_MIN}분"
+    fi
 fi
 
 # ========================================
