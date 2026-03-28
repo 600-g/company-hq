@@ -369,5 +369,201 @@ def recover_service(service_id: str = "all") -> str:
     return "\n".join(lines)
 
 
+# ── 7. 119/112 감시 시스템 관리 ────────────────────────────
+
+GUARD_SCRIPTS = {
+    "119": {
+        "name": "🚒 119 (프로세스 폭주 감시)",
+        "script": Path.home() / "claude_guard.sh",
+        "log": Path.home() / "claude_guard.log",
+        "plist": "com.claude-guard",
+    },
+    "112": {
+        "name": "🚔 112 (서비스 상태 감시)",
+        "script": Path.home() / "claude_112.sh",
+        "log": Path.home() / "claude_112.log",
+        "plist": "com.claude-112",
+    },
+}
+
+
+@mcp.tool()
+def emergency_status() -> str:
+    """119/112 감시 시스템 상태 + 최근 로그 + Claude 프로세스 현황 확인
+
+    토큰 소모 모니터링, 프로세스 폭주 여부, 서비스 상태를 한번에 파악한다.
+    """
+    lines = [f"🏥 긴급 시스템 현황 ({datetime.now().strftime('%m/%d %H:%M')})", "━" * 40]
+
+    # 119/112 launchd 상태
+    for code, cfg in GUARD_SCRIPTS.items():
+        r = subprocess.run(["launchctl", "list", cfg["plist"]], capture_output=True, text=True)
+        active = "✅ 가동중" if r.returncode == 0 else "❌ 중지됨"
+        lines.append(f"  {cfg['name']}: {active}")
+
+        # 최근 로그 5줄
+        log_path = cfg["log"]
+        if log_path.exists():
+            log_lines = log_path.read_text().strip().split("\n")
+            recent = log_lines[-5:] if len(log_lines) >= 5 else log_lines
+            for ll in recent:
+                lines.append(f"    {ll}")
+        lines.append("")
+
+    # Claude 프로세스 현황
+    r = subprocess.run(
+        ["bash", "-c", "ps -eo pid,tty,%cpu,rss,command | grep -E 'claude ' | grep -v grep | grep -v 'Claude.app' | grep -v 'Claude Helper' | grep -v crashpad"],
+        capture_output=True, text=True
+    )
+    procs = [l.strip() for l in r.stdout.strip().split("\n") if l.strip()]
+    lines.append(f"⚡ Claude 프로세스: {len(procs)}개")
+    for p in procs:
+        parts = p.split()
+        if len(parts) >= 4:
+            lines.append(f"  PID:{parts[0]} TTY:{parts[1]} CPU:{parts[2]}% MEM:{int(int(parts[3])/1024)}MB")
+
+    return "\n".join(lines)
+
+
+@mcp.tool()
+def read_guard_log(code: str = "119", lines: int = 20) -> str:
+    """119 또는 112 로그를 읽는다
+
+    Args:
+        code: '119' (프로세스 감시) 또는 '112' (서비스 감시)
+        lines: 읽을 줄 수 (기본 20)
+    """
+    cfg = GUARD_SCRIPTS.get(code)
+    if not cfg:
+        return f"❌ '{code}'는 없음. 119 또는 112만 가능"
+
+    log_path = cfg["log"]
+    if not log_path.exists():
+        return f"⚠️ {cfg['name']} 로그 없음: {log_path}"
+
+    all_lines = log_path.read_text().strip().split("\n")
+    recent = all_lines[-lines:]
+    return f"📋 {cfg['name']} 최근 {len(recent)}줄\n\n" + "\n".join(recent)
+
+
+@mcp.tool()
+def update_guard_config(code: str, key: str, value: str) -> str:
+    """119/112 설정값을 수정한다 (임계값, 쿨다운 등)
+
+    Args:
+        code: '119' 또는 '112'
+        key: 변경할 설정 키 (MAX_CLAUDE_PROCS, MAX_CPU_TOTAL, MAX_MEM_TOTAL_MB, ALERT_COOLDOWN 등)
+        value: 새 값
+    """
+    cfg = GUARD_SCRIPTS.get(code)
+    if not cfg:
+        return f"❌ '{code}'는 없음. 119 또는 112만 가능"
+
+    script_path = cfg["script"]
+    if not script_path.exists():
+        return f"❌ 스크립트 없음: {script_path}"
+
+    content = script_path.read_text()
+    import re
+    pattern = rf'^({re.escape(key)}=)\S+(.*)$'
+    match = re.search(pattern, content, re.MULTILINE)
+    if not match:
+        return f"❌ '{key}' 설정을 찾을 수 없음"
+
+    old_line = match.group(0)
+    new_line = f"{key}={value}{match.group(2)}"
+    content = content.replace(old_line, new_line)
+    script_path.write_text(content)
+
+    return f"✅ {cfg['name']} 설정 변경: {old_line.strip()} → {new_line.strip()}"
+
+
+@mcp.tool()
+def emergency_action(action: str) -> str:
+    """🚒 119/112 긴급 조치를 직접 실행한다
+
+    Args:
+        action: 실행할 조치
+            - 'kill_orphans': 유령 Claude 프로세스 자동 종료
+            - 'kill_all': 모든 Claude CLI 프로세스 종료 (현재 대화 포함 주의)
+            - 'restart_server': company-hq 서버 재시작
+            - 'restart_tunnel': Cloudflare Tunnel 재시작
+            - 'restart_bot': 업비트 매매봇 재시작
+            - 'run_119': 119 수동 실행
+            - 'run_112': 112 수동 실행
+            - 'status': 전체 현황만 확인
+    """
+    lines = [f"🚨 긴급 조치: {action} ({datetime.now().strftime('%H:%M:%S')})"]
+
+    if action == "status":
+        return emergency_status()
+
+    elif action == "kill_orphans":
+        r = subprocess.run(
+            ["bash", "-c", "ps -eo pid,tty,command | grep -E 'claude |npm exec.*claude-code' | grep -v grep | grep -v 'Claude.app' | grep -v antigravity | awk '$2 == \"??\" {print $1}'"],
+            capture_output=True, text=True
+        )
+        pids = [p.strip() for p in r.stdout.strip().split("\n") if p.strip()]
+        killed = 0
+        for pid in pids:
+            subprocess.run(["kill", pid], capture_output=True)
+            killed += 1
+        lines.append(f"🧹 유령 프로세스 {killed}개 종료")
+
+    elif action == "kill_all":
+        r = subprocess.run(
+            ["bash", "-c", "ps -eo pid,command | grep -E 'claude ' | grep -v grep | grep -v 'Claude.app' | grep -v 'Claude Helper' | grep -v crashpad | awk '{print $1}'"],
+            capture_output=True, text=True
+        )
+        pids = [p.strip() for p in r.stdout.strip().split("\n") if p.strip()]
+        for pid in pids:
+            subprocess.run(["kill", pid], capture_output=True)
+        lines.append(f"⚠️ Claude 프로세스 {len(pids)}개 전체 종료")
+
+    elif action == "restart_server":
+        subprocess.run("lsof -ti:8000 | xargs kill -9 2>/dev/null", shell=True, capture_output=True, timeout=5)
+        time.sleep(2)
+        subprocess.run(
+            f"cd {SERVER_DIR} && {SERVER_DIR}/venv/bin/python3 -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload &",
+            shell=True, capture_output=True, timeout=5
+        )
+        time.sleep(3)
+        alive = _is_service_alive("company-hq")
+        lines.append(f"{'✅ 서버 복구 완료' if alive else '❌ 서버 복구 실패'}")
+
+    elif action == "restart_tunnel":
+        subprocess.run("pkill -f cloudflared 2>/dev/null", shell=True, capture_output=True)
+        time.sleep(2)
+        subprocess.run("cloudflared tunnel run &", shell=True, capture_output=True)
+        lines.append("🔄 Tunnel 재시작 시도")
+
+    elif action == "restart_bot":
+        cfg = SERVICE_REGISTRY.get("trading-bot")
+        if cfg and cfg.get("restart"):
+            subprocess.run(cfg["restart"], shell=True, capture_output=True, timeout=10)
+            time.sleep(3)
+            alive = _is_service_alive("trading-bot")
+            lines.append(f"{'✅ 매매봇 복구 완료' if alive else '❌ 매매봇 복구 실패'}")
+        else:
+            lines.append("❌ 매매봇 재시작 설정 없음")
+
+    elif action == "run_119":
+        r = subprocess.run(["bash", str(Path.home() / "claude_guard.sh")], capture_output=True, text=True, timeout=30)
+        lines.append(f"119 실행 완료 (exit: {r.returncode})")
+        if r.stdout.strip():
+            lines.append(r.stdout.strip()[-200:])
+
+    elif action == "run_112":
+        r = subprocess.run(["bash", str(Path.home() / "claude_112.sh")], capture_output=True, text=True, timeout=30)
+        lines.append(f"112 실행 완료 (exit: {r.returncode})")
+        if r.stdout.strip():
+            lines.append(r.stdout.strip()[-200:])
+
+    else:
+        return f"❌ 알 수 없는 조치: {action}\n가능: kill_orphans, kill_all, restart_server, restart_tunnel, restart_bot, run_119, run_112, status"
+
+    return "\n".join(lines)
+
+
 if __name__ == "__main__":
     mcp.run()

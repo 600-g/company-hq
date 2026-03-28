@@ -968,6 +968,21 @@ async def push_test():
     return {"ok": True, "sent": count}
 
 
+@app.post("/api/push/119")
+async def push_119(req: dict):
+    """🚒 119 긴급 알림 — claude_guard.sh에서 호출"""
+    title = req.get("title", "🚒 119 긴급출동")
+    body = req.get("body", "")
+    count = send_push(
+        title=title,
+        body=body[:200],
+        tag="119-alert",
+        url="/",
+        team_id="server-monitor",
+    )
+    return {"ok": True, "sent": count}
+
+
 # ── 인앱 알림 ────────────────────────────────────────
 
 @app.get("/api/notifications")
