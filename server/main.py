@@ -30,6 +30,7 @@ from push_notifications import (
     send_push, send_agent_complete, send_server_error,
     get_notifications, get_unread_count, mark_read, mark_all_read, delete_notification,
 )
+from task_queue import task_queue, pipeline_engine, debouncer
 
 load_dotenv()
 
@@ -54,8 +55,6 @@ _DEFAULT_TEAMS = [
      "localPath": "~/Developer/my-company/claude-biseo-v1.0", "status": "운영중"},
     {"id": "ai900", "name": "AI900", "emoji": "📚", "repo": "ai900",
      "localPath": "~/Developer/my-company/ai900", "status": "운영중"},
-    {"id": "cl600g", "name": "CL600G", "emoji": "⚡", "repo": "cl600g",
-     "localPath": "~/Developer/my-company/cl600g", "status": "운영중"},
     {"id": "design-team", "name": "디자인팀", "emoji": "🎨", "repo": "design-team",
      "localPath": "~/Developer/my-company/design-team", "status": "운영중"},
 ]
@@ -82,7 +81,7 @@ _LAYOUT_FILE = os.path.join(os.path.dirname(__file__), "floor_layout.json")
 
 # 기본 층 배치 (teams.json에서 서버실·CPO 제외한 팀 순서대로 배분)
 _DEFAULT_LAYOUT: dict[str, list[str]] = {
-    "1": ["trading-bot", "date-map", "claude-biseo", "ai900", "cl600g", "design-team"],
+    "1": ["trading-bot", "date-map", "claude-biseo", "ai900", "design-team"],
     "2": ["content-lab", "frontend-team", "backend-team"],
 }
 
@@ -1281,9 +1280,91 @@ async def ws_chat(ws: WebSocket, team_id: str):
     await handle_chat(ws, team_id, project_path)
 
 
+# ── Task Queue / Pipeline / Debounce API ────────────────
+
+def _get_team_path(team_id: str) -> str | None:
+    team = next((t for t in TEAMS if t["id"] == team_id), None)
+    return team["localPath"] if team else None
+
+# 큐 초기화 (run_claude + 팀 경로 연결)
+task_queue.init(
+    run_claude_fn=run_claude,
+    get_team_path_fn=_get_team_path,
+)
+
+
+@app.post("/api/queue/enqueue")
+async def queue_enqueue(body: dict):
+    """작업을 팀 큐에 추가 (대기열 관리)
+
+    body: {"team_id": "backend-team", "prompt": "...", "priority": 0}
+    """
+    team_id = body.get("team_id", "")
+    prompt = body.get("prompt", "")
+    priority = body.get("priority", 0)
+    if not team_id or not prompt:
+        return {"ok": False, "error": "team_id와 prompt가 필요합니다"}
+    task = await task_queue.enqueue(team_id, prompt, priority=priority)
+    return {"ok": True, "task": task.to_dict()}
+
+
+@app.get("/api/queue/status")
+async def queue_status():
+    """전체 큐 상태 조회"""
+    return {"ok": True, "queues": task_queue.get_all_status()}
+
+
+@app.get("/api/queue/status/{team_id}")
+async def queue_team_status(team_id: str):
+    """팀별 큐 상태 조회"""
+    return {"ok": True, **task_queue.get_queue_status(team_id)}
+
+
+@app.post("/api/queue/cancel/{task_id}")
+async def queue_cancel(task_id: str):
+    """대기 중인 작업 취소"""
+    ok = task_queue.cancel_task(task_id)
+    return {"ok": ok}
+
+
+@app.post("/api/pipeline/run")
+async def pipeline_run(body: dict):
+    """순차 파이프라인 실행
+
+    body: {
+        "name": "기능 구현",
+        "steps": [
+            {"team": "backend-team", "prompt": "API 설계해"},
+            {"team": "frontend-team", "prompt": "이 API로 UI 만들어: {prev_result}"}
+        ]
+    }
+    """
+    name = body.get("name", "")
+    steps = body.get("steps", [])
+    if not steps:
+        return {"ok": False, "error": "steps가 필요합니다"}
+    pipeline = await pipeline_engine.create_and_run(name, steps)
+    return {"ok": True, "pipeline": pipeline.to_dict()}
+
+
+@app.get("/api/pipeline/{pipeline_id}")
+async def pipeline_status(pipeline_id: str):
+    """파이프라인 상태 조회"""
+    status = pipeline_engine.get_status(pipeline_id)
+    if not status:
+        return {"ok": False, "error": "파이프라인을 찾을 수 없습니다"}
+    return {"ok": True, **status}
+
+
+@app.get("/api/debounce/status")
+async def debounce_status():
+    """디바운서 상태 조회"""
+    return {"ok": True, "buffers": debouncer.get_status()}
+
+
 # ── 서버 실행 ─────────────────────────────────────────
 
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
-# reload Sat Mar 21 02:45:11 KST 2026
+# reload Sun Mar 29 2026 — task_queue + pipeline + debounce 추가

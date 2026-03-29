@@ -260,6 +260,21 @@ async def handle_chat(ws: WebSocket, team_id: str, project_path: str | None):
     """WebSocket 연결 하나를 처리한다. 각 팀은 독립적으로 병렬 실행된다."""
     await manager.connect(team_id, ws)
 
+    # ── keepalive ping (30초 간격) — 연결 끊김 방지 ──
+    _ws_alive = True
+
+    async def _keepalive():
+        """주기적으로 ping 전송 — 프록시/로드밸런서 타임아웃 방지"""
+        while _ws_alive:
+            try:
+                await asyncio.sleep(25)
+                if not _ws_alive:
+                    break
+                await ws.send_json({"type": "ping", "ts": datetime.now().strftime("%H:%M:%S")})
+            except Exception:
+                break
+    ping_task = asyncio.create_task(_keepalive())
+
     # 접속 시 과거 대화 전송 (동기화)
     history = manager.get_history(team_id)
     if history:
@@ -340,10 +355,20 @@ async def handle_chat(ws: WebSocket, team_id: str, project_path: str | None):
                         elif msg2.get("action") == "clear_history":
                             manager.clear_history(team_id)
                             await manager.send_json(team_id, {"type": "history_cleared"})
-                        elif msg2.get("prompt"):
-                            # 작업 중 추가 메시지 → 큐에 저장 (나중에 처리)
+                        elif msg2.get("action") == "pong":
+                            # keepalive 응답 — 무시
                             pass
-                except (WebSocketDisconnect, Exception):
+                        elif msg2.get("prompt"):
+                            # 작업 중 추가 메시지 → 디바운서로 전달 (배칭)
+                            from task_queue import debouncer, task_queue
+                            await debouncer.add(
+                                team_id, msg2["prompt"],
+                                callback=lambda tid, merged: task_queue.enqueue(tid, merged)
+                            )
+                except WebSocketDisconnect:
+                    # 연결 끊김 — Claude 작업은 계속 진행 (결과는 히스토리에 저장됨)
+                    return
+                except Exception:
                     return
 
             # 두 태스크를 동시에 실행
@@ -411,4 +436,10 @@ async def handle_chat(ws: WebSocket, team_id: str, project_path: str | None):
                 pass
 
     except WebSocketDisconnect:
+        _ws_alive = False
+        ping_task.cancel()
+        manager.disconnect(team_id, ws)
+    except Exception:
+        _ws_alive = False
+        ping_task.cancel()
         manager.disconnect(team_id, ws)

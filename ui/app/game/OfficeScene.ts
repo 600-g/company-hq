@@ -31,28 +31,26 @@ const TEAM_META: Record<string, Omit<TeamConfig, "id" | "gridX" | "gridY">> = {
   "date-map":      { name: "데이트지도", emoji: "🗺️", chars: [1, 2, 3, 0], gridW: 4, gridH: 4 },
   "claude-biseo":  { name: "클로드비서", emoji: "🤵", chars: [2, 0, 1, 3], gridW: 4, gridH: 4 },
   "ai900":         { name: "AI900",     emoji: "📚", chars: [3, 1, 0, 2], gridW: 4, gridH: 4 },
-  "cl600g":        { name: "CL600G",    emoji: "⚡", chars: [0, 2, 3, 1], gridW: 4, gridH: 4 },
   "design-team":   { name: "디자인팀",  emoji: "🎨", chars: [1, 3, 0, 2], gridW: 4, gridH: 4 },
   "content-lab":   { name: "콘텐츠랩",  emoji: "🔬", chars: [2, 0, 3, 1], gridW: 4, gridH: 4 },
   "frontend-team": { name: "프론트엔드",emoji: "🖼",  chars: [3, 1, 0, 2], gridW: 4, gridH: 4 },
   "backend-team":  { name: "백엔드",    emoji: "⚙️", chars: [0, 3, 2, 1], gridW: 4, gridH: 4 },
 };
 
-// 서버 floor_layout.json과 동기화된 기본 배치
-// ⚠️ 이 값은 서버 PUT /api/layout/floors 결과와 일치해야 함
-const ALL_FLOORS: Record<number, TeamConfig[]> = {
+// 서버 floor_layout.json과 동기화된 기본 배치 (폴백)
+// 실제 배치는 서버 GET /api/layout/floors에서 로드
+let ALL_FLOORS: Record<number, TeamConfig[]> = {
   1: [
-    { id: "trading-bot",  gridX: 1,  gridY: 4, ...TEAM_META["trading-bot"]! },
-    { id: "date-map",     gridX: 6,  gridY: 4, ...TEAM_META["date-map"]! },
-    { id: "claude-biseo", gridX: 11, gridY: 4, ...TEAM_META["claude-biseo"]! },
-    { id: "ai900",        gridX: 16, gridY: 4, ...TEAM_META["ai900"]! },
+    { id: "claude-biseo",  gridX: 1,  gridY: 4, ...TEAM_META["claude-biseo"]! },
+    { id: "frontend-team", gridX: 6,  gridY: 4, ...TEAM_META["frontend-team"]! },
+    { id: "backend-team",  gridX: 11, gridY: 4, ...TEAM_META["backend-team"]! },
+    { id: "content-lab",   gridX: 16, gridY: 4, ...TEAM_META["content-lab"]! },
   ],
   2: [
-    { id: "cl600g",        gridX: 1,  gridY: 4, ...TEAM_META["cl600g"]! },
-    { id: "design-team",   gridX: 6,  gridY: 4, ...TEAM_META["design-team"]! },
-    { id: "content-lab",   gridX: 11, gridY: 4, ...TEAM_META["content-lab"]! },
-    { id: "frontend-team", gridX: 16, gridY: 4, ...TEAM_META["frontend-team"]! },
-    { id: "backend-team",  gridX: 1,  gridY: 9, ...TEAM_META["backend-team"]! },
+    { id: "trading-bot",   gridX: 1,  gridY: 4, ...TEAM_META["trading-bot"]! },
+    { id: "ai900",         gridX: 6,  gridY: 4, ...TEAM_META["ai900"]! },
+    { id: "design-team",   gridX: 11, gridY: 4, ...TEAM_META["design-team"]! },
+    { id: "date-map",      gridX: 16, gridY: 4, ...TEAM_META["date-map"]! },
   ],
 };
 
@@ -87,10 +85,43 @@ export default class OfficeScene extends Phaser.Scene {
   init(data: {
     onTeamClick?: (id: string, screenX?: number, screenY?: number) => void;
     weatherCode?: number;
+    apiBase?: string;
   }) {
     this.onTeamClick = data.onTeamClick;
     this.weatherCode = data.weatherCode ?? 0;
-    // ALL_FLOORS 하드코딩 그대로 사용 — 서버 동기화로 꼬이는 문제 방지
+
+    // 서버에서 층 배치 동적 로드 (실패 시 하드코딩 폴백 사용)
+    const apiBase = data.apiBase || "";
+    if (apiBase) {
+      fetch(`${apiBase}/api/layout/floors`)
+        .then(r => r.json())
+        .then((resp: any) => {
+          if (resp.ok && resp.floors) {
+            const serverFloors: Record<number, TeamConfig[]> = {};
+            const defaultPositions = [
+              { gridX: 1, gridY: 4 }, { gridX: 6, gridY: 4 },
+              { gridX: 11, gridY: 4 }, { gridX: 16, gridY: 4 },
+              { gridX: 1, gridY: 9 }, { gridX: 6, gridY: 9 },
+            ];
+            for (const f of resp.floors) {
+              const floorNum = f.floor;
+              serverFloors[floorNum] = f.teams
+                .filter((t: any) => TEAM_META[t.id])
+                .map((t: any, i: number) => ({
+                  id: t.id,
+                  gridX: defaultPositions[i]?.gridX ?? 1,
+                  gridY: defaultPositions[i]?.gridY ?? 4,
+                  ...TEAM_META[t.id]!,
+                }));
+            }
+            if (Object.keys(serverFloors).length > 0) {
+              ALL_FLOORS = serverFloors;
+              this.buildFloor(this.currentFloor);
+            }
+          }
+        })
+        .catch(() => { /* 폴백 유지 */ });
+    }
   }
 
   preload() { preloadAssets(this); }

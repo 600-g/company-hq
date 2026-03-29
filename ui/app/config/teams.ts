@@ -67,15 +67,6 @@ export const defaultTeams: Team[] = [
     githubUrl: "https://github.com/600-g/ai900",
   },
   {
-    id: "cl600g",
-    name: "CL600G",
-    emoji: "⚡",
-    repo: "cl600g",
-    localPath: "~/Developer/my-company/cl600g",
-    status: "운영중",
-    githubUrl: "https://github.com/600-g/cl600g",
-  },
-  {
     id: "design-team",
     name: "디자인팀",
     emoji: "🎨",

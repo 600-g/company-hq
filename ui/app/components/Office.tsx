@@ -1035,8 +1035,8 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
   // ── 에이전트 패널 드래그 앤 드롭 (층별 순서) — 서버 영구 저장 ──
   const PINNED_IDS = ["server-monitor", "cpo-claude"];
   const DEFAULT_FLOORS: Record<number, string[]> = {
-    1: ["server-monitor", "cpo-claude", "trading-bot", "date-map", "claude-biseo", "ai900", "cl600g", "design-team"],
-    2: ["content-lab", "frontend-team", "backend-team"],
+    1: ["server-monitor", "cpo-claude", "claude-biseo", "frontend-team", "backend-team", "content-lab"],
+    2: ["trading-bot", "ai900", "design-team", "date-map"],
   };
   // localStorage 무시 — 항상 DEFAULT_FLOORS로 시작, 서버에서 덮어씀
   const [floorTeams, setFloorTeams] = useState<Record<number, string[]>>(DEFAULT_FLOORS);

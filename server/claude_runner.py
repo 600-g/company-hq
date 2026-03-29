@@ -401,6 +401,7 @@ def get_claude_version() -> str:
 # ── 실행 중인 subprocess PID 추적 ─────────────────────
 AGENT_PIDS: dict[str, int] = {}  # team_id -> PID (실행 중일 때만)
 AGENT_TOKENS: dict[str, dict] = {}  # team_id -> {prompts: int, chars: int}
+MAX_CONCURRENT_AGENTS = 3  # 동시 실행 상한 (유령 프로세스 폭주 방지)
 
 DEFAULT_SYSTEM_PROMPT = (
     "너는 두근컴퍼니의 AI 에이전트야. "
@@ -473,11 +474,31 @@ def _session_ok(session_id: str, project_path: str | None = None) -> bool:
     return True
 
 
+def _cleanup_dead_pids():
+    """종료된 프로세스를 AGENT_PIDS에서 제거"""
+    dead = []
+    for tid, pid in AGENT_PIDS.items():
+        try:
+            os.kill(pid, 0)  # 프로세스 존재 확인
+        except (ProcessLookupError, PermissionError):
+            dead.append(tid)
+    for tid in dead:
+        AGENT_PIDS.pop(tid, None)
+
+
 async def run_claude(prompt: str, project_path: str | None = None, team_id: str = ""):
     """Claude Code CLI 실행 — 세션 영구 유지
 
     Yields: dict {"kind": "text"|"status", "content": str}
     """
+    # ── 동시 실행 상한 체크 (유령 방지) ──
+    _cleanup_dead_pids()
+    active = len(AGENT_PIDS)
+    if active >= MAX_CONCURRENT_AGENTS:
+        logger.warning("[%s] 동시 실행 상한 도달 (%d/%d) — 거부", team_id, active, MAX_CONCURRENT_AGENTS)
+        yield {"kind": "text", "content": f"⚠️ 현재 {active}개 에이전트 동시 실행 중 (상한: {MAX_CONCURRENT_AGENTS}). 기존 작업 완료 후 재시도하세요."}
+        return
+
     cmd = ["claude", "--dangerously-skip-permissions"]
 
     # ── 세션 유지 (파일 존재 + 크기 체크 후 resume) ──
@@ -515,6 +536,7 @@ async def run_claude(prompt: str, project_path: str | None = None, team_id: str 
         stderr=asyncio.subprocess.PIPE,
         cwd=cwd,
         env=env,
+        start_new_session=True,  # 프로세스 그룹 생성 → 종료 시 서브에이전트도 함께 정리
     )
     AGENT_PIDS[team_id] = proc.pid
 
@@ -547,6 +569,13 @@ async def run_claude(prompt: str, project_path: str | None = None, team_id: str 
         yield {"kind": "text", "content": text}
 
     await proc.wait()
+
+    # 서브에이전트 포함 프로세스 그룹 전체 종료 (유령 방지)
+    try:
+        os.killpg(proc.pid, 9)
+    except (ProcessLookupError, PermissionError, OSError):
+        pass  # 이미 종료됨
+
     AGENT_PIDS.pop(team_id, None)
     logger.info("[%s] 응답 완료 (exit=%d)", team_id, proc.returncode or 0)
 

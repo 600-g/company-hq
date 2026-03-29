@@ -2,14 +2,13 @@
   "1": [
     "server-monitor",
     "cpo-claude",
-    "date-map",
     "trading-bot",
-    "cl600g",
-    "ai900"
+    "date-map",
+    "claude-biseo",
+    "ai900",
+    "design-team"
   ],
   "2": [
-    "claude-biseo",
-    "design-team",
     "content-lab",
     "frontend-team",
     "backend-team"

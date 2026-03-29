@@ -95,7 +95,12 @@ const OfficeGame = forwardRef<OfficeGameHandle, Props>(({ onTeamClick }, ref) =>
         scene: [scene, new OutdoorScene(), new LoginScene()],
       });
 
-      game.scene.start("OfficeScene", { onTeamClick: stableCallback, weatherCode });
+      // apiBase 결정 (서버에서 층 배치 로드용)
+      const h = window.location.hostname;
+      const isLocal = h === "localhost" || h.startsWith("192.168.");
+      const apiBase = isLocal ? `http://${h}:8000` : "https://api.600g.net";
+
+      game.scene.start("OfficeScene", { onTeamClick: stableCallback, weatherCode, apiBase });
       gameRef.current = game;
       setLoading(false);
     })();

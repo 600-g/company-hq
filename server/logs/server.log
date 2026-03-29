@@ -1,0 +1,523 @@
+INFO:     Will watch for changes in these directories: ['/Users/600mac/Developer/my-company/company-hq/server']
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [10622] using WatchFiles
+INFO:     Started server process [10625]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/teams/info HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56489 - "GET /api/teams HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "WebSocket /ws/chat/cpo-claude" [accepted]
+INFO:     connection open
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/teams/info HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/teams/info HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+WARNING:  WatchFiles detected changes in 'claude_runner.py'. Reloading...
+INFO:     Shutting down
+INFO:     connection closed
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [10625]
+INFO:     Started server process [11026]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "WebSocket /ws/chat/cpo-claude" [accepted]
+INFO:     connection open
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+WARNING:  WatchFiles detected changes in 'claude_runner.py'. Reloading...
+INFO:     Shutting down
+INFO:     connection closed
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [11026]
+INFO:     Started server process [11047]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "WebSocket /ws/chat/cpo-claude" [accepted]
+INFO:     connection open
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57302 - "GET /api/teams HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/teams/info HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/teams/info HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57457 - "GET /api/teams HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/teams HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/teams/info HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/teams/info HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+WARNING:  WatchFiles detected changes in 'claude_runner.py'. Reloading...
+INFO:     Shutting down
+INFO:     connection closed
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [11047]
+INFO:     Started server process [11878]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     125.129.79.39:0 - "WebSocket /ws/chat/cpo-claude" [accepted]
+INFO:     connection open
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+WARNING:  WatchFiles detected changes in 'claude_runner.py'. Reloading...
+INFO:     Shutting down
+INFO:     connection closed
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [11878]
+INFO:     Started server process [11909]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     125.129.79.39:0 - "WebSocket /ws/chat/cpo-claude" [accepted]
+INFO:     connection open
+INFO:     125.129.79.39:0 - "GET /api/teams/info HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/teams/info HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57891 - "GET /api/teams HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/teams/info HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/teams/info HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58114 - "GET /api/teams HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/teams HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/teams/info HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/teams/info HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/teams/info HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/teams/info HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/teams/info HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/teams/info HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61126 - "GET /api/teams HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/teams HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/teams/info HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/teams/info HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/teams/info HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/teams/info HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/teams/info HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/teams/info HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61759 - "GET /api/teams HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/teams HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/teams/info HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/teams/info HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/teams/info HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/teams/info HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/teams/info HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/teams/info HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65017 - "GET /api/teams HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/teams HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "WebSocket /ws/chat/claude-biseo" [accepted]
+INFO:     connection open
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     connection closed
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     connection closed
+INFO:     125.129.79.39:0 - "OPTIONS /api/auth/verify HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "POST /api/auth/verify HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "OPTIONS /api/auth/owner HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "POST /api/auth/owner HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/token-usage HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/layout/floors HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/teams/info HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/teams HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "OPTIONS /api/layout/floors HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "OPTIONS /api/layout/floors HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "PUT /api/layout/floors HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "PUT /api/layout/floors HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "PUT /api/layout/floors HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "POST /api/notifications/d4052acf/read HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "WebSocket /ws/chat/cpo-claude" [accepted]
+INFO:     connection open
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/token-usage HTTP/1.1" 200 OK
+INFO:     connection closed
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/token-usage HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/teams/info HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/token-usage HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/teams/info HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/dashboard HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/notifications HTTP/1.1" 200 OK
