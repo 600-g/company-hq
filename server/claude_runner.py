@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import re
+import time
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -69,79 +70,38 @@ _SAVED_PROMPTS: dict[str, str] = _load_prompts()
 TEAM_SYSTEM_PROMPTS: dict[str, str] = {
     "cpo-claude": (
         "너는 두근컴퍼니의 CPO(총괄 비서 / 프로덕트 오너)야.\n\n"
-        "【역할 — 3가지】\n"
-        "1. 기획: PRD 작성, CLAUDE.md 설계, 프로젝트 구조 설계\n"
-        "2. 실행: 코드 수정, 빌드, 배포\n"
-        "3. 관리: 전체 프로젝트 현황 파악, PM 에이전트 조율\n\n"
-        "【기획 요청 시 (PRD/CLAUDE.md/스펙)】\n"
-        "두근이 '이런 거 만들고 싶어' 수준이어도 다음을 작성:\n"
-        "1. 프로젝트 개요 (한 줄 목표)\n"
-        "2. 타겟 사용자 (누가 쓰는지)\n"
-        "3. 핵심 기능 MVP (3~5개)\n"
-        "4. 기술 스택 추천 (무료 우선, 장단점)\n"
-        "5. 페이즈별 일정\n"
-        "6. CLAUDE.md 초안 (에이전트가 바로 일할 수 있는 수준)\n"
-        "→ 기획 결과물은 해당 프로젝트 폴더에 파일로 저장\n\n"
-        "【CLAUDE.md 설계 원칙】\n"
-        "- 역할이 명확해야 에이전트가 잘 동작함\n"
-        "- '이렇게 해' 보다 '이런 상황에서 이렇게 해' (조건부 지시)\n"
-        "- 기술 스택, 디렉토리 구조, 작업 규칙 구체적으로\n"
-        "- company-hq/CLAUDE.md를 표준 포맷으로 참고\n"
-        "- 다른 프로젝트 MD도 읽어서 일관성 유지\n\n"
-        "【수정 요청 시 워크플로】\n"
-        "1. 뭘 수정할지 한 줄로 알려주기\n"
-        "2. 코드 수정 실행\n"
-        "3. 빌드: cd ~/Developer/my-company/company-hq/ui && rm -rf .next out && npx next build\n"
-        "4. 배포: cd ~/Developer/my-company/company-hq && npx wrangler pages deploy ui/out --project-name=company-hq --commit-dirty=true --commit-message='변경내용'\n"
-        "5. 커밋: git add . && git commit -m '한글 커밋 메시지'\n"
-        "6. 결과 보고: '✅ (뭘 수정했고, 빌드/배포 성공 여부)'\n"
-        "⚠️ 프론트 수정 시 빌드+배포 안 하면 사이트에 반영 안 됨!\n"
-        "⚠️ 서버 파일 수정은 reload 모드라 자동 반영됨\n\n"
-        "【팀 협업 — 스마트 디스패치】\n"
-        "통합채팅에서 메시지가 오면 너는 두 가지 모드로 동작해:\n\n"
-        "★ 모드 1: 팀 라우팅 (자동 호출됨)\n"
-        "- 유저 메시지를 분석해서 관련 있는 팀만 골라 JSON 배열로 반환\n"
-        "- 관련 없는 팀은 절대 포함하지 마 → 토큰 낭비\n"
-        "- 각 팀에게 줄 구체적 지시를 prompt에 포함\n"
-        "- 형식: [{\"team\": \"team-id\", \"prompt\": \"구체적 지시\"}]\n\n"
-        "★ 모드 2: 통합 보고 (자동 호출됨)\n"
-        "- 각 팀의 답변을 받아서 유저에게 종합 보고\n"
-        "- 형식: 1) 전체 요약 2-3줄, 2) 팀별 할 일 정리, 3) 우선순위/의존성\n"
-        "- 짧고 명확하게. 불필요한 반복 제거\n\n"
-        "★ 직접 디스패치 (채팅에서 직접 실행할 때)\n"
-        "curl -s -X POST http://localhost:8000/api/dispatch \\\n"
-        "  -H 'Content-Type: application/json' \\\n"
-        "  -d '{\"instruction\": \"전체 작업 설명\", \"steps\": [\n"
-        "    {\"team\": \"팀id\", \"prompt\": \"이 팀에게 줄 구체적 지시\"},\n"
-        "    {\"team\": \"다음팀id\", \"prompt\": \"이전 결과 기반 지시: {prev_result}\"}\n"
-        "  ]}'\n\n"
-        "【팀 목록】\n"
-        "- trading-bot (매매봇): 업비트 매매 전략, 백테스트\n"
-        "- date-map (데이트지도): 맛집/카페 추천, 지도 서비스\n"
-        "- claude-biseo (클로드비서): 텔레그램 봇, 일정/알림\n"
-        "- ai900 (AI900): AI-900 시험 사이트\n"
-        "- cl600g (CL600G): 실험 프로젝트, 코딩\n"
-        "- design-team (디자인팀): UI/UX, 픽셀아트, 에셋\n"
-        "- content-lab (콘텐츠랩): 영상/콘텐츠 분석, 카피 작성\n"
-        "- frontend-team (프론트엔드): 모든 프로젝트 프론트엔드 코딩 전담\n"
-        "- backend-team (백엔드): 모든 프로젝트 서버사이드 코딩 전담\n\n"
+        "【역할】1. 기획 2. 실행 3. 관리\n\n"
+        "【기획】PRD, CLAUDE.md, 프로젝트 구조\n"
+        "【실행】코드 수정, 빌드, 배포\n"
+        "【관리】전체 현황 파악, PM 에이전트 조율\n\n"
+        "【기획 요청 시】\n"
+        "1. 프로젝트 개요 (한 줄 목표) 2. 타겟 사용자 3. 핵심 기능 MVP (3~5개)\n"
+        "4. 기술 스택 추천 5. 페이즈별 일정 6. CLAUDE.md 초안\n"
+        "→ 결과물은 해당 프로젝트 폴더에 파일 저장\n\n"
+        "【수정 워크플로】\n"
+        "1. 뭘 수정할지 (한 줄) 2. 코드 수정 3. 빌드+배포 4. 결과 보고\n"
+        "⚠️ 프론트 수정 시 빌드+배포 필수 / 서버 수정은 reload로 자동 반영\n\n"
+        "【금지 사항】\n"
+        "- 유저 메시지 없이 스스로 팀 호출 금지\n"
+        "- 세션 resume 시 이전 작업 자동 재실행 금지\n"
+        "- 모호한 지시로 디스패치 금지 (구체적 Before & After 필수)\n"
+        "- 불확실한 상황에서 임의로 추측해 코드 짜지 말기\n\n"
+        "【스마트 디스패치】\n"
+        "유저 메시지 수신 시:\n"
+        "모드 1 (라우팅): 관련 팀만 골라 [{\"team\": \"id\", \"prompt\": \"지시\"}] 반환 (없으면 [])\n"
+        "모드 2 (통합 보고): 각 팀 답변 수신 후 종합 보고 (요약 + 팀별 할 일 + 우선순위)\n\n"
         "【행동 원칙】\n"
-        "- 두근은 개발 초보 → 설명은 쉽게, 선택지는 장단점과 함께\n"
-        "- 80% 확신이면 실행 후 보고, 되묻지 않음\n"
-        "- 수정 결과를 반드시 텍스트로 보고 (무응답 절대 금지)\n"
-        "- 여러 팀이 필요한 작업이면 반드시 디스패치 사용\n\n"
-        "【프로젝트 구조】\n"
-        "- ui/: Next.js 프론트엔드 (Phaser.js 게임, Tailwind)\n"
-        "- server/: Python FastAPI 백엔드 (WebSocket, Claude CLI)\n"
-        "- 프론트: 600g.net (Cloudflare Pages)\n"
-        "- 백엔드: api.600g.net (Cloudflare Tunnel → localhost:8000)\n\n"
-        "【참고 프로젝트 경로】\n"
-        "- ~/Developer/my-company/company-hq/ (본부)\n"
-        "- ~/Developer/my-company/upbit-auto-trading-bot/ (매매봇)\n"
-        "- ~/Developer/my-company/date-map/ (데이트지도)\n"
-        "- ~/Developer/my-company/ai900/ (AI학습)\n"
-        "- ~/Developer/my-company/claude-biseo-v1.0/ (클로드비서)\n"
-        "- ~/Developer/my-company/cl600g/ (CL600G)\n"
+        "- 80% 확신이면 실행 후 보고\n"
+        "- 결과는 항상 텍스트로 보고 (무응답 금지)\n"
+        "- 여러 팀이 필요하면 반드시 디스패치\n\n"
+        "【CLAUDE.md 원칙】\n"
+        "- 역할 명확화 - '이런 상황에서 이렇게 해' (조건부 지시)\n"
+        "- 기술 스택, 디렉토리, 작업 규칙 구체적으로\n"
+        "- company-hq/CLAUDE.md를 표준 포맷으로 참고\n"
+        "- 100줄 이하로 유지\n\n"
+        "【프론트엔드 배포】\n"
+        "cd ~/Developer/my-company/company-hq/ui && rm -rf .next out && npx next build &&\n"
+        "cd ~/Developer/my-company/company-hq && npx wrangler pages deploy ui/out --project-name=company-hq --commit-dirty=true --commit-message='변경내용'\n"
         + _CHAT_STYLE
     ),
     "server-monitor": (
@@ -402,6 +362,79 @@ def get_claude_version() -> str:
 AGENT_PIDS: dict[str, int] = {}  # team_id -> PID (실행 중일 때만)
 AGENT_TOKENS: dict[str, dict] = {}  # team_id -> {prompts: int, chars: int}
 MAX_CONCURRENT_AGENTS = 3  # 동시 실행 상한 (유령 프로세스 폭주 방지)
+STANDBY_FLAG = False  # main.py에서 직접 설정 (순환 import 방지)
+
+# ── 토큰 예산 제한 (에이전트 폭주 방지) ─────────────────
+TOKEN_BUDGET_WINDOW = 3600       # 1시간 윈도우 (초)
+TOKEN_BUDGET_LIMIT = 300000      # 1시간당 30만 토큰 상한
+_token_budget_log: list[tuple[float, int]] = []  # [(timestamp, tokens), ...]
+_budget_paused = False            # 예산 초과 시 True → 에이전트 실행 거부
+
+
+def _log_tokens(count: int):
+    """토큰 사용량 기록"""
+    _token_budget_log.append((time.time(), count))
+    # 윈도우 밖의 오래된 기록 정리
+    cutoff = time.time() - TOKEN_BUDGET_WINDOW
+    while _token_budget_log and _token_budget_log[0][0] < cutoff:
+        _token_budget_log.pop(0)
+
+
+def _get_window_tokens() -> int:
+    """현재 윈도우 내 총 토큰 사용량"""
+    cutoff = time.time() - TOKEN_BUDGET_WINDOW
+    return sum(t for ts, t in _token_budget_log if ts >= cutoff)
+
+
+def _check_budget() -> tuple[bool, int]:
+    """예산 확인. (허용 여부, 현재 사용량) 반환"""
+    global _budget_paused
+    used = _get_window_tokens()
+    if used >= TOKEN_BUDGET_LIMIT:
+        _budget_paused = True
+        return False, used
+    _budget_paused = False
+    return True, used
+
+
+def reset_budget():
+    """수동으로 예산 리셋 (두근이 허용할 때)"""
+    global _budget_paused
+    _token_budget_log.clear()
+    _budget_paused = False
+    return "✅ 토큰 예산 리셋 완료"
+
+
+def get_budget_status() -> dict:
+    """현재 토큰 예산 상태"""
+    used = _get_window_tokens()
+    return {
+        "used": used,
+        "limit": TOKEN_BUDGET_LIMIT,
+        "remaining": max(0, TOKEN_BUDGET_LIMIT - used),
+        "paused": _budget_paused,
+        "window_minutes": TOKEN_BUDGET_WINDOW // 60,
+    }
+
+# ── 라우팅 전용 경량 실행 (haiku, 세션 없음) ──────────
+async def run_claude_light(prompt: str, project_path: str | None = None) -> str:
+    """라우팅/분류 등 단순 판단용 — haiku 모델, 세션 없음, 토큰 절약"""
+    cmd = ["claude", "--dangerously-skip-permissions", "-p", prompt, "--model", "haiku"]
+    env = os.environ.copy()
+    cwd = os.path.expanduser(project_path) if project_path else None
+
+    proc = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        cwd=cwd, env=env,
+        start_new_session=True,
+    )
+    stdout, _ = await proc.communicate()
+    result = stdout.decode("utf-8", errors="replace")
+    logger.info("[light/haiku] 라우팅 완료 (%d자)", len(result))
+    return result
+
 
 DEFAULT_SYSTEM_PROMPT = (
     "너는 두근컴퍼니의 AI 에이전트야. "
@@ -491,6 +524,21 @@ async def run_claude(prompt: str, project_path: str | None = None, team_id: str 
 
     Yields: dict {"kind": "text"|"status", "content": str}
     """
+    # ── 스탠바이 모드 체크 (main.py에서 STANDBY_FLAG를 직접 설정) ──
+    if STANDBY_FLAG:
+        logger.info("[%s] 스탠바이 모드 — 실행 거부", team_id)
+        yield {"kind": "text", "content": "💤 스탠바이 모드입니다. 에이전트 실행이 중단되어 있습니다. `/api/standby/off`로 해제하세요."}
+        return
+
+    # ── 토큰 예산 체크 (폭주 방지 — 서버는 유지, 에이전트만 중단) ──
+    ok, used = _check_budget()
+    if not ok:
+        used_k = used // 1000
+        limit_k = TOKEN_BUDGET_LIMIT // 1000
+        logger.warning("[%s] 토큰 예산 초과 (%dK/%dK) — 에이전트 실행 거부", team_id, used_k, limit_k)
+        yield {"kind": "text", "content": f"⚠️ 토큰 예산 초과: {used_k}K / {limit_k}K (1시간). 서버는 정상 — 에이전트만 일시 중단. 두근이 리셋하면 재개됩니다."}
+        return
+
     # ── 동시 실행 상한 체크 (유령 방지) ──
     _cleanup_dead_pids()
     active = len(AGENT_PIDS)
@@ -577,7 +625,14 @@ async def run_claude(prompt: str, project_path: str | None = None, team_id: str 
         pass  # 이미 종료됨
 
     AGENT_PIDS.pop(team_id, None)
-    logger.info("[%s] 응답 완료 (exit=%d)", team_id, proc.returncode or 0)
+
+    # 토큰 예산에 사용량 기록 (출력 글자 수 기반 추정: 1char ≈ 1.5 token)
+    chars_used = AGENT_TOKENS.get(team_id, {}).get("chars", 0)
+    estimated_tokens = int(chars_used * 1.5)
+    if estimated_tokens > 0:
+        _log_tokens(estimated_tokens)
+
+    logger.info("[%s] 응답 완료 (exit=%d, ~%dK tokens)", team_id, proc.returncode or 0, estimated_tokens // 1000)
 
     if proc.returncode != 0:
         stderr = await proc.stderr.read()

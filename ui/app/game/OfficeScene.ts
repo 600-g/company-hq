@@ -26,16 +26,32 @@ interface TeamConfig {
 
 // 팀 메타데이터 (서버 floor_layout.json이 층 배치의 소스오브트루스)
 // gridX/gridY = 기본 위치. localStorage로 덮어씌워짐.
+// 팀 메타 — 서버 동기화 시 동적으로 업데이트됨
+// chars: 캐릭터 스프라이트 인덱스 배열 (팀별 고유 외형)
+const CHAR_POOL = [[0,3,1,2],[1,2,3,0],[2,0,1,3],[3,1,0,2],[1,3,0,2],[2,0,3,1],[3,1,0,2],[0,3,2,1]];
 const TEAM_META: Record<string, Omit<TeamConfig, "id" | "gridX" | "gridY">> = {
-  "trading-bot":   { name: "매매봇",    emoji: "🤖", chars: [0, 3, 1, 2], gridW: 4, gridH: 4 },
-  "date-map":      { name: "데이트지도", emoji: "🗺️", chars: [1, 2, 3, 0], gridW: 4, gridH: 4 },
-  "claude-biseo":  { name: "클로드비서", emoji: "🤵", chars: [2, 0, 1, 3], gridW: 4, gridH: 4 },
-  "ai900":         { name: "AI900",     emoji: "📚", chars: [3, 1, 0, 2], gridW: 4, gridH: 4 },
-  "design-team":   { name: "디자인팀",  emoji: "🎨", chars: [1, 3, 0, 2], gridW: 4, gridH: 4 },
-  "content-lab":   { name: "콘텐츠랩",  emoji: "🔬", chars: [2, 0, 3, 1], gridW: 4, gridH: 4 },
-  "frontend-team": { name: "프론트엔드",emoji: "🖼",  chars: [3, 1, 0, 2], gridW: 4, gridH: 4 },
-  "backend-team":  { name: "백엔드",    emoji: "⚙️", chars: [0, 3, 2, 1], gridW: 4, gridH: 4 },
+  "trading-bot":   { name: "매매봇",    emoji: "🤖", chars: CHAR_POOL[0], gridW: 4, gridH: 4 },
+  "date-map":      { name: "데이트지도", emoji: "🗺️", chars: CHAR_POOL[1], gridW: 4, gridH: 4 },
+  "claude-biseo":  { name: "클로드비서", emoji: "🤵", chars: CHAR_POOL[2], gridW: 4, gridH: 4 },
+  "ai900":         { name: "AI900",     emoji: "📚", chars: CHAR_POOL[3], gridW: 4, gridH: 4 },
+  "design-team":   { name: "디자인팀",  emoji: "🎨", chars: CHAR_POOL[4], gridW: 4, gridH: 4 },
+  "content-lab":   { name: "콘텐츠랩",  emoji: "🔬", chars: CHAR_POOL[5], gridW: 4, gridH: 4 },
+  "frontend-team": { name: "프론트엔드",emoji: "🖼",  chars: CHAR_POOL[6], gridW: 4, gridH: 4 },
+  "backend-team":  { name: "백엔드",    emoji: "⚙️", chars: CHAR_POOL[7], gridW: 4, gridH: 4 },
 };
+
+/** 서버에서 받은 팀 정보로 TEAM_META에 없는 팀 자동 등록 */
+function ensureTeamMeta(t: { id: string; name?: string; emoji?: string }) {
+  if (!TEAM_META[t.id]) {
+    const idx = Object.keys(TEAM_META).length;
+    TEAM_META[t.id] = {
+      name: t.name || t.id,
+      emoji: t.emoji || "🤖",
+      chars: CHAR_POOL[idx % CHAR_POOL.length],
+      gridW: 4, gridH: 4,
+    };
+  }
+}
 
 // 서버 floor_layout.json과 동기화된 기본 배치 (폴백)
 // 실제 배치는 서버 GET /api/layout/floors에서 로드
@@ -106,13 +122,15 @@ export default class OfficeScene extends Phaser.Scene {
             for (const f of resp.floors) {
               const floorNum = f.floor;
               serverFloors[floorNum] = f.teams
-                .filter((t: any) => TEAM_META[t.id])
-                .map((t: any, i: number) => ({
-                  id: t.id,
-                  gridX: defaultPositions[i]?.gridX ?? 1,
-                  gridY: defaultPositions[i]?.gridY ?? 4,
-                  ...TEAM_META[t.id]!,
-                }));
+                .map((t: any, i: number) => {
+                  ensureTeamMeta(t);
+                  return {
+                    id: t.id,
+                    gridX: defaultPositions[i]?.gridX ?? 1,
+                    gridY: defaultPositions[i]?.gridY ?? 4,
+                    ...TEAM_META[t.id]!,
+                  };
+                });
             }
             if (Object.keys(serverFloors).length > 0) {
               ALL_FLOORS = serverFloors;

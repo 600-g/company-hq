@@ -81,8 +81,10 @@ interface TokenUsageData {
   window_label?: string;
   projects: TokenProject[];
   grand: { input: number; output: number; cache_read: number; cache_create: number; total: number };
+  daily_total?: { input: number; output: number; cache_read: number; cache_create: number; total: number };
   daily_limit: number;
   usage_pct: number;
+  window_pct?: number;
 }
 
 interface DashboardData {
@@ -307,34 +309,36 @@ function CircleGauge({ pct, size = 72 }: { pct: number; size?: number }) {
 // ── 토큰 사용량 패널 ─────────────────────────────────
 function TokenUsagePanel({ data }: { data: TokenUsageData }) {
   const maxTotal = Math.max(...data.projects.map(p => p.total), 1);
-  const cacheRatio = data.grand.total > 0
-    ? Math.round((data.grand.cache_read / (data.grand.total + data.grand.cache_read)) * 100)
+  const daily = data.daily_total ?? data.grand;
+  const dailyCacheRatio = daily.total > 0
+    ? Math.round((daily.cache_read / (daily.total + daily.cache_read)) * 100)
     : 0;
   const usagePct = data.usage_pct ?? 0;
+  const windowPct = data.window_pct ?? 0;
 
   return (
     <div className="space-y-2">
 
-      {/* ── 일일 한도 게이지 ── */}
+      {/* ── 오늘 전체 사용량 (메인 게이지) ── */}
       <div className="bg-[#1a1a2e] border border-[#2a2a4a] rounded p-2.5">
         <div className="flex items-center gap-3">
           <CircleGauge pct={usagePct} size={72} />
           <div className="flex-1 min-w-0 space-y-1">
-            <div className="text-[9px] text-gray-500 font-bold">최근 5시간 사용량</div>
+            <div className="text-[9px] text-gray-500 font-bold">오늘 사용량</div>
             <div className="flex items-baseline gap-1">
               <span className={`text-[13px] font-mono font-bold ${dangerColor(usagePct).text}`}>
-                {fmtTokens(data.grand.total)}
+                {fmtTokens(daily.total)}
               </span>
               <span className="text-[8px] text-gray-600">/ {fmtTokens(data.daily_limit)}</span>
             </div>
             <div className="grid grid-cols-2 gap-x-2 text-[8px]">
-              <span className="text-gray-600">입력 <span className="text-blue-400 font-mono">{fmtTokens(data.grand.input)}</span></span>
-              <span className="text-gray-600">출력 <span className="text-green-400 font-mono">{fmtTokens(data.grand.output)}</span></span>
-              <span className="text-gray-600">캐시 <span className="text-yellow-400 font-mono">{fmtTokens(data.grand.cache_read)}</span></span>
-              <span className="text-gray-600">절감 <span className="text-yellow-300 font-mono">{cacheRatio}%</span></span>
+              <span className="text-gray-600">입력 <span className="text-blue-400 font-mono">{fmtTokens(daily.input)}</span></span>
+              <span className="text-gray-600">출력 <span className="text-green-400 font-mono">{fmtTokens(daily.output)}</span></span>
+              <span className="text-gray-600">캐시 <span className="text-yellow-400 font-mono">{fmtTokens(daily.cache_read)}</span></span>
+              <span className="text-gray-600">절감 <span className="text-yellow-300 font-mono">{dailyCacheRatio}%</span></span>
             </div>
             <div className="text-[7px] text-gray-700 pt-0.5">
-              * Max 5x 추정 한도 (WINDOW_TOKEN_LIMIT 환경변수로 조정)
+              * Max 추정 한도 (DAILY_TOKEN_LIMIT 환경변수로 조정)
             </div>
           </div>
         </div>
@@ -518,7 +522,7 @@ export default function ServerDashboard({ onClose }: { onClose: () => void }) {
                 return (
                   <div>
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-[10px] text-gray-400">🔢 토큰 (5h)</span>
+                      <span className="text-[10px] text-gray-400">🔢 토큰 (오늘)</span>
                       <span className={`text-[10px] font-mono font-semibold ${metricText(tPct)}`}>{tPct.toFixed(1)}%</span>
                     </div>
                     <ProgressBar value={tPct} color={metricColor(tPct)} />

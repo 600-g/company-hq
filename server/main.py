@@ -20,7 +20,7 @@ from project_scanner import scan_all
 from github_manager import create_repo, list_repos, _generate_system_prompt, PROJECT_TYPES
 from system_monitor import get_all as get_system, get_process_stats
 from notion_reader import fetch_notion_page
-from claude_runner import TEAM_SESSIONS, TEAM_MODELS, AGENT_PIDS, MODEL_IDS, get_claude_version, _save_sessions, AGENT_TOKENS, run_claude
+from claude_runner import TEAM_SESSIONS, TEAM_MODELS, AGENT_PIDS, MODEL_IDS, get_claude_version, _save_sessions, AGENT_TOKENS, run_claude, run_claude_light, get_budget_status, reset_budget
 from auth import (
     register_user, verify_token, create_invite_code,
     get_all_codes, get_all_users, ensure_owner_code, ROLES, owner_login,
@@ -135,6 +135,54 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ── 서버 종료 시 Claude 프로세스 정리 ────────────
+# NOTE: startup cleanup 제거됨 — uvicorn reload 시 활성 세션 kill 방지
+# 고아 프로세스 정리는 119/112 감시 스크립트가 담당
+
+@app.on_event("shutdown")
+async def _shutdown_cleanup():
+    """서버 종료 시 실행 중인 Claude 프로세스 종료"""
+    import signal
+    for team_id, pid in list(AGENT_PIDS.items()):
+        try:
+            pgid = os.getpgid(pid)
+            os.killpg(pgid, signal.SIGTERM)
+        except (ProcessLookupError, PermissionError):
+            pass
+    AGENT_PIDS.clear()
+
+
+# ── 스탠바이 모드 (토큰 절약) ─────────────────────────
+# claude_runner.STANDBY_FLAG 를 직접 설정 (순환 import 없이)
+import claude_runner as _cr
+
+@app.post("/api/standby/on")
+async def standby_on():
+    """스탠바이 모드 ON — 에이전트 실행 중단 (서버는 유지)"""
+    _cr.STANDBY_FLAG = True
+    # 현재 실행 중인 프로세스도 종료
+    import signal
+    for team_id, pid in list(AGENT_PIDS.items()):
+        try:
+            pgid = os.getpgid(pid)
+            os.killpg(pgid, signal.SIGTERM)
+        except (ProcessLookupError, PermissionError):
+            pass
+    AGENT_PIDS.clear()
+    return {"ok": True, "standby": True, "message": "스탠바이 모드 ON — 에이전트 실행이 중단됩니다"}
+
+@app.post("/api/standby/off")
+async def standby_off():
+    """스탠바이 모드 OFF — 에이전트 실행 재개"""
+    _cr.STANDBY_FLAG = False
+    return {"ok": True, "standby": False, "message": "스탠바이 모드 OFF — 에이전트 실행 재개"}
+
+@app.get("/api/standby")
+async def standby_status():
+    """스탠바이 모드 상태 조회"""
+    return {"ok": True, "standby": _cr.STANDBY_FLAG}
 
 
 # ── 인증 API ─────────────────────────────────────────
@@ -787,13 +835,57 @@ def _parse_token_usage_today() -> dict:
 
     grand["total"] = grand["input"] + grand["output"]
 
-    # 5시간 창 토큰 한도 (Max 플랜 추정치, 환경변수로 재정의 가능)
-    # Claude Max 5x: 공식 공개 없음. 실측 기준 ~800K/5h 추정 (200K는 너무 낮음)
-    # 실제 사용 패턴에 따라 WINDOW_TOKEN_LIMIT 환경변수로 조정 가능
+    # ── 오늘 전체 사용량 계산 (첫 번째 루프에서 이미 읽은 데이터 재활용 + 보충) ──
+    daily_total = {"input": 0, "output": 0, "cache_read": 0, "cache_create": 0}
+    today_start = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    # 5시간 윈도우 바깥 + 오늘 안의 데이터도 포함해야 하므로 전체 재스캔
+    for jsonl_path in _glob.glob(f"{projects_root}/**/*.jsonl", recursive=True):
+        try:
+            with open(jsonl_path, "r", encoding="utf-8", errors="ignore") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        obj = json.loads(line)
+                    except Exception:
+                        continue
+                    if obj.get("type") != "assistant":
+                        continue
+                    ts_str = obj.get("timestamp", "")
+                    if not ts_str:
+                        continue
+                    try:
+                        ts_dt = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+                        if ts_dt < today_start:
+                            continue
+                    except Exception:
+                        continue
+                    usage = (obj.get("message") or {}).get("usage") or {}
+                    if not usage:
+                        continue
+                    daily_total["input"] += usage.get("input_tokens", 0)
+                    daily_total["output"] += usage.get("output_tokens", 0)
+                    daily_total["cache_read"] += usage.get("cache_read_input_tokens", 0)
+                    daily_total["cache_create"] += (
+                        usage.get("cache_creation_input_tokens", 0)
+                        + (usage.get("cache_creation") or {}).get("ephemeral_1h_input_tokens", 0)
+                        + (usage.get("cache_creation") or {}).get("ephemeral_5m_input_tokens", 0)
+                    )
+        except Exception:
+            continue
+
+    daily_total["total"] = daily_total["input"] + daily_total["output"] + daily_total["cache_create"]
+
+    # Claude Max 일일 한도 추정 (환경변수로 조정 가능)
+    # 실측: cache_creation 포함 ~45M tokens/day가 89% → ~50M/day 추정
+    daily_limit = int(os.getenv("DAILY_TOKEN_LIMIT", "50000000"))
+    usage_pct = round(daily_total["total"] / daily_limit * 100, 1) if daily_limit > 0 else 0.0
+
+    # 5시간 윈도우 표시용 (하위 호환)
     window_limit = int(os.getenv("WINDOW_TOKEN_LIMIT", "800000"))
-
-    usage_pct = round(grand["total"] / window_limit * 100, 1) if window_limit > 0 else 0.0
-
+    window_pct = round(grand["total"] / window_limit * 100, 1) if window_limit > 0 else 0.0
     window_label = window_start.strftime("%H:%M") + " ~ " + now_utc.strftime("%H:%M") + " UTC"
 
     return {
@@ -801,8 +893,10 @@ def _parse_token_usage_today() -> dict:
         "window_label": window_label,
         "projects": projects,
         "grand": grand,
-        "daily_limit": window_limit,   # 하위 호환용 필드명 유지
-        "usage_pct": usage_pct,
+        "daily_total": daily_total,
+        "daily_limit": daily_limit,
+        "usage_pct": usage_pct,          # 오늘 전체 기준 (메인 게이지)
+        "window_pct": window_pct,        # 5시간 윈도우 기준 (보조)
     }
 
 
@@ -850,7 +944,7 @@ async def dispatch_task(body: dict):
     }
     _log_activity("cpo-claude", f"📋 디스패치 시작: {instruction[:50]}")
 
-    # steps가 없으면 CPO에게 분배 계획 요청
+    # steps가 없으면 haiku로 빠르게 분배 계획 생성 (토큰 절약)
     if not steps:
         plan_prompt = (
             f"다음 작업을 수행하려고 해:\n\n{instruction}\n\n"
@@ -862,10 +956,7 @@ async def dispatch_task(body: dict):
             "JSON만 답해. 설명 없이."
         )
         cpo_path = next((t["localPath"] for t in TEAMS if t["id"] == "cpo-claude"), None)
-        plan_result = ""
-        async for chunk in run_claude(plan_prompt, cpo_path, "cpo-claude"):
-            if chunk["kind"] == "text":
-                plan_result += chunk["content"]
+        plan_result = await run_claude_light(plan_prompt, cpo_path)
 
         # JSON 파싱 시도
         import re
@@ -1008,11 +1099,15 @@ async def smart_dispatch(body: dict):
         route_prompt = (
             f"유저 메시지:\n\"{message}\"\n\n"
             f"현재 팀 목록:\n{team_list_str}\n\n"
-            "이 메시지에 관련 있는 팀만 골라서 JSON 배열로 답해.\n"
-            "관련 없는 팀은 절대 포함하지 마. 토큰 낭비야.\n"
-            "각 팀에게 줄 구체적 지시도 포함해.\n\n"
+            "이 메시지를 처리하기 위해 어떤 팀이 필요한지 판단해.\n\n"
+            "규칙:\n"
+            "1. 관련 팀이 있으면 → JSON 배열로 답해\n"
+            "2. 관련 팀이 없으면 (일반 질문, 인사, CPO가 직접 답할 수 있는 것) → 빈 배열 []로 답해\n"
+            "3. 각 팀에게 줄 프롬프트에는 유저의 원래 메시지 맥락도 포함해\n"
+            "4. 관련 없는 팀은 절대 포함하지 마\n\n"
             "형식 (JSON만, 설명 없이):\n"
-            '[{"team": "team-id", "prompt": "이 팀에게 줄 구체적 지시"}]'
+            '[{"team": "team-id", "prompt": "유저가 OO를 요청했다. 구체적으로 XX를 해줘"}]\n'
+            '또는 관련 팀 없으면: []'
         )
 
         cpo_team = next((t for t in TEAMS if t["id"] == "cpo-claude"), None)
@@ -1020,24 +1115,45 @@ async def smart_dispatch(body: dict):
             yield f"data: {json.dumps({'phase': 'error', 'error': 'CPO 팀 없음'})}\n\n"
             return
 
-        # CPO 라우팅 실행
+        # CPO 라우팅 실행 (haiku로 빠르게 — 토큰 절약)
         yield f"data: {json.dumps({'phase': 'routing', 'message': '🧠 CPO가 관련 팀 분석 중...'})}\n\n"
 
-        route_result = ""
-        async for chunk in run_claude(route_prompt, cpo_team["localPath"], "cpo-claude"):
-            if chunk["kind"] == "text":
-                route_result += chunk["content"]
+        route_result = await run_claude_light(route_prompt, cpo_team["localPath"])
 
         # JSON 파싱
         json_match = _re.search(r'\[.*\]', route_result, _re.DOTALL)
         if not json_match:
-            yield f"data: {json.dumps({'phase': 'error', 'error': 'CPO 라우팅 실패', 'raw': route_result[:500]})}\n\n"
+            # JSON 파싱 실패 → CPO가 직접 응답한 것으로 간주
+            yield f"data: {json.dumps({'phase': 'summary_chunk', 'content': route_result})}\n\n"
+            yield f"data: {json.dumps({'phase': 'done', 'dispatch_id': dispatch_id, 'summary': route_result, 'team_results': {}})}\n\n"
+            DISPATCH_TASKS[dispatch_id]["status"] = "done"
+            DISPATCH_TASKS[dispatch_id]["summary"] = route_result
             return
 
         try:
             routed_steps = json.loads(json_match.group())
         except json.JSONDecodeError:
             yield f"data: {json.dumps({'phase': 'error', 'error': 'JSON 파싱 실패'})}\n\n"
+            return
+
+        # ── 빈 배열 = CPO가 직접 답변 ──
+        if not routed_steps:
+            yield f"data: {json.dumps({'phase': 'summarizing', 'message': '🧠 CPO가 직접 답변 중...'})}\n\n"
+            direct_prompt = (
+                f"유저 메시지: \"{message}\"\n\n"
+                "이 메시지는 특정 팀에 전달할 필요 없이 CPO가 직접 답할 수 있다.\n"
+                "유저에게 도움되는 답변을 해줘. 짧고 명확하게."
+            )
+            direct_text = ""
+            async for chunk in run_claude(direct_prompt, cpo_team["localPath"], "cpo-claude"):
+                if chunk["kind"] == "text":
+                    direct_text += chunk["content"]
+                    yield f"data: {json.dumps({'phase': 'summary_chunk', 'content': chunk['content']})}\n\n"
+
+            DISPATCH_TASKS[dispatch_id]["status"] = "done"
+            DISPATCH_TASKS[dispatch_id]["summary"] = direct_text
+            yield f"data: {json.dumps({'phase': 'done', 'dispatch_id': dispatch_id, 'summary': direct_text, 'team_results': {}})}\n\n"
+            _log_activity("cpo-claude", f"✅ CPO 직접 응답: {message[:50]}")
             return
 
         routed_team_ids = [s["team"] for s in routed_steps]
@@ -1052,7 +1168,8 @@ async def smart_dispatch(body: dict):
 
         async def run_team(step: dict):
             team_id = step["team"]
-            prompt = step["prompt"]
+            # 유저 원래 메시지 맥락을 팀 프롬프트에 포함
+            prompt = f"[유저 원래 요청: {message}]\n\n{step['prompt']}"
             team = next((t for t in TEAMS if t["id"] == team_id), None)
             if not team:
                 team_results[team_id] = {"status": "skipped", "error": "팀 없음"}
@@ -1079,35 +1196,46 @@ async def smart_dispatch(body: dict):
         done_teams = list(team_results.keys())
         yield f"data: {json.dumps({'phase': 'team_done', 'done': len(done_teams), 'total': len(routed_steps), 'teams': done_teams})}\n\n"
 
-        # ── Phase 3: CPO 통합 보고 ──
-        yield f"data: {json.dumps({'phase': 'summarizing', 'message': '🧠 CPO가 통합 보고서 작성 중...'})}\n\n"
+        # ── Phase 3: CPO 통합 보고 (2팀 이상일 때만) ──
+        if len(team_results) == 1:
+            # 팀 1개면 CPO 통합 보고 생략 — 팀 결과를 바로 전달 (토큰 절약)
+            tid, result = next(iter(team_results.items()))
+            summary_text = result.get("result", "")
+            yield f"data: {json.dumps({'phase': 'summary_chunk', 'content': summary_text})}\n\n"
+            _log_activity("cpo-claude", f"✅ 단일 팀 결과 직통: {tid}")
+        else:
+            yield f"data: {json.dumps({'phase': 'summarizing', 'message': '🧠 CPO가 통합 보고서 작성 중...'})}\n\n"
 
-        summary_parts = []
-        for tid, result in team_results.items():
-            if result["status"] == "done":
-                summary_parts.append(
-                    f"=== {result['emoji']} {result['team_name']} ({tid}) ===\n"
-                    f"{result['result'][:1500]}"
-                )
-            else:
-                summary_parts.append(f"=== {tid} === ❌ 실패: {result.get('error', '알 수 없음')}")
+            # 각 팀 결과를 300자 요약본으로 압축하여 CPO에게 전달 (토큰 절약)
+            summary_parts = []
+            for tid, result in team_results.items():
+                if result["status"] == "done":
+                    # 결과에서 마지막 부분(보통 요약이 있음)을 우선 사용
+                    full = result["result"]
+                    condensed = full[-500:] if len(full) > 500 else full
+                    summary_parts.append(
+                        f"=== {result['emoji']} {result['team_name']} ({tid}) ===\n"
+                        f"{condensed}"
+                    )
+                else:
+                    summary_parts.append(f"=== {tid} === ❌ 실패: {result.get('error', '알 수 없음')}")
 
-        summary_prompt = (
-            f"유저의 원래 요청:\n\"{message}\"\n\n"
-            f"각 팀의 답변:\n\n{''.join(s + chr(10) + chr(10) for s in summary_parts)}\n"
-            "위 답변들을 종합해서 유저에게 통합 보고해줘.\n"
-            "형식:\n"
-            "1. 전체 요약 (2-3줄)\n"
-            "2. 팀별 할 일 정리 (팀이름: 할 일)\n"
-            "3. 우선순위 또는 의존성 있으면 언급\n"
-            "짧고 명확하게."
-        )
+            summary_prompt = (
+                f"유저의 원래 요청:\n\"{message}\"\n\n"
+                f"각 팀의 답변 요약:\n\n{''.join(s + chr(10) + chr(10) for s in summary_parts)}\n"
+                "위 답변들을 종합해서 유저에게 통합 보고해줘.\n"
+                "형식:\n"
+                "1. 전체 요약 (2-3줄)\n"
+                "2. 팀별 할 일 정리 (팀이름: 할 일)\n"
+                "3. 우선순위 또는 의존성 있으면 언급\n"
+                "짧고 명확하게."
+            )
 
-        summary_text = ""
-        async for chunk in run_claude(summary_prompt, cpo_team["localPath"], "cpo-claude"):
-            if chunk["kind"] == "text":
-                summary_text += chunk["content"]
-                yield f"data: {json.dumps({'phase': 'summary_chunk', 'content': chunk['content']})}\n\n"
+            summary_text = ""
+            async for chunk in run_claude(summary_prompt, cpo_team["localPath"], "cpo-claude"):
+                if chunk["kind"] == "text":
+                    summary_text += chunk["content"]
+                    yield f"data: {json.dumps({'phase': 'summary_chunk', 'content': chunk['content']})}\n\n"
 
         # 최종 결과
         DISPATCH_TASKS[dispatch_id]["status"] = "done"
@@ -1117,7 +1245,7 @@ async def smart_dispatch(body: dict):
         ]
         DISPATCH_TASKS[dispatch_id]["summary"] = summary_text
 
-        yield f"data: {json.dumps({'phase': 'done', 'dispatch_id': dispatch_id, 'summary': summary_text, 'team_results': {tid: {'status': r['status'], 'result': r.get('result', '')[:500]} for tid, r in team_results.items()}})}\n\n"
+        yield f"data: {json.dumps({'phase': 'done', 'dispatch_id': dispatch_id, 'summary': summary_text, 'team_results': {tid: {'status': r['status'], 'result': r.get('result', '')[:2000]} for tid, r in team_results.items()}})}\n\n"
 
         _log_activity("cpo-claude", f"✅ 스마트 디스패치 완료: {message[:50]}")
 
@@ -1176,6 +1304,20 @@ async def push_119(req: dict):
         team_id="server-monitor",
     )
     return {"ok": True, "sent": count}
+
+
+# ── 토큰 예산 관리 ─────────────────────────────────────
+
+@app.get("/api/budget")
+async def budget_status():
+    """토큰 예산 현황"""
+    return {"ok": True, **get_budget_status()}
+
+@app.post("/api/budget/reset")
+async def budget_reset():
+    """토큰 예산 리셋 (두근 전용)"""
+    msg = reset_budget()
+    return {"ok": True, "message": msg}
 
 
 # ── 인앱 알림 ────────────────────────────────────────
