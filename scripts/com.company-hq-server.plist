@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+    "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+
+    <!-- ===== 서비스 식별자 ===== -->
+    <key>Label</key>
+    <string>com.company-hq-server</string>
+
+    <!-- ===== 실행 명령 ===== -->
+    <!-- 래퍼 스크립트가 .env 로드 후 uvicorn 실행 -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/600mac/Developer/my-company/company-hq/scripts/hq_server_start.sh</string>
+    </array>
+
+    <!-- ===== 작업 디렉토리 ===== -->
+    <key>WorkingDirectory</key>
+    <string>/Users/600mac/Developer/my-company/company-hq/server</string>
+
+    <!-- ===== 자동 재시작: 프로세스 종료 즉시 재시작 ===== -->
+    <key>KeepAlive</key>
+    <true/>
+
+    <!-- ===== 재시작 대기 시간: 10초 ===== -->
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+
+    <!-- ===== 로그인 시 자동 시작 ===== -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- ===== 로그 경로 ===== -->
+    <key>StandardOutPath</key>
+    <string>/Users/600mac/Developer/my-company/company-hq/server/logs/launchd_stdout.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/600mac/Developer/my-company/company-hq/server/logs/launchd_stderr.log</string>
+
+    <!-- ===== 환경변수 ===== -->
+    <!-- 비밀값은 .env에서 로드 (래퍼 스크립트 처리) -->
+    <!-- PATH는 venv + homebrew + 시스템 경로를 포함해야 함 -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/Users/600mac/Developer/my-company/company-hq/server/venv/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>HOME</key>
+        <string>/Users/600mac</string>
+        <key>LANG</key>
+        <string>ko_KR.UTF-8</string>
+    </dict>
+
+</dict>
+</plist>

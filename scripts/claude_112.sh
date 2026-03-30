@@ -97,30 +97,25 @@ ISSUES=""
 RECOVERED=""
 
 # --- 1. company-hq 백엔드 (uvicorn, 포트 8000) ---
+# ⚠️  서버 재시작은 launchd(com.company-hq-server)에 위임.
+#     112는 API 응답 + launchd 등록 여부만 감시하는 2차 감시자 역할.
 HQ_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${HQ_API}/api/teams" --max-time 5 2>/dev/null)
 if [ "$HQ_STATUS" != "200" ]; then
     HQ_FAIL=$(increment_fail "$HQ_FAIL_FILE")
     log_msg "[DOWN] company-hq 서버 다운 (응답: ${HQ_STATUS}) — ${HQ_FAIL}/${FAIL_THRESHOLD}회 연속"
 
-    # 자동 복구 시도
-    pkill -f "uvicorn.*main:app" 2>/dev/null
-    sleep 2
-    cd "$HQ_SERVER_DIR" && source venv/bin/activate && \
-        nohup python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload > logs/server.log 2>&1 &
-    sleep 3
-
-    # 복구 확인
-    HQ_RETRY=$(curl -s -o /dev/null -w "%{http_code}" "${HQ_API}/api/teams" --max-time 5 2>/dev/null)
-    if [ "$HQ_RETRY" = "200" ]; then
-        log_msg "[RECOVERED] company-hq 서버 복구 성공 (연속 ${HQ_FAIL}회 후)"
+    # launchd가 서비스를 등록하고 있는지 확인
+    LAUNCHD_STATUS=$(launchctl list 2>/dev/null | grep "com.company-hq-server")
+    if [ -z "$LAUNCHD_STATUS" ]; then
+        log_msg "[WARN] launchd에 com.company-hq-server 미등록 — launchctl load 필요"
         if [ "$HQ_FAIL" -ge "$FAIL_THRESHOLD" ]; then
-            RECOVERED="${RECOVERED}✅ company-hq 서버 복구 완료 (${HQ_FAIL}회 다운 후)\n"
+            ISSUES="${ISSUES}❌ company-hq 서버 ${HQ_FAIL}회 연속 다운 + launchd 미등록 (수동 확인 필요)\n"
         fi
-        reset_fail "$HQ_FAIL_FILE"
     else
-        log_msg "[FAIL] company-hq 복구 실패"
+        # launchd가 관리 중이면 재시작 중일 가능성이 높음 — 알림 임계치까지 대기
+        log_msg "[INFO] launchd가 재시작 처리 중 (${LAUNCHD_STATUS})"
         if [ "$HQ_FAIL" -ge "$FAIL_THRESHOLD" ]; then
-            ISSUES="${ISSUES}❌ company-hq 서버 ${HQ_FAIL}회 연속 다운 + 복구 실패\n"
+            ISSUES="${ISSUES}❌ company-hq 서버 ${HQ_FAIL}회 연속 다운 (launchd 재시작 반복 중, 수동 확인 필요)\n"
         fi
     fi
 else
