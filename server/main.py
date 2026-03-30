@@ -384,7 +384,29 @@ async def delete_team(team_id: str):
     FLOOR_LAYOUT = _sync_layout_with_teams(TEAMS, FLOOR_LAYOUT)
     _save_layout(FLOOR_LAYOUT)
 
-    _log_activity(team_id, "🗑️ 에이전트 완전 삭제됨 (로컬+GitHub+프롬프트)")
+    # 4) 채팅 히스토리 파일 삭제
+    chat_file = os.path.join(os.path.dirname(__file__), "chat_history", f"{team_id}.json")
+    try:
+        os.unlink(chat_file)
+        logging.info(f"[DELETE] 채팅 히스토리 삭제: {chat_file}")
+    except FileNotFoundError:
+        pass
+
+    # 5) team_sessions.json에서 세션 제거
+    try:
+        TEAM_SESSIONS.pop(team_id, None)
+        _save_sessions()
+        logging.info(f"[DELETE] 세션 정리 완료: {team_id}")
+    except Exception as e:
+        logging.warning(f"[DELETE] 세션 정리 실패: {e}")
+
+    # 6) AGENT_STATUS 메모리 정리
+    AGENT_STATUS.pop(team_id, None)
+
+    # 7) CHAR_STATE 메모리 정리
+    CHAR_STATE.pop(team_id, None)
+
+    _log_activity(team_id, "🗑️ 에이전트 완전 삭제됨 (로컬+GitHub+프롬프트+세션+히스토리)")
     return {"ok": True, "team_id": team_id}
 
 
@@ -737,7 +759,6 @@ def _parse_token_usage_today() -> dict:
         "-Users-600mac-Developer-my-company-date-map": ("데이트지도", "🗺️"),
         "-Users-600mac-Developer-my-company-claude-biseo-v1-0": ("클로드비서", "🤵"),
         "-Users-600mac-Developer-my-company-ai900": ("AI900", "📚"),
-        "-Users-600mac-Developer-my-company-cl600g": ("CL600G", "⚡"),
         "-Users-600mac-Developer-my-company-design-team": ("디자인팀", "🎨"),
         "-Users-600mac-Developer-my-company-content-lab": ("콘텐츠랩", "🔬"),
     }
@@ -920,7 +941,7 @@ async def dispatch_task(body: dict):
         "instruction": "매매봇 대시보드 리뉴얼해",
         "steps": [
             {"team": "trading-bot", "prompt": "현재 데이터 구조 정리해서 알려줘"},
-            {"team": "cl600g", "prompt": "이 데이터로 대시보드 만들어: {prev_result}"}
+            {"team": "frontend-team", "prompt": "이 데이터로 대시보드 만들어: {prev_result}"}
         ]
     }
 

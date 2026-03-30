@@ -489,6 +489,8 @@ def emergency_action(action: str) -> str:
             - 'restart_server': company-hq 서버 재시작
             - 'restart_tunnel': Cloudflare Tunnel 재시작
             - 'restart_bot': 업비트 매매봇 재시작
+            - 'budget': 토큰 예산 현황 확인
+            - 'budget_reset': 토큰 예산 리셋 (두근 승인 시)
             - 'run_119': 119 수동 실행
             - 'run_112': 112 수동 실행
             - 'status': 전체 현황만 확인
@@ -559,8 +561,32 @@ def emergency_action(action: str) -> str:
         if r.stdout.strip():
             lines.append(r.stdout.strip()[-200:])
 
+    elif action == "budget":
+        r = subprocess.run(
+            ["curl", "-s", "http://localhost:8000/api/budget"],
+            capture_output=True, text=True, timeout=5
+        )
+        try:
+            import json as _json
+            d = _json.loads(r.stdout)
+            used_k = d.get("used", 0) // 1000
+            limit_k = d.get("limit", 0) // 1000
+            remaining_k = d.get("remaining", 0) // 1000
+            paused = "⛔ 중단됨" if d.get("paused") else "✅ 정상"
+            lines.append(f"💰 토큰 예산: {used_k}K / {limit_k}K (잔여: {remaining_k}K)")
+            lines.append(f"📊 상태: {paused} | 윈도우: {d.get('window_minutes', 60)}분")
+        except Exception:
+            lines.append(r.stdout)
+
+    elif action == "budget_reset":
+        r = subprocess.run(
+            ["curl", "-s", "-X", "POST", "http://localhost:8000/api/budget/reset"],
+            capture_output=True, text=True, timeout=5
+        )
+        lines.append("✅ 토큰 예산 리셋 완료")
+
     else:
-        return f"❌ 알 수 없는 조치: {action}\n가능: kill_orphans, kill_all, restart_server, restart_tunnel, restart_bot, run_119, run_112, status"
+        return f"❌ 알 수 없는 조치: {action}\n가능: kill_orphans, kill_all, restart_server, restart_tunnel, restart_bot, run_119, run_112, budget, budget_reset, status"
 
     return "\n".join(lines)
 
