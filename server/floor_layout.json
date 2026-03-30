@@ -1,16 +1,15 @@
 {
   "1": [
-    "server-monitor",
     "cpo-claude",
-    "trading-bot",
-    "date-map",
     "claude-biseo",
-    "ai900",
-    "design-team"
+    "frontend-team",
+    "backend-team",
+    "content-lab"
   ],
   "2": [
-    "content-lab",
-    "frontend-team",
-    "backend-team"
+    "trading-bot",
+    "ai900",
+    "design-team",
+    "date-map"
   ]
 }

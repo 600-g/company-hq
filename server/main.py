@@ -43,8 +43,6 @@ PROJECTS_ROOT = os.path.expanduser(os.getenv("PROJECTS_ROOT", "~/Developer/my-co
 TEAMS_FILE = os.path.join(os.path.dirname(__file__), "teams.json")
 
 _DEFAULT_TEAMS = [
-    {"id": "server-monitor", "name": "서버실", "emoji": "🖥", "repo": "company-hq",
-     "localPath": "~/Developer/my-company/company-hq", "status": "운영중"},
     {"id": "cpo-claude", "name": "CPO", "emoji": "🧠", "repo": "company-hq",
      "localPath": "~/Developer/my-company/company-hq", "status": "운영중", "model": "opus"},
     {"id": "trading-bot", "name": "매매봇", "emoji": "🤖", "repo": "upbit-auto-trading-bot",
@@ -101,7 +99,7 @@ def _save_layout(layout: dict[str, list[str]]):
 
 def _sync_layout_with_teams(teams: list[dict], layout: dict[str, list[str]]) -> dict[str, list[str]]:
     """teams.json 변경 시 floor_layout.json에서 삭제된 팀 제거, 신규 팀 자동 배치"""
-    team_ids = {t["id"] for t in teams} - {"server-monitor", "cpo-claude"}
+    team_ids = {t["id"] for t in teams} - {"cpo-claude"}
     # 레이아웃에 있는 팀 ID 수집
     assigned: set[str] = set()
     new_layout: dict[str, list[str]] = {}
@@ -345,8 +343,8 @@ async def delete_team(team_id: str):
     import json
     import logging
     global TEAMS
-    if team_id in ("server-monitor", "cpo-claude"):
-        return {"ok": False, "error": "서버실과 CPO는 삭제할 수 없습니다."}
+    if team_id in ("cpo-claude",):
+        return {"ok": False, "error": "CPO는 삭제할 수 없습니다."}
     before = len(TEAMS)
     TEAMS = [t for t in TEAMS if t["id"] != team_id]
     if len(TEAMS) == before:
@@ -478,8 +476,6 @@ async def get_agents_status():
     """
     agents = []
     for team in TEAMS:
-        if team["id"] == "server-monitor":
-            continue
         tid = team["id"]
         char = get_char_state(tid)
         ws_status = AGENT_STATUS.get(tid, {})
@@ -599,8 +595,6 @@ async def get_dashboard():
     agents = []
     for team in TEAMS:
         tid = team["id"]
-        if tid == "server-monitor":
-            continue  # 서버실 자신은 에이전트 목록에서 제외
         status = AGENT_STATUS.get(tid, {})
         session = TEAM_SESSIONS.get(tid)
         model_key = TEAM_MODELS.get(tid, "sonnet")
@@ -949,7 +943,7 @@ async def dispatch_task(body: dict):
         plan_prompt = (
             f"다음 작업을 수행하려고 해:\n\n{instruction}\n\n"
             f"현재 팀 목록:\n"
-            + "\n".join(f"- {t['emoji']} {t['name']} ({t['id']}): {t['repo']}" for t in TEAMS if t['id'] not in ('server-monitor',))
+            + "\n".join(f"- {t['emoji']} {t['name']} ({t['id']}): {t['repo']}" for t in TEAMS if t['id'] not in ('cpo-claude',))
             + "\n\n"
             "이 작업을 어떤 팀에 어떤 순서로 시킬지 JSON으로 답해줘. 형식:\n"
             '[{"team": "team-id", "prompt": "팀에게 줄 구체적 지시"}]\n'
@@ -1090,8 +1084,8 @@ async def smart_dispatch(body: dict):
     async def stream():
         import re as _re
 
-        # 팀 목록 (server-monitor 제외)
-        available_teams = [t for t in TEAMS if t["id"] not in ("server-monitor", "cpo-claude")]
+        # 팀 목록 (CPO 제외)
+        available_teams = [t for t in TEAMS if t["id"] not in ("cpo-claude",)]
         team_list_str = "\n".join(
             f'- {t["id"]}: {t["emoji"]} {t["name"]}' for t in available_teams
         )
@@ -1305,7 +1299,7 @@ async def push_119(req: dict):
         body=body[:200],
         tag="119-alert",
         url="/",
-        team_id="server-monitor",
+        team_id="cpo-claude",
     )
     return {"ok": True, "sent": count}
 

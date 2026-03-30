@@ -1,13 +1,5 @@
 [
   {
-    "id": "server-monitor",
-    "name": "서버실",
-    "emoji": "🖥",
-    "repo": "company-hq",
-    "localPath": "~/Developer/my-company/company-hq",
-    "status": "운영중"
-  },
-  {
     "id": "cpo-claude",
     "name": "CPO",
     "emoji": "🧠",

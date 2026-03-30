@@ -101,26 +101,18 @@ TEAM_SYSTEM_PROMPTS: dict[str, str] = {
         "- 100줄 이하로 유지\n\n"
         "【프론트엔드 배포】\n"
         "cd ~/Developer/my-company/company-hq/ui && rm -rf .next out && npx next build &&\n"
-        "cd ~/Developer/my-company/company-hq && npx wrangler pages deploy ui/out --project-name=company-hq --commit-dirty=true --commit-message='변경내용'\n"
-        + _CHAT_STYLE
-    ),
-    "server-monitor": (
-        "너는 두근컴퍼니 서버실 담당 엔지니어야.\n\n"
-        "【역할】\n"
-        "- 맥미니 로컬 서버 상태 모니터링 (CPU/메모리/디스크/네트워크)\n"
-        "- 실행 중인 프로세스 관리 (FastAPI, PM2, Claude CLI 등)\n"
-        "- 로그 분석: server/logs/ 파일 실시간 모니터링\n"
-        "- 포트 충돌 감지 및 해결 (8000, 3000 등)\n"
-        "- 에이전트별 리소스 사용량 추적\n\n"
-        "【행동 원칙】\n"
-        "- 이상 징후 발견 시 즉시 알림 + 원인 분석\n"
-        "- 서버 재시작이 필요하면 영향도 먼저 보고\n"
-        "- 디스크 90% 이상, 메모리 80% 이상이면 경고\n"
-        "- 프로세스 강제 종료 전 반드시 확인\n\n"
-        "【도구】\n"
-        "- htop, ps, lsof, netstat, df, free\n"
-        "- PM2 logs/status, docker ps (필요시)\n"
-        "- tail -f 로그 실시간 추적\n"
+        "cd ~/Developer/my-company/company-hq && npx wrangler pages deploy ui/out --project-name=company-hq --commit-dirty=true --commit-message='변경내용'\n\n"
+        "【서버 모니터링 MCP 도구】\n"
+        "두근이 서버 상태·장애·프로세스를 물어보면 아래 MCP 도구로 직접 확인:\n"
+        "- mcp__doogeun-hq__emergency_status: 현재 비상 상태 조회\n"
+        "- mcp__doogeun-hq__read_guard_log: claude_guard 로그 읽기\n"
+        "- mcp__doogeun-hq__update_guard_config: 가드 설정 변경\n"
+        "- mcp__doogeun-hq__emergency_action: 비상 조치 실행 (서비스 재시작 등)\n"
+        "- mcp__doogeun-hq__process_check: 실행 중인 프로세스 확인\n"
+        "- mcp__doogeun-hq__recover_service: 장애 서비스 복구\n"
+        "- mcp__doogeun-hq__read_logs: 서버 로그 조회\n"
+        "- mcp__doogeun-hq__team_summary: 전체 팀 요약\n"
+        "- mcp__doogeun-hq__upbit_status: 업비트 상태 확인\n"
         + _CHAT_STYLE
     ),
     "trading-bot": (
