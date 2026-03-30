@@ -804,6 +804,13 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
               githubUrl: existing?.githubUrl || `https://github.com/600-g/${t.repo}`,
             };
           });
+          // 서버실·CPO는 teams.json 삭제 여부와 무관하게 항상 존재
+          for (const fixedId of ["cpo-claude", "server-monitor"] as const) {
+            if (!merged.find(t => t.id === fixedId)) {
+              const fallback = defaultTeamList.find(d => d.id === fixedId);
+              if (fallback) merged.unshift(fallback);
+            }
+          }
           setTeams(merged);
         });
     loadTeams().catch(() => {
@@ -819,6 +826,7 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
   const [focusedWindow, setFocusedWindow] = useState<string>("");
   const [mobileChat, setMobileChat] = useState<string | null>(null); // 모바일 채팅 팀 id
   const [mobileSide, setMobileSide] = useState(false); // 모바일 사이드패널 (목록/통합채팅)
+  const [openServerDash, setOpenServerDash] = useState(false); // PC 서버실 대시보드 오버레이
   const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
 
   const [toast, setToast] = useState<string | null>(null);
@@ -1034,6 +1042,7 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
 
   // ── 에이전트 패널 드래그 앤 드롭 (층별 순서) — 서버 영구 저장 ──
   const PINNED_IDS = ["cpo-claude"];
+  const SIDEBAR_TOP_IDS = ["cpo-claude", "server-monitor"]; // 사이드바 최상단 고정 항목 (이동 불가)
   const DEFAULT_FLOORS: Record<number, string[]> = {
     1: ["cpo-claude", "claude-biseo", "frontend-team", "backend-team", "content-lab"],
     2: ["trading-bot", "ai900", "design-team", "date-map"],
@@ -1478,11 +1487,51 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
                 </div>
                 {/* 에이전트 목록 (층별 그룹) + 통합채팅 */}
                 <div className="flex-1 overflow-y-auto overscroll-contain" style={{ minHeight: 0, WebkitOverflowScrolling: "touch", touchAction: "pan-y" }}>
+                  {/* ── CPO + 서버실 모바일 최상단 고정 섹션 ── */}
+                  <div className="px-2 pt-2 pb-1.5 flex flex-col gap-0.5 border-b border-[#2a2a5a]">
+                    {/* CPO — 1인 캐릭터 */}
+                    {(() => {
+                      const cpo = teams.find(t => t.id === "cpo-claude");
+                      if (!cpo) return null;
+                      return (
+                        <button
+                          onClick={() => { setMobileChat("cpo-claude"); setMobileSide(true); }}
+                          className={`w-full text-left px-2.5 py-1.5 rounded text-[12px] transition-all min-h-[36px] ${
+                            mobileChat === "cpo-claude"
+                              ? "bg-yellow-500/10 text-yellow-400 border border-yellow-500/20"
+                              : "text-yellow-300/80 border border-yellow-500/15 active:bg-yellow-500/5"
+                          }`}
+                        >
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-base">{cpo.emoji}</span>
+                            <span className="font-semibold">{cpo.name}</span>
+                            <span className="text-[7px] bg-yellow-500/20 text-yellow-500 px-1 rounded ml-auto">고정</span>
+                          </div>
+                        </button>
+                      );
+                    })()}
+                    {/* 서버실 — 모니터링 */}
+                    <button
+                      onClick={() => { setMobileChat("server-monitor"); setMobileSide(true); }}
+                      className={`w-full text-left px-2.5 py-1.5 rounded text-[12px] transition-all min-h-[36px] ${
+                        mobileChat === "server-monitor"
+                          ? "bg-blue-500/10 text-blue-400 border border-blue-500/20"
+                          : "text-gray-400 border border-transparent active:bg-[#1a1a3a]"
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <span>🖥</span>
+                        <span>서버실</span>
+                        <span className="text-[7px] text-gray-600 ml-auto">모니터링</span>
+                        <span className="text-[7px] bg-gray-700 text-gray-500 px-1 rounded">고정</span>
+                      </div>
+                    </button>
+                  </div>
                   <div className="p-2 flex flex-col gap-0">
                     {(() => {
                       const floors = Object.keys(floorTeams).map(Number).sort((a, b) => a - b);
                       if (floors.length === 0) {
-                        return teams.map((team) => {
+                        return teams.filter(t => !SIDEBAR_TOP_IDS.includes(t.id)).map((team) => {
                           const info = teamInfoMap[team.id];
                           return (
                             <button key={team.id} onClick={() => setMobileChat(team.id)}
@@ -1496,7 +1545,7 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
                         });
                       }
                       return floors.map((floor) => {
-                        const teamIds = Array.isArray(floorTeams[floor]) ? floorTeams[floor] : [];
+                        const teamIds = (Array.isArray(floorTeams[floor]) ? floorTeams[floor] : []).filter(id => !SIDEBAR_TOP_IDS.includes(id));
                         return (
                           <div key={floor}>
                             {/* 층 헤더 */}
@@ -1606,6 +1655,25 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
         </div>
       )}
 
+      {/* ── 서버실 대시보드 오버레이 (PC) ── */}
+      {openServerDash && (
+        <div className="fixed inset-0 z-[80] bg-black/50 flex items-start justify-center pt-12" onClick={() => setOpenServerDash(false)}>
+          <div className="bg-[#0a0e1a] border border-[#2a2a5a] rounded-lg w-[680px] max-h-[80vh] shadow-2xl flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-3 border-b border-[#2a2a5a] shrink-0">
+              <div className="flex items-center gap-2">
+                <span className="text-lg">🖥</span>
+                <span className="text-sm font-bold text-white">서버실 모니터링</span>
+                <span className="text-[9px] text-gray-600">server-monitor</span>
+              </div>
+              <button onClick={() => setOpenServerDash(false)} className="text-gray-500 hover:text-white text-sm">✕</button>
+            </div>
+            <div className="flex-1 min-h-0 overflow-hidden">
+              <ServerDashboard onClose={() => setOpenServerDash(false)} />
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── 채팅 윈도우들 (PC만, 팀 위치 기반) ── */}
       {openWindows.map((teamId, idx) => {
         const team = teams.find(t => t.id === teamId);
@@ -1643,12 +1711,54 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
               + 추가
             </button>
           </div>
+
+          {/* ── CPO + 서버실 최상단 고정 섹션 ── */}
+          <div className="flex flex-col gap-0.5 mb-2 pb-2 border-b border-[#2a2a5a]">
+            {/* CPO — 1인 캐릭터 */}
+            {(() => {
+              const cpo = teams.find(t => t.id === "cpo-claude");
+              if (!cpo) return null;
+              return (
+                <button
+                  onClick={() => handleTeamClick("cpo-claude")}
+                  className={`w-full text-left px-2.5 py-1.5 rounded text-[12px] transition-all min-h-[36px] ${
+                    openWindows.includes("cpo-claude")
+                      ? "bg-yellow-500/10 text-yellow-400 border border-yellow-500/20"
+                      : "text-yellow-300/80 border border-yellow-500/15 hover:bg-yellow-500/5"
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-base">{cpo.emoji}</span>
+                    <span className="font-semibold">{cpo.name}</span>
+                    <span className="text-[7px] bg-yellow-500/20 text-yellow-500 px-1 rounded ml-auto">고정</span>
+                  </div>
+                </button>
+              );
+            })()}
+            {/* 서버실 — 모니터링 대시보드 링크 */}
+            <button
+              onClick={() => setOpenServerDash(true)}
+              className={`w-full text-left px-2.5 py-1.5 rounded text-[12px] transition-all min-h-[36px] ${
+                openServerDash
+                  ? "bg-blue-500/10 text-blue-400 border border-blue-500/20"
+                  : "text-gray-400 border border-transparent hover:bg-[#1a1a3a]"
+              }`}
+            >
+              <div className="flex items-center gap-1.5">
+                <span>🖥</span>
+                <span>서버실</span>
+                <span className="text-[7px] text-gray-600 ml-auto">모니터링</span>
+                <span className="text-[7px] bg-gray-700 text-gray-500 px-1 rounded">고정</span>
+              </div>
+            </button>
+          </div>
+
           <div className="flex flex-col gap-0">
             {(() => {
               const floors = Object.keys(floorTeams).map(Number).sort((a, b) => a - b);
               if (floors.length === 0) {
                 // fallback: floorTeams not yet initialized, show flat list
-                return teams.map((team) => {
+                return teams.filter(t => !SIDEBAR_TOP_IDS.includes(t.id)).map((team) => {
                   const info = teamInfoMap[team.id];
                   return (
                     <div key={team.id} className="flex items-center gap-1">
@@ -1668,7 +1778,7 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
                 });
               }
               return floors.map((floor) => {
-                const teamIds = Array.isArray(floorTeams[floor]) ? floorTeams[floor] : [];
+                const teamIds = (Array.isArray(floorTeams[floor]) ? floorTeams[floor] : []).filter(id => !SIDEBAR_TOP_IDS.includes(id));
                 return (
                   <div key={floor}>
                     {/* ── 층 헤더 (클릭 → 해당 층으로 이동, 드롭 → 팀 층 이동) ── */}
