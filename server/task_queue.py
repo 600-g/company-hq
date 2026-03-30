@@ -135,7 +135,8 @@ class TaskQueue:
             try:
                 project_path = self._get_team_path(team_id) if self._get_team_path else None
                 result_text = ""
-                async for chunk in self._run_claude(task.prompt, project_path, team_id):
+                # 큐/파이프라인 실행은 자동 트리거 → is_auto=True (낮은 예산 상한)
+                async for chunk in self._run_claude(task.prompt, project_path, team_id, is_auto=True):
                     if chunk["kind"] == "text":
                         result_text += chunk["content"]
 

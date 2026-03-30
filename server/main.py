@@ -1010,7 +1010,8 @@ async def dispatch_task(body: dict):
         project_path = team["localPath"]
 
         try:
-            async for chunk in run_claude(actual_prompt, project_path, team_id):
+            # /api/dispatch 는 CPO 자동 오케스트레이션 → is_auto=True
+            async for chunk in run_claude(actual_prompt, project_path, team_id, is_auto=True):
                 if chunk["kind"] == "text":
                     result_text += chunk["content"]
         except Exception as e:
@@ -1145,7 +1146,8 @@ async def smart_dispatch(body: dict):
                 "유저에게 도움되는 답변을 해줘. 짧고 명확하게."
             )
             direct_text = ""
-            async for chunk in run_claude(direct_prompt, cpo_team["localPath"], "cpo-claude"):
+            # smart_dispatch CPO 직접 응답 — 자동 라우팅 결과이므로 is_auto=True
+            async for chunk in run_claude(direct_prompt, cpo_team["localPath"], "cpo-claude", is_auto=True):
                 if chunk["kind"] == "text":
                     direct_text += chunk["content"]
                     yield f"data: {json.dumps({'phase': 'summary_chunk', 'content': chunk['content']})}\n\n"
@@ -1177,7 +1179,8 @@ async def smart_dispatch(body: dict):
 
             result_text = ""
             try:
-                async for chunk in run_claude(prompt, team["localPath"], team_id):
+                # smart_dispatch 팀 병렬 실행 — 자동 라우팅 결과이므로 is_auto=True
+                async for chunk in run_claude(prompt, team["localPath"], team_id, is_auto=True):
                     if chunk["kind"] == "text":
                         result_text += chunk["content"]
                 team_results[team_id] = {
@@ -1232,7 +1235,8 @@ async def smart_dispatch(body: dict):
             )
 
             summary_text = ""
-            async for chunk in run_claude(summary_prompt, cpo_team["localPath"], "cpo-claude"):
+            # CPO 통합 보고 — 자동 오케스트레이션이므로 is_auto=True
+            async for chunk in run_claude(summary_prompt, cpo_team["localPath"], "cpo-claude", is_auto=True):
                 if chunk["kind"] == "text":
                     summary_text += chunk["content"]
                     yield f"data: {json.dumps({'phase': 'summary_chunk', 'content': chunk['content']})}\n\n"
