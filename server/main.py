@@ -414,6 +414,8 @@ async def get_floor_layout():
     for floor_str, team_ids in sorted(FLOOR_LAYOUT.items(), key=lambda x: int(x[0])):
         teams_in_floor = []
         for tid in team_ids:
+            if tid == "cpo-claude":  # CPO는 게임에서 별도 렌더링 (이중 생성 방지)
+                continue
             team = team_map.get(tid)
             if team:
                 teams_in_floor.append({
