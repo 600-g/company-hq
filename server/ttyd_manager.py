@@ -47,10 +47,12 @@ def start_team_terminal(team_id: str) -> dict:
     port = get_team_port(team_id)
     team_dir = get_team_dir(team_id)
 
-    # 팀 디렉토리에서 bash 시작하는 init 스크립트
+    # 팀 디렉토리에서 claude CLI 바로 시작 (한글 로케일 포함)
     init_script = (
-        f'cd {team_dir} && echo "✓ {team_id} 팀 디렉토리: {team_dir}" '
-        f'&& echo "✓ claude 명령어로 에이전트 시작" && bash'
+        f'export LANG=ko_KR.UTF-8 && export LC_ALL=ko_KR.UTF-8 '
+        f'&& cd {team_dir} '
+        f'&& echo "✓ {team_id} 팀 — Claude Code 시작" '
+        f'&& /opt/homebrew/bin/claude'
     )
 
     proc = subprocess.Popen([
