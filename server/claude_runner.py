@@ -348,7 +348,7 @@ TOKEN_BUDGET_WINDOW   = 3600     # 1시간 윈도우 (초)
 TOKEN_BUDGET_LIMIT    = 300_000  # 수동 실행 1시간 상한
 TOKEN_BUDGET_AUTO     = 100_000  # 자동 실행 1시간 상한 (더 낮게)
 TOKEN_SPIKE_WINDOW    = 600      # 급등 감지 윈도우 (10분)
-TOKEN_SPIKE_LIMIT     = 80_000   # 10분 내 80K 초과 → 자동 스탠바이
+TOKEN_SPIKE_LIMIT     = 500_000  # 10분 내 500K 초과 → 자동 스탠바이
 
 _token_budget_log: list[tuple[float, int]] = []  # [(timestamp, tokens), ...]
 _budget_paused = False            # 예산 초과 시 True → 에이전트 실행 거부
