@@ -1254,17 +1254,12 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
       setMobileSide(true);
       return;
     }
-    if (screenX != null && screenY != null) {
-      setClickPositions(prev => ({ ...prev, [teamId]: { x: screenX, y: screenY } }));
+    // 모달 방식: devTeam 토글
+    const team = teams.find(t => t.id === teamId);
+    if (team) {
+      setDevTeam(prev => prev?.id === teamId ? null : team);
     }
-    setOpenWindows(prev => {
-      if (prev.includes(teamId)) {
-        return prev.filter(id => id !== teamId);
-      }
-      return [...prev, teamId];
-    });
-    setFocusedWindow(teamId);
-  }, []);
+  }, [teams]);
   handleTeamClickRef.current = handleTeamClick;
 
   // URL ?team=xxx 파라미터로 팀 채팅 자동 열기 (알림 클릭 시)
@@ -1676,28 +1671,30 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
         </div>
       )}
 
-      {/* ── 채팅 윈도우들 (PC만, 팀 위치 기반) ── */}
-      {openWindows.map((teamId, idx) => {
-        const team = teams.find(t => t.id === teamId);
-        if (!team) return null;
-        const cp = clickPositions[teamId];
-        const baseX = cp ? Math.min(cp.x, window.innerWidth - 400) : 120 + (idx % 3) * 140;
-        const baseY = cp ? Math.max(40, Math.min(cp.y - 60, window.innerHeight - 460)) : 40 + idx * 40;
-        return (
+      {/* ── /dev 웹터미널 모달 (채팅 UI + Claude Code 엔진) ── */}
+      {devTeam && (
+        <div
+          style={{
+            position: 'fixed', inset: 0,
+            background: 'rgba(0,0,0,0.6)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 1000,
+          }}
+          onClick={(e) => { if (e.target === e.currentTarget) setDevTeam(null) }}
+        >
           <ChatWindow
-            key={teamId}
-            team={team}
-            messages={chatHistory[teamId] || []}
-            onMessages={(msgs) => setChatHistory(prev => ({ ...prev, [teamId]: msgs }))}
-            onClose={() => setOpenWindows(prev => prev.filter(id => id !== teamId))}
-            onWorkingChange={(working) => handleWorkingChange(teamId, working)}
-            onFocus={() => setFocusedWindow(teamId)}
-            zIndex={focusedWindow === teamId ? openWindows.length + 1 : idx + 1}
-            initialX={baseX}
-            initialY={baseY}
+            team={devTeam}
+            messages={chatHistory[devTeam.id] || []}
+            onMessages={(msgs) => setChatHistory(prev => ({ ...prev, [devTeam.id]: msgs }))}
+            onClose={() => setDevTeam(null)}
+            onWorkingChange={(working) => handleWorkingChange(devTeam.id, working)}
+            onFocus={() => {}}
+            zIndex={1001}
+            initialX={Math.floor((typeof window !== "undefined" ? window.innerWidth : 900) / 2 - 250)}
+            initialY={60}
           />
-        );
-      })}
+        </div>
+      )}
 
       {/* ── 우측 패널 (PC만) ── */}
       <aside className="hidden md:flex md:w-[360px] h-full bg-[#12122a] border-l border-[#2a2a5a] flex-col shrink-0 overflow-hidden">
