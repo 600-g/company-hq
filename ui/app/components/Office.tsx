@@ -7,6 +7,7 @@ import ChatWindow from "./ChatWindow";
 import ServerDashboard from "./ServerDashboard";
 import WeatherBoard from "./WeatherBoard";
 import type { OfficeGameHandle } from "../game/OfficeGame";
+import DevTerminal from "./DevTerminal";
 
 // ── CPO 주도 스마트 디스패치 ────────────────────────────
 type DispatchStatus = "pending" | "sending" | "working" | "done" | "skipped" | "error";
@@ -825,6 +826,7 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
   const [openWindows, setOpenWindows] = useState<string[]>([]); // 열린 팀 id 목록
   const [focusedWindow, setFocusedWindow] = useState<string>("");
   const [mobileChat, setMobileChat] = useState<string | null>(null); // 모바일 채팅 팀 id
+  const [devTeam, setDevTeam] = useState<Team | null>(null); // /dev 웹터미널 대상 팀
   const [mobileSide, setMobileSide] = useState(false); // 모바일 사이드패널 (목록/통합채팅)
   const [openServerDash, setOpenServerDash] = useState(false); // PC 서버실 대시보드 오버레이
   const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
@@ -1246,23 +1248,11 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
   }, []);
 
   const handleTeamClick = useCallback((teamId: string, screenX?: number, screenY?: number) => {
-    const mobile = typeof window !== "undefined" && window.innerWidth < 768;
-    if (mobile) {
-      setMobileChat(prev => prev === teamId ? null : teamId);
-      setMobileSide(true); // 사이드패널 열기
-      return;
+    const team = teams.find(t => t.id === teamId);
+    if (team) {
+      setDevTeam(prev => prev?.id === teamId ? null : team);
     }
-    if (screenX != null && screenY != null) {
-      setClickPositions(prev => ({ ...prev, [teamId]: { x: screenX, y: screenY } }));
-    }
-    setOpenWindows(prev => {
-      if (prev.includes(teamId)) {
-        return prev.filter(id => id !== teamId);
-      }
-      return [...prev, teamId];
-    });
-    setFocusedWindow(teamId);
-  }, []);
+  }, [teams]);
   handleTeamClickRef.current = handleTeamClick;
 
   // URL ?team=xxx 파라미터로 팀 채팅 자동 열기 (알림 클릭 시)
@@ -1674,28 +1664,22 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
         </div>
       )}
 
-      {/* ── 채팅 윈도우들 (PC만, 팀 위치 기반) ── */}
-      {openWindows.map((teamId, idx) => {
-        const team = teams.find(t => t.id === teamId);
-        if (!team) return null;
-        const cp = clickPositions[teamId];
-        const baseX = cp ? Math.min(cp.x, window.innerWidth - 400) : 120 + (idx % 3) * 140;
-        const baseY = cp ? Math.max(40, Math.min(cp.y - 60, window.innerHeight - 460)) : 40 + idx * 40;
-        return (
-          <ChatWindow
-            key={teamId}
-            team={team}
-            messages={chatHistory[teamId] || []}
-            onMessages={(msgs) => setChatHistory(prev => ({ ...prev, [teamId]: msgs }))}
-            onClose={() => setOpenWindows(prev => prev.filter(id => id !== teamId))}
-            onWorkingChange={(working) => handleWorkingChange(teamId, working)}
-            onFocus={() => setFocusedWindow(teamId)}
-            zIndex={focusedWindow === teamId ? openWindows.length + 1 : idx + 1}
-            initialX={baseX}
-            initialY={baseY}
-          />
-        );
-      })}
+      {/* ── /dev 웹터미널 모달 ── */}
+      {devTeam && (
+        <div style={{
+          position: 'fixed', inset: 0,
+          background: 'rgba(0,0,0,0.7)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 1000, padding: 20
+        }}>
+          <div style={{ width: '90vw', height: '85vh', maxWidth: 1200 }}>
+            <DevTerminal
+              team={devTeam}
+              onClose={() => setDevTeam(null)}
+            />
+          </div>
+        </div>
+      )}
 
       {/* ── 우측 패널 (PC만) ── */}
       <aside className="hidden md:flex md:w-[360px] h-full bg-[#12122a] border-l border-[#2a2a5a] flex-col shrink-0 overflow-hidden">

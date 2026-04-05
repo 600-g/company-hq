@@ -31,6 +31,7 @@ from push_notifications import (
     get_notifications, get_unread_count, mark_read, mark_all_read, delete_notification,
 )
 from task_queue import task_queue, pipeline_engine, debouncer
+from ttyd_manager import start_team_terminal, stop_team_terminal, get_session_info
 
 load_dotenv()
 
@@ -1525,9 +1526,31 @@ async def debounce_status():
     return {"ok": True, "buffers": debouncer.get_status()}
 
 
+# ── 웹터미널 (ttyd) ──────────────────────────────────
+
+@app.post("/api/terminal/{team_id}/start")
+async def start_terminal(team_id: str):
+    """팀별 웹터미널 세션 시작"""
+    result = start_team_terminal(team_id)
+    return result
+
+
+@app.delete("/api/terminal/{team_id}/stop")
+async def stop_terminal(team_id: str):
+    """팀별 웹터미널 세션 종료"""
+    stop_team_terminal(team_id)
+    return {"status": "stopped"}
+
+
+@app.get("/api/terminal/{team_id}/status")
+async def terminal_status(team_id: str):
+    """팀별 터미널 세션 상태 확인"""
+    return get_session_info(team_id)
+
+
 # ── 서버 실행 ─────────────────────────────────────────
 
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
-# reload Sun Mar 29 2026 — task_queue + pipeline + debounce 추가
+# reload Sun Apr 06 2026 — ttyd 웹터미널 API 추가
