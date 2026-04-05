@@ -2,6 +2,13 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react'
 
+function getApiBase(): string {
+  if (typeof window === "undefined") return "https://api.600g.net";
+  const h = window.location.hostname;
+  const isLocal = h === "localhost" || h === "127.0.0.1" || h.endsWith(".local");
+  return isLocal ? `http://${h}:8000` : "https://api.600g.net";
+}
+
 interface Team {
   id: string
   name: string
@@ -24,7 +31,7 @@ export default function DevTerminal({ team, onClose }: DevTerminalProps) {
     setStatus('loading')
     try {
       const token = localStorage.getItem('auth_token')
-      const res = await fetch(`/api/terminal/${team.id}/start`, {
+      const res = await fetch(`${getApiBase()}/api/terminal/${team.id}/start`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` }
       })
@@ -44,15 +51,18 @@ export default function DevTerminal({ team, onClose }: DevTerminalProps) {
     return () => {
       // 언마운트 시 세션 종료
       const token = localStorage.getItem('auth_token')
-      fetch(`/api/terminal/${team.id}/stop`, {
+      fetch(`${getApiBase()}/api/terminal/${team.id}/stop`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` }
       }).catch(() => {})
     }
   }, [team.id])
 
+  const isLocal = typeof window !== "undefined" &&
+    (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1" || window.location.hostname.endsWith(".local"))
+
   const terminalUrl = port
-    ? `http://localhost:${port}`
+    ? isLocal ? `http://localhost:${port}` : `https://terminal.600g.net`
     : null
 
   return (
