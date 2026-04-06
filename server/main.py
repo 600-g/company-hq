@@ -28,7 +28,7 @@ from auth import (
 from push_notifications import (
     get_vapid_public_key, add_subscription, remove_subscription,
     send_push, send_agent_complete, send_server_error,
-    get_notifications, get_unread_count, mark_read, mark_all_read, delete_notification,
+    get_notifications, get_unread_count, mark_read, mark_all_read, mark_team_read, delete_notification,
 )
 from task_queue import task_queue, pipeline_engine, debouncer
 from ttyd_manager import start_team_terminal, stop_team_terminal, get_session_info
@@ -43,34 +43,92 @@ PROJECTS_ROOT = os.path.expanduser(os.getenv("PROJECTS_ROOT", "~/Developer/my-co
 # 팀 목록 — teams.json에서 로드 (동적 추가 영구 반영)
 TEAMS_FILE = os.path.join(os.path.dirname(__file__), "teams.json")
 
+# 고정 순서 팀 — order 변경 불가
+_PINNED_ORDERS: dict[str, int] = {
+    "server-monitor": 0,
+    "cpo-claude": 1,
+}
+
 _DEFAULT_TEAMS = [
+    {"id": "server-monitor", "name": "서버실", "emoji": "🖥", "repo": "company-hq",
+     "localPath": "~/Developer/my-company/company-hq", "status": "운영중",
+     "order": 0, "layer": 0, "pinned": True},
     {"id": "cpo-claude", "name": "CPO", "emoji": "🧠", "repo": "company-hq",
-     "localPath": "~/Developer/my-company/company-hq", "status": "운영중", "model": "opus"},
+     "localPath": "~/Developer/my-company/company-hq", "status": "운영중", "model": "opus",
+     "order": 1, "layer": 0, "pinned": True},
     {"id": "trading-bot", "name": "매매봇", "emoji": "🤖", "repo": "upbit-auto-trading-bot",
-     "localPath": "~/Developer/my-company/upbit-auto-trading-bot", "status": "운영중"},
+     "localPath": "~/Developer/my-company/upbit-auto-trading-bot", "status": "운영중",
+     "order": 2, "layer": 1},
     {"id": "date-map", "name": "데이트지도", "emoji": "🗺️", "repo": "date-map",
-     "localPath": "~/Developer/my-company/date-map", "status": "운영중"},
+     "localPath": "~/Developer/my-company/date-map", "status": "운영중",
+     "order": 3, "layer": 1},
     {"id": "claude-biseo", "name": "클로드비서", "emoji": "🤵", "repo": "claude-biseo-v1.0",
-     "localPath": "~/Developer/my-company/claude-biseo-v1.0", "status": "운영중"},
+     "localPath": "~/Developer/my-company/claude-biseo-v1.0", "status": "운영중",
+     "order": 4, "layer": 1},
     {"id": "ai900", "name": "AI900", "emoji": "📚", "repo": "ai900",
-     "localPath": "~/Developer/my-company/ai900", "status": "운영중"},
+     "localPath": "~/Developer/my-company/ai900", "status": "운영중",
+     "order": 5, "layer": 1},
+    {"id": "cl600g", "name": "CL600G", "emoji": "⚡", "repo": "cl600g",
+     "localPath": "~/Developer/my-company/cl600g", "status": "운영중",
+     "order": 6, "layer": 1},
     {"id": "design-team", "name": "디자인팀", "emoji": "🎨", "repo": "design-team",
-     "localPath": "~/Developer/my-company/design-team", "status": "운영중"},
+     "localPath": "~/Developer/my-company/design-team", "status": "운영중",
+     "order": 7, "layer": 1},
+    {"id": "content-lab", "name": "콘텐츠랩", "emoji": "🔬", "repo": "content-lab",
+     "localPath": "~/Developer/my-company/content-lab", "status": "운영중",
+     "order": 8, "layer": 2},
+    {"id": "frontend-team", "name": "프론트엔드", "emoji": "🖼", "repo": "frontend-team",
+     "localPath": "~/Developer/my-company/frontend-team", "status": "운영중",
+     "order": 9, "layer": 2},
+    {"id": "backend-team", "name": "백엔드", "emoji": "⚙️", "repo": "backend-team",
+     "localPath": "~/Developer/my-company/backend-team", "status": "운영중",
+     "order": 10, "layer": 2},
 ]
 
+def _migrate_team_fields(team: dict, auto_order: int) -> dict:
+    """order/layer/pinned 필드가 없는 기존 팀에 기본값 주입 (마이그레이션)"""
+    tid = team.get("id", "")
+    if "order" not in team:
+        team["order"] = _PINNED_ORDERS.get(tid, auto_order)
+    if "layer" not in team:
+        team["layer"] = 0 if tid in _PINNED_ORDERS else 1
+    if "pinned" not in team and tid in _PINNED_ORDERS:
+        team["pinned"] = True
+    # 고정 팀 order는 항상 강제 유지
+    if tid in _PINNED_ORDERS:
+        team["order"] = _PINNED_ORDERS[tid]
+        team["pinned"] = True
+    return team
+
 def _load_teams() -> list:
-    import json
     if os.path.isfile(TEAMS_FILE):
         with open(TEAMS_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+            teams = json.load(f)
+        # 마이그레이션: order/layer 없는 팀 처리
+        needs_save = False
+        auto_order = 2  # pinned 2개 다음부터
+        for t in teams:
+            if t.get("id") not in _PINNED_ORDERS:
+                auto_order += 1
+            before = dict(t)
+            _migrate_team_fields(t, auto_order)
+            if t != before:
+                needs_save = True
+        if needs_save:
+            _save_teams(teams)
+        return sorted(teams, key=lambda t: t.get("order", 999))
     # 최초 실행 시 기본값 저장
     _save_teams(_DEFAULT_TEAMS)
     return list(_DEFAULT_TEAMS)
 
 def _save_teams(teams: list):
-    import json
     with open(TEAMS_FILE, "w", encoding="utf-8") as f:
         json.dump(teams, f, ensure_ascii=False, indent=2)
+
+def _next_order(teams: list) -> int:
+    """신규 팀에 부여할 order 값 (기존 최대 + 1, 최소 2)"""
+    orders = [t.get("order", 0) for t in teams if not t.get("pinned")]
+    return max(orders, default=1) + 1
 
 TEAMS = _load_teams()
 set_team_lookup(TEAMS)  # 푸시 알림용 팀 정보 초기화
@@ -254,16 +312,17 @@ async def auth_roles():
 
 @app.get("/api/teams")
 async def get_teams():
-    """팀 목록 + 프로젝트 현황(버전, 최근 커밋일 포함) 반환"""
-    return scan_all(PROJECTS_ROOT, TEAMS)
+    """팀 목록 + 프로젝트 현황(버전, 최근 커밋일 포함) — order 순 정렬"""
+    sorted_teams = sorted(TEAMS, key=lambda t: t.get("order", 999))
+    return scan_all(PROJECTS_ROOT, sorted_teams)
 
 
 @app.get("/api/teams/info")
 async def get_teams_info():
-    """팀 목록 + 버전/업데이트일 간략 정보 (폴링용 경량 API)"""
+    """팀 목록 + 버전/업데이트일 간략 정보 (폴링용 경량 API) — order 순 정렬"""
     from project_scanner import scan_project
     result = []
-    for team in TEAMS:
+    for team in sorted(TEAMS, key=lambda t: t.get("order", 999)):
         local_path = os.path.expanduser(team.get("localPath", ""))
         scan = scan_project(local_path)
         result.append({
@@ -310,6 +369,8 @@ async def add_team(body: dict):
         "repo": repo_name,
         "localPath": f"~/Developer/my-company/{repo_name}",
         "status": "운영중",
+        "order": _next_order(TEAMS),
+        "layer": 1,
     }
     # 중복 체크
     if not any(t["id"] == repo_name for t in TEAMS):
@@ -415,6 +476,69 @@ async def delete_team(team_id: str):
 async def get_repos():
     """GitHub 레포 목록"""
     return list_repos()
+
+
+# ── 팀 순서/층 변경 API ───────────────────────────────
+
+@app.put("/api/teams/{team_id}/order")
+async def update_team_order(team_id: str, body: dict):
+    """단일 팀의 order(순서)와 layer(층) 변경
+
+    body: {"order": 3, "layer": 1}
+    - pinned 팀(server-monitor, cpo-claude)은 order 변경 불가
+    - layer는 pinned 팀도 변경 불가 (layer=0 고정)
+    """
+    team = next((t for t in TEAMS if t["id"] == team_id), None)
+    if not team:
+        return {"ok": False, "error": "팀을 찾을 수 없습니다."}
+    if team.get("pinned"):
+        return {"ok": False, "error": f"{team['name']}은(는) 고정 팀이라 순서를 변경할 수 없습니다."}
+
+    new_order = body.get("order")
+    new_layer = body.get("layer")
+
+    if new_order is not None:
+        # order 2 미만은 pinned 전용 — 일반 팀은 2 이상만 허용
+        if int(new_order) < 2:
+            return {"ok": False, "error": "order 0, 1은 고정 팀 전용입니다."}
+        team["order"] = int(new_order)
+
+    if new_layer is not None:
+        team["layer"] = int(new_layer)
+
+    _save_teams(TEAMS)
+    _log_activity(team_id, f"🔀 순서 변경 → order:{team['order']} layer:{team['layer']}")
+    return {"ok": True, "team_id": team_id, "order": team["order"], "layer": team["layer"]}
+
+
+@app.put("/api/teams/reorder")
+async def reorder_teams(body: dict):
+    """다수 팀 순서 일괄 변경 (드래그 앤 드롭 후 저장)
+
+    body: {"orders": [{"id": "trading-bot", "order": 3, "layer": 1}, ...]}
+    - pinned 팀(server-monitor, cpo-claude) 항목은 무시됨
+    """
+    orders: list[dict] = body.get("orders", [])
+    if not orders:
+        return {"ok": False, "error": "orders 필드가 필요합니다."}
+
+    team_map = {t["id"]: t for t in TEAMS}
+    updated = []
+    for item in orders:
+        tid = item.get("id", "")
+        team = team_map.get(tid)
+        if not team or team.get("pinned"):
+            continue  # pinned 팀은 건너뜀
+        new_order = item.get("order")
+        new_layer = item.get("layer")
+        if new_order is not None and int(new_order) >= 2:
+            team["order"] = int(new_order)
+        if new_layer is not None:
+            team["layer"] = int(new_layer)
+        updated.append(tid)
+
+    _save_teams(TEAMS)
+    return {"ok": True, "updated": updated}
 
 
 # ── 층 배치 API ────────────────────────────────────────
@@ -1267,7 +1391,14 @@ async def smart_dispatch(body: dict):
         ]
         DISPATCH_TASKS[dispatch_id]["summary"] = summary_text
 
-        yield f"data: {json.dumps({'phase': 'done', 'dispatch_id': dispatch_id, 'summary': summary_text, 'team_results': {tid: {'status': r['status'], 'result': r.get('result', '')[:2000]} for tid, r in team_results.items()}})}\n\n"
+        meta = {
+            "routed_count": len(routed_steps),
+            "skipped_count": len(skipped_teams),
+            "total_teams": len(available_teams),
+            "routing_model": "haiku",
+            "summary_model": "opus" if len(team_results) > 1 else "direct",
+        }
+        yield f"data: {json.dumps({'phase': 'done', 'dispatch_id': dispatch_id, 'summary': summary_text, 'meta': meta, 'team_results': {tid: {'status': r['status'], 'result': r.get('result', '')[:2000]} for tid, r in team_results.items()}})}\n\n"
 
         _log_activity("cpo-claude", f"✅ 스마트 디스패치 완료: {message[:50]}")
 
@@ -1362,6 +1493,13 @@ async def read_all_notifs():
     """전체 읽음 처리"""
     count = mark_all_read()
     return {"ok": True, "marked": count, "unread": 0}
+
+
+@app.post("/api/notifications/team/{team_id}/read")
+async def read_team_notifs(team_id: str):
+    """특정 팀 알림 일괄 읽음 처리 (채팅창 열 때 자동 호출)"""
+    count = mark_team_read(team_id)
+    return {"ok": True, "marked": count, "unread": get_unread_count()}
 
 
 @app.delete("/api/notifications/{notif_id}")

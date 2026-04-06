@@ -1,12 +1,26 @@
 [
   {
+    "id": "server-monitor",
+    "name": "서버실",
+    "emoji": "🖥",
+    "repo": "company-hq",
+    "localPath": "~/Developer/my-company/company-hq",
+    "status": "운영중",
+    "order": 0,
+    "layer": 0,
+    "pinned": true
+  },
+  {
     "id": "cpo-claude",
     "name": "CPO",
     "emoji": "🧠",
     "repo": "company-hq",
     "localPath": "~/Developer/my-company/company-hq",
     "status": "운영중",
-    "model": "opus"
+    "model": "opus",
+    "order": 1,
+    "layer": 0,
+    "pinned": true
   },
   {
     "id": "trading-bot",
@@ -14,7 +28,9 @@
     "emoji": "🤖",
     "repo": "upbit-auto-trading-bot",
     "localPath": "~/Developer/my-company/upbit-auto-trading-bot",
-    "status": "운영중"
+    "status": "운영중",
+    "order": 2,
+    "layer": 1
   },
   {
     "id": "date-map",
@@ -22,7 +38,9 @@
     "emoji": "🗺️",
     "repo": "date-map",
     "localPath": "~/Developer/my-company/date-map",
-    "status": "운영중"
+    "status": "운영중",
+    "order": 3,
+    "layer": 1
   },
   {
     "id": "claude-biseo",
@@ -30,7 +48,9 @@
     "emoji": "🤵",
     "repo": "claude-biseo-v1.0",
     "localPath": "~/Developer/my-company/claude-biseo-v1.0",
-    "status": "운영중"
+    "status": "운영중",
+    "order": 4,
+    "layer": 1
   },
   {
     "id": "ai900",
@@ -38,7 +58,19 @@
     "emoji": "📚",
     "repo": "ai900",
     "localPath": "~/Developer/my-company/ai900",
-    "status": "운영중"
+    "status": "운영중",
+    "order": 5,
+    "layer": 1
+  },
+  {
+    "id": "cl600g",
+    "name": "CL600G",
+    "emoji": "⚡",
+    "repo": "cl600g",
+    "localPath": "~/Developer/my-company/cl600g",
+    "status": "운영중",
+    "order": 6,
+    "layer": 1
   },
   {
     "id": "design-team",
@@ -46,7 +78,9 @@
     "emoji": "🎨",
     "repo": "design-team",
     "localPath": "~/Developer/my-company/design-team",
-    "status": "운영중"
+    "status": "운영중",
+    "order": 7,
+    "layer": 1
   },
   {
     "id": "content-lab",
@@ -54,7 +88,9 @@
     "emoji": "🔬",
     "repo": "content-lab",
     "localPath": "~/Developer/my-company/content-lab",
-    "status": "운영중"
+    "status": "운영중",
+    "order": 8,
+    "layer": 2
   },
   {
     "id": "frontend-team",
@@ -62,7 +98,9 @@
     "emoji": "🖼",
     "repo": "frontend-team",
     "localPath": "~/Developer/my-company/frontend-team",
-    "status": "운영중"
+    "status": "운영중",
+    "order": 9,
+    "layer": 2
   },
   {
     "id": "backend-team",
@@ -70,6 +108,8 @@
     "emoji": "⚙️",
     "repo": "backend-team",
     "localPath": "~/Developer/my-company/backend-team",
-    "status": "운영중"
+    "status": "운영중",
+    "order": 10,
+    "layer": 2
   }
 ]
