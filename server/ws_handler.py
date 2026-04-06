@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from fastapi import WebSocket, WebSocketDisconnect
 from claude_runner import run_claude
-from push_notifications import send_agent_complete
+from push_notifications import send_agent_complete, set_online_checker
 
 # ── 팀 정보 룩업 (push 알림용) ────────────────────────
 _TEAM_LOOKUP: dict[str, dict] = {}
@@ -147,8 +147,14 @@ class ConnectionManager:
         self.history[team_id] = []
         _save_chat(team_id, [])
 
+    def has_active_connections(self) -> bool:
+        """하나라도 활성 WS 연결이 있으면 True (= 유저가 웹에서 보고 있음)"""
+        return any(conns for conns in self.active.values())
+
 
 manager = ConnectionManager()
+# 푸시 알림: 유저가 웹 접속 중이면 푸시 스킵
+set_online_checker(manager.has_active_connections)
 
 
 # ── 협업 브로드캐스트 (main.py dispatch에서 호출) ──────

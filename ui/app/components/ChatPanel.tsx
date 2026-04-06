@@ -23,7 +23,7 @@ function processInline(text: string): React.ReactNode[] {
   const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*)/g);
   return parts.map((part, i) => {
     if (part.startsWith("`") && part.endsWith("`") && part.length > 2)
-      return <code key={i} className="bg-[#2a2a1a] text-yellow-200 px-1 rounded text-[9px] font-mono">{part.slice(1, -1)}</code>;
+      return <code key={i} className="bg-[#2a2a1a] text-yellow-200 px-1 rounded text-[11px] font-mono">{part.slice(1, -1)}</code>;
     if (part.startsWith("**") && part.endsWith("**"))
       return <strong key={i} className="text-white font-semibold">{part.slice(2, -2)}</strong>;
     if (part.startsWith("*") && part.endsWith("*") && part.length > 2)
@@ -44,7 +44,7 @@ function MarkdownMessage({ content }: { content: string }) {
       if (inCode) {
         nodes.push(
           <pre key={i} className="bg-[#0a0a1a] border border-[#2a2a3a] rounded p-2 my-1 overflow-x-auto">
-            <code className="text-green-200 text-[9px] font-mono">{codeLines.join("\n")}</code>
+            <code className="text-green-200 text-[11px] font-mono">{codeLines.join("\n")}</code>
           </pre>
         );
         codeLines = [];
@@ -113,7 +113,15 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
       return next;
     });
   }, [onMessages]);
-  const [input, setInput] = useState("");
+  const draftKey = `hq-draft-${team.id}`;
+  const [input, setInputRaw] = useState(() => {
+    if (typeof window === "undefined") return "";
+    return localStorage.getItem(draftKey) || "";
+  });
+  const setInput = useCallback((v: string) => {
+    setInputRaw(v);
+    try { localStorage.setItem(draftKey, v); } catch {}
+  }, [draftKey]);
   const [streaming, setStreaming] = useState(false);
   const [connected, setConnected] = useState(false);
   const [toolStatus, setToolStatus] = useState<string>("");
@@ -406,13 +414,13 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
             </div>
           )}
           {messages.map((msg, i) => (
-            <div key={i} className={`group relative text-[11px] px-2 py-1.5 rounded select-text cursor-text ${
+            <div key={i} className={`group relative text-sm px-2.5 py-2 rounded select-text cursor-text ${
               msg.type === "user"
                 ? "bg-blue-600/15 text-blue-200 border-l-2 border-blue-500"
                 : "bg-[#1a2a1a] text-green-300 border-l-2 border-green-600"
             }`}>
               {msg.type === "ai"
-                ? <div className="font-mono text-[10px]"><MarkdownMessage content={msg.content} /></div>
+                ? <div className="font-mono text-xs"><MarkdownMessage content={msg.content} /></div>
                 : <div className="whitespace-pre-wrap break-words">{msg.content}</div>
               }
               {msg.type === "ai" && streaming && i === messages.length - 1 && (
@@ -597,7 +605,7 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
             }}
             placeholder={streaming ? "작업중... (추가 입력 가능)" : isMobile ? "명령 입력... (전송 버튼으로 보내기)" : "명령 입력... (Ctrl+V 이미지 붙여넣기)"}
             rows={input.includes("\n") ? Math.min(input.split("\n").length, 4) : 1}
-            className="flex-1 bg-[#1a1a2e] border border-[#3a3a5a] text-white px-2 py-1.5 text-[11px] rounded
+            className="flex-1 bg-[#1a1a2e] border border-[#3a3a5a] text-white px-2 py-1.5 text-xs rounded
                        placeholder-gray-600 focus:outline-none focus:border-yellow-400/50 resize-none"
           />
           <button

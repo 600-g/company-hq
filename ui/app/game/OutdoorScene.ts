@@ -136,7 +136,7 @@ export default class OutdoorScene extends Phaser.Scene {
 
     // 도어 사인
     this.add.text(bx + bw / 2, doorY - 12, "두근컴퍼니", {
-      fontSize: "9px", fontFamily: FONT, color: "#f5c842", resolution: DPR * 2,
+      fontSize: "9px", fontFamily: FONT, color: "#f5c842", resolution: DPR * 4,
     }).setOrigin(0.5).setDepth(11);
 
     // 창문 격자 (4열 × 6행)
@@ -172,7 +172,7 @@ export default class OutdoorScene extends Phaser.Scene {
     g.fillStyle(0x1a1a2e, 1); g.fillRect(bx + bw / 2 - 50, by - 18, 100, 18);
     g.fillStyle(0x4a4a6a, 1); g.strokeRect(bx + bw / 2 - 50, by - 18, 100, 18);
     this.add.text(bx + bw / 2, by - 9, "🏢 DOOGEUN HQ", {
-      fontSize: "9px", fontFamily: FONT, color: "#aaaacc", resolution: DPR * 2,
+      fontSize: "9px", fontFamily: FONT, color: "#aaaacc", resolution: DPR * 4,
     }).setOrigin(0.5).setDepth(11);
   }
 
@@ -292,7 +292,7 @@ export default class OutdoorScene extends Phaser.Scene {
     bg.lineStyle(1.5, 0xf5c842, 0.8); bg.strokeRoundedRect(bx, by, bw, bh, 6);
 
     const btn = this.add.text(bx + bw / 2, by + bh / 2, "🏢 사무실로 돌아가기", {
-      fontSize: "11px", fontFamily: FONT, color: "#f5c842", resolution: DPR * 2,
+      fontSize: "11px", fontFamily: FONT, color: "#f5c842", resolution: DPR * 4,
     }).setOrigin(0.5).setDepth(201).setInteractive({ useHandCursor: true });
 
     btn.on("pointerover", () => { bg.clear(); bg.fillStyle(0x2a2a4e, 0.95); bg.fillRoundedRect(bx, by, bw, bh, 6); bg.lineStyle(1.5, 0xf5c842, 1); bg.strokeRoundedRect(bx, by, bw, bh, 6); });
@@ -313,7 +313,7 @@ export default class OutdoorScene extends Phaser.Scene {
 
     // 씬 제목
     this.add.text(16, 16, "🌇 건물 밖", {
-      fontSize: "12px", fontFamily: FONT, color: "#ffffff", resolution: DPR * 2,
+      fontSize: "12px", fontFamily: FONT, color: "#ffffff", resolution: DPR * 4,
       backgroundColor: "#00000066", padding: { x: 8, y: 4 },
     }).setDepth(200);
   }

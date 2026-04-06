@@ -3,12 +3,31 @@
 import os
 import json
 import logging
+import typing
 import uuid
 from datetime import datetime
 from pathlib import Path
 from pywebpush import webpush, WebPushException
 
 _log = logging.getLogger(__name__)
+
+# ── 웹 접속 상태 체크 (WS 활성 연결 유무) ──────────────────
+# ws_handler 등 외부에서 콜백 등록 → 순환 import 회피
+_is_user_online: typing.Callable[[], bool] | None = None
+
+def set_online_checker(fn: typing.Callable[[], bool]):
+    """웹소켓 활성 연결 여부를 반환하는 콜백 등록"""
+    global _is_user_online
+    _is_user_online = fn
+
+def _user_is_online() -> bool:
+    """유저가 현재 웹에서 접속 중인지 확인"""
+    if _is_user_online is not None:
+        try:
+            return _is_user_online()
+        except Exception:
+            pass
+    return False
 
 # ── VAPID 설정 (lazy load — main.py의 load_dotenv() 이후 읽힘) ──
 def _get_vapid():
@@ -102,6 +121,18 @@ def mark_all_read() -> int:
         _save_notifications(_notifications)
     return count
 
+def mark_team_read(team_id: str) -> int:
+    """특정 팀의 미읽은 알림 일괄 읽음 처리"""
+    count = 0
+    for n in _notifications:
+        if n.get("team_id") == team_id and not n["read"]:
+            n["read"] = True
+            count += 1
+    if count > 0:
+        _save_notifications(_notifications)
+    return count
+
+
 def delete_notification(notif_id: str) -> bool:
     """알림 삭제"""
     before = len(_notifications)
@@ -147,9 +178,14 @@ def remove_subscription(endpoint: str) -> bool:
 # ── 푸시 발송 (+ 인앱 알림 자동 저장) ───────────────────
 
 def send_push(title: str, body: str, tag: str = "default", url: str = "/", team_id: str = "") -> int:
-    """푸시 발송 + 인앱 알림 저장. 성공 수 반환."""
-    # 인앱 알림 저장
+    """푸시 발송 + 인앱 알림 저장. 유저가 웹 접속 중이면 푸시만 스킵."""
+    # 인앱 알림 저장 (항상)
     _add_notification(title, body, team_id=team_id, tag=tag)
+
+    # 유저가 웹에서 보고 있으면 푸시 알림 스킵
+    if _user_is_online():
+        _log.info(f"[PUSH] 유저 온라인 — 푸시 스킵 (인앱만 저장): {title}")
+        return 0
 
     vapid = _get_vapid()
     if not vapid["private"] or not _subscriptions:
