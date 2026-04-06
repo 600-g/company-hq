@@ -28,13 +28,34 @@ interface DispatchMessage {
   status?: DispatchStatus;
 }
 
+const DISPATCH_HISTORY_KEY = "hq-dispatch-history";
+function loadDispatchHistory(): DispatchMessage[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(DISPATCH_HISTORY_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+}
+function saveDispatchHistory(msgs: DispatchMessage[]) {
+  try {
+    // 최근 100개만 유지
+    const trimmed = msgs.slice(-100);
+    localStorage.setItem(DISPATCH_HISTORY_KEY, JSON.stringify(trimmed));
+  } catch { /* ignore */ }
+}
+
 function DispatchChat({ teams, onOpenChat }: { teams: Team[]; onOpenChat?: (teamId: string) => void }) {
   const [input, setInput] = useState("");
   const [entries, setEntries] = useState<DispatchEntry[]>([]);
-  const [messages, setMessages] = useState<DispatchMessage[]>([]);
+  const [messages, setMessages] = useState<DispatchMessage[]>(loadDispatchHistory);
   const [sending, setSending] = useState(false);
   const [phase, setPhase] = useState<DispatchPhase>("idle");
   const [summaryText, setSummaryText] = useState("");
+
+  // 메시지 변경 시 localStorage 동기화
+  useEffect(() => {
+    if (messages.length > 0) saveDispatchHistory(messages);
+  }, [messages]);
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [pendingImages, setPendingImages] = useState<{ file: File; path?: string }[]>([]);
@@ -145,9 +166,13 @@ function DispatchChat({ teams, onOpenChat }: { teams: Team[]; onOpenChat?: (team
                 const r = teamResults[e.teamId];
                 return r ? { ...e, text: r.result, status: r.status as DispatchStatus } : e;
               }));
-              // CPO 통합 보고를 히스토리에 추가
+              // CPO 통합 보고를 히스토리에 추가 (효율 메타 포함)
+              const meta = data.meta;
+              const metaLine = meta
+                ? `\n\n───\n⚡ haiku 라우팅 → ${meta.routed_count}/${meta.total_teams}팀 실행 → ${meta.summary_model === "opus" ? "opus 통합" : "직통 전달"}`
+                : "";
               setMessages(prev => [...prev, {
-                role: "agent", text: data.summary,
+                role: "agent", text: data.summary + metaLine,
                 teamId: "cpo-claude", emoji: "🧠", name: "CPO 통합보고",
               }]);
               setSending(false);
@@ -224,18 +249,30 @@ function DispatchChat({ teams, onOpenChat }: { teams: Team[]; onOpenChat?: (team
 
   return (
     <div className="flex flex-col gap-1.5">
+      {/* 히스토리 헤더 */}
+      {messages.length > 0 && (
+        <div className="flex items-center justify-between px-1">
+          <span className="text-[9px] text-gray-600">{messages.length}개 대화</span>
+          <button
+            onClick={() => { setMessages([]); localStorage.removeItem(DISPATCH_HISTORY_KEY); }}
+            className="text-[9px] text-gray-600 hover:text-red-400 transition-colors"
+          >
+            초기화
+          </button>
+        </div>
+      )}
       {/* 히스토리 + 진행중 */}
       {(messages.length > 0 || entries.length > 0) && (
         <div ref={scrollRef} className="max-h-[220px] overflow-y-auto space-y-1">
           {/* 대화 히스토리 */}
           {messages.map((m, i) => (
             m.role === "user" ? (
-              <div key={i} className="text-[10px] text-yellow-400 bg-yellow-500/5 border border-yellow-500/10 rounded px-2 py-1">
+              <div key={i} className="text-[11px] text-yellow-400 bg-yellow-500/5 border border-yellow-500/10 rounded px-2 py-1.5">
                 ▶ {m.text}
               </div>
             ) : (
               <div key={i}
-                className="text-[10px] p-1.5 rounded border bg-[#1a1a2e] border-[#2a2a4a] cursor-pointer hover:border-yellow-500/30 transition-colors"
+                className="text-[11px] p-2 rounded border bg-[#1a1a2e] border-[#2a2a4a] cursor-pointer hover:border-yellow-500/30 transition-colors"
                 onClick={() => m.teamId && onOpenChat?.(m.teamId)}
                 title="클릭 → 채팅창 열기"
               >
@@ -246,14 +283,14 @@ function DispatchChat({ teams, onOpenChat }: { teams: Team[]; onOpenChat?: (team
                     <span className="text-[7px] text-purple-400 ml-auto">{m.tools.length}개 작업</span>
                   )}
                 </div>
-                <div className="text-gray-400 whitespace-pre-wrap text-[9px] line-clamp-3">{m.text.slice(0, 200)}{m.text.length > 200 ? "..." : ""}</div>
+                <div className="text-gray-400 whitespace-pre-wrap text-[10px] line-clamp-3">{m.text.slice(0, 200)}{m.text.length > 200 ? "..." : ""}</div>
               </div>
             )
           ))}
 
           {/* CPO 진행 상태 */}
           {phase !== "idle" && phase !== "done" && (
-            <div className="text-[10px] px-2 py-1 rounded border bg-yellow-500/5 border-yellow-500/20 flex items-center gap-1.5">
+            <div className="text-[11px] px-2 py-1.5 rounded border bg-yellow-500/5 border-yellow-500/20 flex items-center gap-1.5">
               <span className="w-1.5 h-1.5 bg-yellow-400 rounded-full animate-pulse" />
               <span className="text-yellow-400 font-bold">
                 {phase === "routing" && "🧠 CPO가 관련 팀 분석 중..."}
@@ -265,13 +302,13 @@ function DispatchChat({ teams, onOpenChat }: { teams: Team[]; onOpenChat?: (team
 
           {/* CPO 통합 보고 스트리밍 */}
           {phase === "summarizing" && summaryText && (
-            <div className="text-[10px] p-1.5 rounded border bg-[#1a1a2e] border-yellow-500/30">
+            <div className="text-[11px] p-2 rounded border bg-[#1a1a2e] border-yellow-500/30">
               <div className="flex items-center gap-1 mb-0.5">
                 <span>🧠</span>
                 <span className="font-bold text-yellow-400">CPO 통합보고</span>
                 <span className="w-1 h-1 bg-yellow-400 rounded-full animate-pulse" />
               </div>
-              <div className="text-gray-300 whitespace-pre-wrap text-[9px]">{summaryText}</div>
+              <div className="text-gray-300 whitespace-pre-wrap text-[10px]">{summaryText}</div>
             </div>
           )}
 
@@ -282,7 +319,7 @@ function DispatchChat({ teams, onOpenChat }: { teams: Team[]; onOpenChat?: (team
                 <div className="text-[8px] text-gray-600 px-1">⏭ {skipped.map(e => e.emoji).join("")}</div>
               )}
               {routed.map(e => (
-                <div key={e.teamId} className={`text-[10px] p-1.5 rounded border ${statusColor(e.status)}`}>
+                <div key={e.teamId} className={`text-[11px] p-2 rounded border ${statusColor(e.status)}`}>
                   <div className="flex items-center gap-1 mb-0.5">
                     <span className="text-[8px]">{statusIcon(e.status)}</span>
                     <span>{e.emoji}</span>
@@ -293,7 +330,7 @@ function DispatchChat({ teams, onOpenChat }: { teams: Team[]; onOpenChat?: (team
                     <div className="text-[8px] text-yellow-400/70 truncate">⚡ {e.tools[e.tools.length - 1]}</div>
                   )}
                   {e.text && (
-                    <div className="text-gray-400 whitespace-pre-wrap text-[9px] max-h-[60px] overflow-y-auto">{e.text}</div>
+                    <div className="text-gray-400 whitespace-pre-wrap text-[10px] max-h-[60px] overflow-y-auto">{e.text}</div>
                   )}
                 </div>
               ))}
@@ -346,7 +383,7 @@ function DispatchChat({ teams, onOpenChat }: { teams: Team[]; onOpenChat?: (team
           }}
           rows={1}
           placeholder="명령 입력 (Shift+Enter 줄바꿈, Ctrl+V 이미지 붙여넣기)..."
-          className="flex-1 bg-[#1a1a2e] border border-[#3a3a5a] text-white text-[11px] px-2 py-1.5 rounded focus:outline-none focus:border-yellow-400/50 resize-none max-h-20 overflow-y-auto"
+          className="flex-1 bg-[#1a1a2e] border border-[#3a3a5a] text-white text-xs px-2 py-1.5 rounded focus:outline-none focus:border-yellow-400/50 resize-none max-h-20 overflow-y-auto"
           style={{ minHeight: "32px" }}
         />
         {canUndo ? (
@@ -826,10 +863,21 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
   const [openWindows, setOpenWindows] = useState<string[]>([]); // 열린 팀 id 목록
   const [focusedWindow, setFocusedWindow] = useState<string>("");
   const [mobileChat, setMobileChat] = useState<string | null>(null); // 모바일 채팅 팀 id
-  const [devTeam, setDevTeam] = useState<Team | null>(null); // /dev 웹터미널 대상 팀
+  const MAX_OPEN_WINDOWS = 3; // 동시 열 수 있는 최대 채팅창 수
   const [mobileSide, setMobileSide] = useState(false); // 모바일 사이드패널 (목록/통합채팅)
   const [openServerDash, setOpenServerDash] = useState(false); // PC 서버실 대시보드 오버레이
   const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
+
+  // ESC 키 — 포커스된 채팅창 닫기 (입력 내용은 chatHistory에 남아 유지됨)
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && openWindows.length > 0 && focusedWindow) {
+        setOpenWindows(prev => prev.filter(id => id !== focusedWindow));
+      }
+    };
+    window.addEventListener("keydown", handleEsc);
+    return () => window.removeEventListener("keydown", handleEsc);
+  }, [openWindows, focusedWindow]);
 
   const [toast, setToast] = useState<string | null>(null);
   const showToast = useCallback((msg: string) => { setToast(msg); setTimeout(() => setToast(null), 2500); }, []);
@@ -1247,19 +1295,51 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
     setDropTarget(null);
   }, []);
 
+  // 채팅 열 때 해당 팀 알림 자동 읽음 처리
+  const autoMarkTeamRead = useCallback((teamId: string) => {
+    const hasUnread = notifications.some(n => n.team_id === teamId && !n.read);
+    if (!hasUnread) return;
+    fetch(`${getApiBase()}/api/notifications/team/${teamId}/read`, { method: "POST" })
+      .then(r => r.json())
+      .then(data => {
+        setNotifications(prev => prev.map(n => n.team_id === teamId ? { ...n, read: true } : n));
+        if (typeof data.unread === "number") setUnreadCount(data.unread);
+      })
+      .catch(() => {});
+  }, [notifications]);
+
   const handleTeamClick = useCallback((teamId: string, screenX?: number, screenY?: number) => {
+    // 서버실은 ServerDashboard로 분기
+    if (teamId === "server-monitor") {
+      const mobile = typeof window !== "undefined" && window.innerWidth < 768;
+      if (mobile) {
+        setMobileChat(prev => prev === "server-monitor" ? null : "server-monitor");
+        setMobileSide(true);
+      } else {
+        setOpenServerDash(prev => !prev);
+      }
+      return;
+    }
     const mobile = typeof window !== "undefined" && window.innerWidth < 768;
     if (mobile) {
       setMobileChat(prev => prev === teamId ? null : teamId);
       setMobileSide(true);
+      autoMarkTeamRead(teamId);
       return;
     }
-    // 모달 방식: devTeam 토글
-    const team = teams.find(t => t.id === teamId);
-    if (team) {
-      setDevTeam(prev => prev?.id === teamId ? null : team);
+    // 다중 모달: openWindows 배열 토글
+    if (openWindows.includes(teamId)) {
+      setOpenWindows(prev => prev.filter(id => id !== teamId));
+    } else {
+      if (openWindows.length >= MAX_OPEN_WINDOWS) {
+        showToast(`최대 ${MAX_OPEN_WINDOWS}개까지 열 수 있어요`);
+        return;
+      }
+      setOpenWindows(prev => [...prev, teamId]);
+      setFocusedWindow(teamId);
+      autoMarkTeamRead(teamId);
     }
-  }, [teams]);
+  }, [teams, openWindows, showToast, autoMarkTeamRead]);
   handleTeamClickRef.current = handleTeamClick;
 
   // URL ?team=xxx 파라미터로 팀 채팅 자동 열기 (알림 클릭 시)
@@ -1671,28 +1751,36 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
         </div>
       )}
 
-      {/* ── /dev 웹터미널 모달 (채팅 UI + Claude Code 엔진) ── */}
-      {devTeam && (
+      {/* ── 다중 채팅 모달 (최대 3개 병렬) ── */}
+      {openWindows.length > 0 && (
         <div
           style={{
             position: 'fixed', inset: 0,
-            background: 'rgba(0,0,0,0.6)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
             zIndex: 1000,
+            pointerEvents: 'none',
           }}
-          onClick={(e) => { if (e.target === e.currentTarget) setDevTeam(null) }}
         >
-          <ChatWindow
-            team={devTeam}
-            messages={chatHistory[devTeam.id] || []}
-            onMessages={(msgs) => setChatHistory(prev => ({ ...prev, [devTeam.id]: msgs }))}
-            onClose={() => setDevTeam(null)}
-            onWorkingChange={(working) => handleWorkingChange(devTeam.id, working)}
-            onFocus={() => {}}
-            zIndex={1001}
-            initialX={Math.floor((typeof window !== "undefined" ? window.innerWidth : 900) / 2 - 250)}
-            initialY={60}
-          />
+          {openWindows.map((winId, idx) => {
+            const t = teams.find(tm => tm.id === winId);
+            if (!t) return null;
+            const isFocused = focusedWindow === winId;
+            const baseX = Math.floor((typeof window !== "undefined" ? window.innerWidth : 900) / 2 - 250);
+            return (
+              <div key={winId} style={{ pointerEvents: 'auto' }} onMouseDown={() => setFocusedWindow(winId)}>
+                <ChatWindow
+                  team={t}
+                  messages={chatHistory[winId] || []}
+                  onMessages={(msgs) => setChatHistory(prev => ({ ...prev, [winId]: msgs }))}
+                  onClose={() => setOpenWindows(prev => prev.filter(id => id !== winId))}
+                  onWorkingChange={(working) => handleWorkingChange(winId, working)}
+                  onFocus={() => setFocusedWindow(winId)}
+                  zIndex={isFocused ? 1010 : 1001 + idx}
+                  initialX={baseX + idx * 40}
+                  initialY={60 + idx * 30}
+                />
+              </div>
+            );
+          })}
         </div>
       )}
 
