@@ -192,10 +192,36 @@ function DispatchChat({ teams, onOpenChat }: { teams: Team[]; onOpenChat?: (team
       }
     } catch (e: unknown) {
       if (e instanceof Error && e.name !== "AbortError") {
+        // 자동 재시도: 서버 reload 중일 수 있으므로 3초 후 헬스체크 → 재시도
+        const apiBase = getApiBase();
+        const retryCheck = async () => {
+          try {
+            const health = await fetch(`${apiBase}/api/standby`);
+            if (health.ok) return true;
+          } catch { /* */ }
+          return false;
+        };
         setMessages(prev => [...prev, {
-          role: "agent", text: `❌ 연결 실패: ${e.message}`,
+          role: "agent", text: `⚠️ 연결 실패 — 서버 복구 확인 중...`,
           teamId: "cpo-claude", emoji: "🧠", name: "CPO",
         }]);
+        // 3초 후 헬스체크
+        setTimeout(async () => {
+          const alive = await retryCheck();
+          if (alive) {
+            setMessages(prev => prev.map((m, i) =>
+              i === prev.length - 1 && m.text.includes("복구 확인 중")
+                ? { ...m, text: "✅ 서버 복구 완료 — 다시 시도해주세요." }
+                : m
+            ));
+          } else {
+            setMessages(prev => prev.map((m, i) =>
+              i === prev.length - 1 && m.text.includes("복구 확인 중")
+                ? { ...m, text: `❌ 연결 실패: ${e.message}. 서버 상태를 확인해주세요.` }
+                : m
+            ));
+          }
+        }, 3000);
       }
       setSending(false);
       setPhase("idle");
