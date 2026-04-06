@@ -353,10 +353,10 @@ STANDBY_FLAG = False  # main.py에서 직접 설정 (순환 import 방지)
 
 # ── 토큰 예산 제한 (에이전트 폭주 방지) ─────────────────
 TOKEN_BUDGET_WINDOW   = 3600     # 1시간 윈도우 (초)
-TOKEN_BUDGET_LIMIT    = 2_000_000  # 수동 실행 1시간 상한 (2M)
-TOKEN_BUDGET_AUTO     = 1_000_000  # 자동 실행 1시간 상한 (1M)
-TOKEN_SPIKE_WINDOW    = 600      # 급등 감지 윈도우 (10분)
-TOKEN_SPIKE_LIMIT     = 500_000  # 10분 내 500K 초과 → 자동 스탠바이
+TOKEN_BUDGET_LIMIT    = 999_999_999  # 수동 실행 — 사실상 무제한 (Max 플랜 한도가 궁극적 제한)
+TOKEN_BUDGET_AUTO     = 5_000_000   # 자동 실행 1시간 상한 (5M)
+TOKEN_SPIKE_WINDOW    = 600         # 급등 감지 윈도우 (10분)
+TOKEN_SPIKE_LIMIT     = 999_999_999 # 스파이크 감지 — 사실상 비활성 (자동만 예산 체크로 충분)
 
 _token_budget_log: list[tuple[float, int]] = []  # [(timestamp, tokens), ...]
 _budget_paused = False            # 예산 초과 시 True → 에이전트 실행 거부
