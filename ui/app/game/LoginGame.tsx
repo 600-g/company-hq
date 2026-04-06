@@ -34,10 +34,9 @@ export default function LoginGame() {
         parent: containerRef.current,
         width: 960,
         height: 540,
-        pixelArt: true,
-        antialias: false,
-        antialiasGL: false,
-        roundPixels: true,
+        pixelArt: false,
+        antialias: true,
+        roundPixels: false,
         backgroundColor: "#1a1a2e",
         scale: {
           mode: Phaser.Scale.FIT,

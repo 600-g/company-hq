@@ -9,7 +9,7 @@ const H = 540;
 const GROUND_Y = Math.floor(H * 0.72);  // 지면 Y
 const ROAD_Y   = GROUND_Y + 28;         // 도로 시작 Y
 const DPR = typeof window !== "undefined" ? Math.min(window.devicePixelRatio || 1, 3) : 2;
-const TEXT_RES = DPR * 6;
+const TEXT_RES = 8;
 const FONT = "'Pretendard Variable', Pretendard, -apple-system, sans-serif";
 
 const sR = (a: number, b: number) =>

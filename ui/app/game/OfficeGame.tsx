@@ -82,10 +82,9 @@ const OfficeGame = forwardRef<OfficeGameHandle, Props>(({ onTeamClick }, ref) =>
         parent: containerRef.current,
         width: 832,
         height: 576,
-        pixelArt: true,
-        antialias: false,
-        antialiasGL: false,
-        roundPixels: true,
+        pixelArt: false,
+        antialias: true,
+        roundPixels: false,
         backgroundColor: "#1a1a2e",
         scale: {
           mode: Phaser.Scale.FIT,

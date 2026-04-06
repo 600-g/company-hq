@@ -17,7 +17,7 @@ const WORLD_H = ROWS * TILE;
 const SCALE = 1.5;
 const WALL_H = 3; // 벽(통창) 높이 — 3칸으로 확장 (96px)
 const DPR = typeof window !== "undefined" ? Math.min(window.devicePixelRatio || 1, 3) : 2;
-const TEXT_RES = DPR * 6; // 텍스트 전용 고해상도 렌더링
+const TEXT_RES = 8; // 텍스트 전용 최고 해상도 (DPR 무관 고정 8x)
 const FONT = "'Pretendard Variable', Pretendard, -apple-system, sans-serif";
 
 interface TeamConfig {
