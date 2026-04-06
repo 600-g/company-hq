@@ -417,9 +417,9 @@ async def handle_chat(ws: WebSocket, team_id: str, project_path: str | None):
                 await manager.send_json(team_id, {"type": "ai_end", "content": ""})
                 continue
 
-            # 정상 완료
+            # 정상 완료 — 빈 응답 시 원인 안내
             if not full_response.strip():
-                full_response = "✅ 작업을 처리했습니다."
+                full_response = "⚠️ 응답이 비어있습니다. Claude API 일시 제한(rate limit)일 수 있어요. 잠시 후 다시 시도해주세요."
                 await manager.send_json(team_id, {"type": "ai_chunk", "content": full_response})
 
             manager.add_message(team_id, "ai", full_response)
