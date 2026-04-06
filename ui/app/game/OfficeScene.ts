@@ -17,6 +17,7 @@ const WORLD_H = ROWS * TILE;
 const SCALE = 1.5;
 const WALL_H = 3; // 벽(통창) 높이 — 3칸으로 확장 (96px)
 const DPR = typeof window !== "undefined" ? Math.min(window.devicePixelRatio || 1, 3) : 2;
+const TEXT_RES = DPR * 6; // 텍스트 전용 고해상도 렌더링
 const FONT = "'Pretendard Variable', Pretendard, -apple-system, sans-serif";
 
 interface TeamConfig {
@@ -551,7 +552,7 @@ export default class OfficeScene extends Phaser.Scene {
 
     // 모니터 라벨
     this.envGroup.add(this.add.text(monX, monY - 23, "🖥", {
-      fontSize: "12px", fontFamily: FONT, color: "#50c080", resolution: DPR * 2,
+      fontSize: "12px", fontFamily: FONT, color: "#50c080", resolution: TEXT_RES,
     }).setOrigin(0.5).setDepth(101));
 
     // 모니터 클릭
@@ -626,7 +627,7 @@ export default class OfficeScene extends Phaser.Scene {
     // 비상구 텍스트 (클릭 시 야외씬 전환)
     const exitLabel = this.add.text(WORLD_W / 2 + 52, corY + 14, "EXIT", {
       fontSize: "10px", fontFamily: FONT,
-      color: "#ffffff", resolution: DPR * 2,
+      color: "#ffffff", resolution: TEXT_RES,
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
     exitLabel.on("pointerover", () => exitLabel.setColor("#f5c842"));
     exitLabel.on("pointerout",  () => exitLabel.setColor("#ffffff"));
@@ -731,7 +732,7 @@ export default class OfficeScene extends Phaser.Scene {
     // 층 표시 (디스플레이 안)
     this.floorLabel = this.add.text(ex, ey - eh / 2 + 8, `${this.currentFloor}F`, {
       fontSize: "12px", fontFamily: FONT,
-      color: "#40d080", resolution: DPR * 2,
+      color: "#40d080", resolution: TEXT_RES,
     }).setOrigin(0.5).setDepth(151);
 
     // ▲▼ 버튼 (문 왼쪽, 크게 — 모바일 터치용)
@@ -883,7 +884,7 @@ export default class OfficeScene extends Phaser.Scene {
 
     const label = this.add.text(0, nameY, `${t.emoji} ${t.name}`, {
       fontSize: "13px", fontFamily: FONT,
-      color: "#222222", resolution: DPR * 2,
+      color: "#222222", resolution: TEXT_RES,
       stroke: "#ffffff", strokeThickness: 0.3,
     }).setOrigin(0.5);
     container.add(label);

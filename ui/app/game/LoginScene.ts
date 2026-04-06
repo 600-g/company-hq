@@ -9,6 +9,7 @@ const H = 540;
 const GROUND_Y = Math.floor(H * 0.72);  // 지면 Y
 const ROAD_Y   = GROUND_Y + 28;         // 도로 시작 Y
 const DPR = typeof window !== "undefined" ? Math.min(window.devicePixelRatio || 1, 3) : 2;
+const TEXT_RES = DPR * 6;
 const FONT = "'Pretendard Variable', Pretendard, -apple-system, sans-serif";
 
 const sR = (a: number, b: number) =>
@@ -113,7 +114,7 @@ export default class LoginScene extends Phaser.Scene {
       const doorX = W / 2, doorY = GROUND_Y - 13;
       const doorHit = this.add.rectangle(doorX, doorY, 44, 30, 0x000000, 0).setDepth(200).setInteractive({ useHandCursor: true });
       const doorLabel = this.add.text(doorX, doorY - 22, "▶ 입장", {
-        fontSize: "9px", fontFamily: FONT, color: "#f5c842", resolution: DPR * 2,
+        fontSize: "9px", fontFamily: FONT, color: "#f5c842", resolution: TEXT_RES,
         backgroundColor: "#0008", padding: { x: 4, y: 2 },
       }).setOrigin(0.5).setDepth(201).setAlpha(0);
 
@@ -322,7 +323,7 @@ export default class LoginScene extends Phaser.Scene {
     g.strokeRoundedRect(bx + bw / 2 - signW / 2, by + 3, signW, signH, 3);
     this.add.text(W / 2, by + 12, "(주)두근 컴퍼니", {
       fontSize: "10px", fontFamily: FONT,
-      color: isN ? "#f0d860" : "#ecf0f1", resolution: DPR * 2,
+      color: isN ? "#f0d860" : "#ecf0f1", resolution: TEXT_RES,
     }).setOrigin(0.5).setDepth(6);
 
     // 옥상 구조물

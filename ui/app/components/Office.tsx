@@ -1564,9 +1564,25 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
                 </div>
                 {/* 에이전트 목록 (층별 그룹) + 통합채팅 */}
                 <div className="flex-1 overflow-y-auto overscroll-contain" style={{ minHeight: 0, WebkitOverflowScrolling: "touch", touchAction: "pan-y" }}>
-                  {/* ── CPO + 서버실 모바일 최상단 고정 섹션 ── */}
+                  {/* ── 서버실 + CPO 모바일 최상단 고정 섹션 ── */}
                   <div className="px-2 pt-2 pb-1.5 flex flex-col gap-0.5 border-b border-[#2a2a5a]">
-                    {/* CPO — 1인 캐릭터 */}
+                    {/* 서버실 — 모니터링 (최상단) */}
+                    <button
+                      onClick={() => { setMobileChat("server-monitor"); setMobileSide(true); }}
+                      className={`w-full text-left px-2.5 py-1.5 rounded text-[12px] transition-all min-h-[36px] ${
+                        mobileChat === "server-monitor"
+                          ? "bg-blue-500/10 text-blue-400 border border-blue-500/20"
+                          : "text-gray-400 border border-transparent active:bg-[#1a1a3a]"
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <span>🖥</span>
+                        <span>서버실</span>
+                        <span className="text-[7px] text-gray-600 ml-auto">모니터링</span>
+                        <span className="text-[7px] bg-gray-700 text-gray-500 px-1 rounded">고정</span>
+                      </div>
+                    </button>
+                    {/* CPO */}
                     {(() => {
                       const cpo = teams.find(t => t.id === "cpo-claude");
                       if (!cpo) return null;
@@ -1587,22 +1603,6 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
                         </button>
                       );
                     })()}
-                    {/* 서버실 — 모니터링 */}
-                    <button
-                      onClick={() => { setMobileChat("server-monitor"); setMobileSide(true); }}
-                      className={`w-full text-left px-2.5 py-1.5 rounded text-[12px] transition-all min-h-[36px] ${
-                        mobileChat === "server-monitor"
-                          ? "bg-blue-500/10 text-blue-400 border border-blue-500/20"
-                          : "text-gray-400 border border-transparent active:bg-[#1a1a3a]"
-                      }`}
-                    >
-                      <div className="flex items-center gap-1.5">
-                        <span>🖥</span>
-                        <span>서버실</span>
-                        <span className="text-[7px] text-gray-600 ml-auto">모니터링</span>
-                        <span className="text-[7px] bg-gray-700 text-gray-500 px-1 rounded">고정</span>
-                      </div>
-                    </button>
                   </div>
                   <div className="p-2 flex flex-col gap-0">
                     {(() => {
@@ -1799,9 +1799,25 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
             </button>
           </div>
 
-          {/* ── CPO + 서버실 최상단 고정 섹션 ── */}
+          {/* ── 서버실 + CPO 최상단 고정 섹션 ── */}
           <div className="flex flex-col gap-0.5 mb-2 pb-2 border-b border-[#2a2a5a]">
-            {/* CPO — 1인 캐릭터 */}
+            {/* 서버실 — 모니터링 대시보드 (최상단) */}
+            <button
+              onClick={() => setOpenServerDash(true)}
+              className={`w-full text-left px-2.5 py-1.5 rounded text-[12px] transition-all min-h-[36px] ${
+                openServerDash
+                  ? "bg-blue-500/10 text-blue-400 border border-blue-500/20"
+                  : "text-gray-400 border border-transparent hover:bg-[#1a1a3a]"
+              }`}
+            >
+              <div className="flex items-center gap-1.5">
+                <span>🖥</span>
+                <span>서버실</span>
+                <span className="text-[7px] text-gray-600 ml-auto">모니터링</span>
+                <span className="text-[7px] bg-gray-700 text-gray-500 px-1 rounded">고정</span>
+              </div>
+            </button>
+            {/* CPO */}
             {(() => {
               const cpo = teams.find(t => t.id === "cpo-claude");
               if (!cpo) return null;
@@ -1822,22 +1838,6 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
                 </button>
               );
             })()}
-            {/* 서버실 — 모니터링 대시보드 링크 */}
-            <button
-              onClick={() => setOpenServerDash(true)}
-              className={`w-full text-left px-2.5 py-1.5 rounded text-[12px] transition-all min-h-[36px] ${
-                openServerDash
-                  ? "bg-blue-500/10 text-blue-400 border border-blue-500/20"
-                  : "text-gray-400 border border-transparent hover:bg-[#1a1a3a]"
-              }`}
-            >
-              <div className="flex items-center gap-1.5">
-                <span>🖥</span>
-                <span>서버실</span>
-                <span className="text-[7px] text-gray-600 ml-auto">모니터링</span>
-                <span className="text-[7px] bg-gray-700 text-gray-500 px-1 rounded">고정</span>
-              </div>
-            </button>
           </div>
 
           <div className="flex flex-col gap-0">
