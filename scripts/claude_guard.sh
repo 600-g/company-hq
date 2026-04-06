@@ -252,14 +252,71 @@ Claude 에이전트 폭주 또는 대형 작업 가능성
 fi
 
 # ========================================
+# 5. 서버 헬스체크 + 자동 복구 (토큰 미사용)
+# ========================================
+
+# FastAPI 서버 응답 확인
+HQ_HEALTH=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 "${HQ_API}/api/standby" 2>/dev/null || echo "000")
+
+if [ "$HQ_HEALTH" != "200" ]; then
+    log_msg "[서버장애] FastAPI 응답 없음 (HTTP ${HQ_HEALTH}) — 자동 복구 시도"
+
+    # 서버 프로세스 확인
+    HQ_PID=$(lsof -ti :8000 2>/dev/null | head -1)
+    if [ -z "$HQ_PID" ]; then
+        # 서버 죽음 → 재시작
+        log_msg "[서버복구] 포트 8000 프로세스 없음 — 서버 재시작"
+        cd "$HOME/Developer/my-company/company-hq/server" && source venv/bin/activate && nohup python main.py > /tmp/hq-restart.log 2>&1 &
+        sleep 3
+        RETRY=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 "${HQ_API}/api/standby" 2>/dev/null || echo "000")
+        if [ "$RETRY" = "200" ]; then
+            log_msg "[서버복구] ✅ 재시작 성공"
+            hq_push "🔧 서버 자동 복구" "FastAPI 서버가 자동 재시작되었습니다."
+        else
+            log_msg "[서버복구] ❌ 재시작 실패 — 수동 확인 필요"
+            ALERT="${ALERT}🔴 서버 다운: 자동 복구 실패\n"
+            ALERT_PLAIN="${ALERT_PLAIN}서버 다운 복구 실패. "
+        fi
+    else
+        log_msg "[서버장애] 프로세스 존재 (PID: ${HQ_PID}) — 응답 지연, 대기"
+    fi
+else
+    # 서버 정상 → 세션 비대화 체크 (5MB 이상 세션 자동 리셋)
+    MINUTE=$(date +%-M)
+    MINUTE=$(( 10#$MINUTE + 0 ))
+    if [ $(( MINUTE % 10 )) -eq 0 ]; then
+        # 10분마다 세션 파일 크기 체크
+        LARGE_SESSIONS=$(find "$HOME/.claude/projects" -name "*.jsonl" -size +5M 2>/dev/null | wc -l | tr -d ' ')
+        if [ "$LARGE_SESSIONS" -gt 0 ]; then
+            log_msg "[세션관리] 5MB 초과 세션 ${LARGE_SESSIONS}개 감지 — 다음 실행 시 자동 리셋됨"
+        fi
+    fi
+fi
+
+# Cloudflare Tunnel 확인
+CF_PID=$(pgrep -f "cloudflared tunnel" 2>/dev/null)
+if [ -z "$CF_PID" ]; then
+    log_msg "[터널장애] Cloudflare Tunnel 프로세스 없음"
+    ALERT="${ALERT}🔴 Cloudflare Tunnel 다운\n"
+    ALERT_PLAIN="${ALERT_PLAIN}CF 터널 다운. "
+fi
+
+# ttyd 확인
+TTYD_PID=$(pgrep ttyd 2>/dev/null)
+if [ -z "$TTYD_PID" ]; then
+    log_msg "[ttyd] 프로세스 없음 — launchctl로 재시작 시도"
+    launchctl start com.ttyd 2>/dev/null
+fi
+
+# ========================================
 # 정상 상태면 종료
 # ========================================
 
 if [ -z "$ALERT" ]; then
     MINUTE=$(date +%-M)
-    MINUTE=$(( 10#$MINUTE + 0 ))  # 안전한 십진수 변환
+    MINUTE=$(( 10#$MINUTE + 0 ))
     if [ $(( MINUTE % 5 )) -eq 0 ]; then
-        log_msg "[OK] Claude: ${TOTAL_COUNT}개, CPU: ${CPU_TOTAL}%, MEM: ${MEM_TOTAL_MB}MB"
+        log_msg "[OK] Claude: ${TOTAL_COUNT}개, CPU: ${CPU_TOTAL}%, MEM: ${MEM_TOTAL_MB}MB | 서버: OK | 터널: ${CF_PID:+OK}"
     fi
     exit 0
 fi

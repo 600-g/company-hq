@@ -10,6 +10,23 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
+# ── 에러 자가 학습 (토큰 미사용) ──────────────────────
+_LESSONS_FILE = Path(__file__).parent.parent / "lessons.md"
+
+def _log_error_lesson(team_id: str, err_msg: str, retried: bool = False):
+    """에러 발생 시 lessons.md에 자동 기록 (토큰 미사용, 파일 쓰기만)"""
+    try:
+        now = datetime.now().strftime("%Y-%m-%d %H:%M")
+        short_err = err_msg[:120].replace("\n", " ")
+        retry_note = " (자동 재시도 성공)" if retried else ""
+        line = f"- [{now}] {team_id}: {short_err}{retry_note}\n"
+        with open(_LESSONS_FILE, "a", encoding="utf-8") as f:
+            if f.tell() == 0:
+                f.write("# 에러 자가 학습 로그\n> 자동 기록 — 반복 패턴 분석용\n\n")
+            f.write(line)
+    except Exception:
+        pass
+
 # ── 로그 설정 ──────────────────────────────────────────
 LOG_DIR = Path(__file__).parent / "logs"
 LOG_DIR.mkdir(exist_ok=True)
@@ -762,11 +779,12 @@ async def run_claude(
             retryable = any(k in err_msg.lower() for k in ["rate", "limit", "overloaded", "unknown error", "errno", "timeout", "connection"])
             if retryable and not is_auto:
                 logger.warning("[%s] 재시도 가능 오류 감지, 5초 후 재시도: %s", team_id, err_msg[:100])
+                _log_error_lesson(team_id, err_msg, retried=False)
                 yield {"kind": "text", "content": "⏳ 일시적 오류 — 5초 후 자동 재시도 중..."}
                 await asyncio.sleep(5)
-                # 재시도 (재귀 대신 플래그로 1회만)
                 async for event in run_claude(prompt, project_path, team_id, is_auto=True):
                     yield event
                 return
+            _log_error_lesson(team_id, err_msg)
             logger.error("[%s] 오류: %s", team_id, err_msg)
             yield {"kind": "text", "content": f"\n⚠️ 오류: {err_msg}"}
