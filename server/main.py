@@ -194,6 +194,51 @@ app.add_middleware(
 )
 
 
+# ── 에이전트 워치독 (자동 복구, 토큰 0) ───────────────
+_watchdog_task = None
+
+async def _agent_watchdog():
+    """60초마다 유령 에이전트 자동 복구 (토큰 미사용)
+    - working=True인데 프로세스 없음 → working=False 리셋
+    - working=True 5분 초과 + 프로세스 없음 → 강제 리셋
+    - 세션 파일 5MB 초과 → 자동 리셋 (다음 실행 시 새 세션)
+    """
+    import logging
+    _wd_logger = logging.getLogger("watchdog")
+    while True:
+        await asyncio.sleep(60)
+        try:
+            now = time.time()
+            for team_id, status in list(AGENT_STATUS.items()):
+                if not status.get("working"):
+                    continue
+                # 프로세스 존재 확인
+                pid = AGENT_PIDS.get(team_id)
+                proc_alive = False
+                if pid:
+                    try:
+                        os.kill(pid, 0)
+                        proc_alive = True
+                    except (ProcessLookupError, PermissionError):
+                        pass
+                if not proc_alive:
+                    # 프로세스 없는데 working=True → 유령 → 리셋
+                    working_since = status.get("working_since", 0) or 0
+                    elapsed = now - working_since if working_since else 999
+                    if elapsed > 30:  # 30초 이상 유령이면 리셋
+                        _wd_logger.warning("[워치독] %s 유령 상태 감지 (%.0f초) — 자동 리셋", team_id, elapsed)
+                        AGENT_STATUS[team_id]["working"] = False
+                        AGENT_STATUS[team_id]["tool"] = None
+                        AGENT_STATUS[team_id]["working_since"] = None
+                        AGENT_PIDS.pop(team_id, None)
+        except Exception as e:
+            _wd_logger.error("[워치독] 오류: %s", e)
+
+@app.on_event("startup")
+async def _start_watchdog():
+    global _watchdog_task
+    _watchdog_task = asyncio.create_task(_agent_watchdog())
+
 # ── 서버 종료 시 Claude 프로세스 정리 ────────────
 # NOTE: startup cleanup 제거됨 — uvicorn reload 시 활성 세션 kill 방지
 # 고아 프로세스 정리는 119/112 감시 스크립트가 담당

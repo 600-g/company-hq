@@ -63,8 +63,14 @@ def _set_char_state(team_id: str, state: str, collab_with: list[str] | None = No
 
 def _update_status(team_id: str, **kwargs):
     if team_id not in AGENT_STATUS:
-        AGENT_STATUS[team_id] = {"working": False, "tool": None, "last_active": None, "last_prompt": ""}
+        AGENT_STATUS[team_id] = {"working": False, "tool": None, "last_active": None, "last_prompt": "", "working_since": None}
     AGENT_STATUS[team_id].update(kwargs)
+    # working 시작/종료 시간 자동 기록
+    if "working" in kwargs:
+        if kwargs["working"]:
+            AGENT_STATUS[team_id]["working_since"] = datetime.now().timestamp()
+        else:
+            AGENT_STATUS[team_id]["working_since"] = None
     # working 변경 시 char_state 자동 동기화
     if "working" in kwargs:
         cur = get_char_state(team_id)
