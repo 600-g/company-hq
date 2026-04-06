@@ -758,5 +758,15 @@ async def run_claude(
         stderr_data = await proc.stderr.read()
         err_msg = stderr_data.decode("utf-8", errors="replace").strip()
         if err_msg:
+            # rate limit / 네트워크 에러 감지 → 자동 재시도 (최대 1회)
+            retryable = any(k in err_msg.lower() for k in ["rate", "limit", "overloaded", "unknown error", "errno", "timeout", "connection"])
+            if retryable and not is_auto:
+                logger.warning("[%s] 재시도 가능 오류 감지, 5초 후 재시도: %s", team_id, err_msg[:100])
+                yield {"kind": "text", "content": "⏳ 일시적 오류 — 5초 후 자동 재시도 중..."}
+                await asyncio.sleep(5)
+                # 재시도 (재귀 대신 플래그로 1회만)
+                async for event in run_claude(prompt, project_path, team_id, is_auto=True):
+                    yield event
+                return
             logger.error("[%s] 오류: %s", team_id, err_msg)
             yield {"kind": "text", "content": f"\n⚠️ 오류: {err_msg}"}
