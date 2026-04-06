@@ -471,11 +471,19 @@ function AddTeamModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
   const [projectType, setProjectType] = useState("general");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [step, setStep] = useState("");
 
   const submit = async () => {
     if (!name.trim()) { setError("팀 이름을 입력하세요"); return; }
     setLoading(true);
     setError("");
+
+    // 단계별 표시 (서버 응답 전 프론트 타이머)
+    setStep("GitHub 레포 생성 중...");
+    const stepTimer1 = setTimeout(() => setStep("로컬 클론 중..."), 2000);
+    const stepTimer2 = setTimeout(() => setStep("CLAUDE.md 작성 중..."), 4000);
+    const stepTimer3 = setTimeout(() => setStep("시스템 프롬프트 등록 중..."), 6000);
+
     try {
       const res = await fetch(`${getApiBase()}/api/teams`, {
         method: "POST",
@@ -488,8 +496,11 @@ function AddTeamModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
           project_type: projectType,
         }),
       });
+      clearTimeout(stepTimer1); clearTimeout(stepTimer2); clearTimeout(stepTimer3);
       const data = await res.json();
-      if (!data.ok) { setError(data.error || "생성 실패"); setLoading(false); return; }
+      if (!data.ok) { setError(data.error || "생성 실패"); setLoading(false); setStep(""); return; }
+      setStep("✅ 에이전트 생성 완료!");
+      await new Promise(r => setTimeout(r, 800));
       const newTeam: Team = {
         id: data.team.id,
         name: data.team.name,
@@ -502,8 +513,10 @@ function AddTeamModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
       onCreated(newTeam);
       onClose();
     } catch {
+      clearTimeout(stepTimer1); clearTimeout(stepTimer2); clearTimeout(stepTimer3);
       setError("서버 연결 실패");
       setLoading(false);
+      setStep("");
     }
   };
 
@@ -565,7 +578,7 @@ function AddTeamModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
         <div className="flex gap-2 mt-3">
           <button onClick={submit} disabled={loading}
             className="flex-1 bg-yellow-500 text-black py-1.5 text-xs font-bold rounded hover:bg-yellow-400 disabled:opacity-50">
-            {loading ? "🔄 생성중..." : "에이전트 생성"}
+            {loading ? `🔄 ${step}` : "에이전트 생성"}
           </button>
           <button onClick={onClose} className="flex-1 bg-[#2a2a3a] text-gray-400 py-1.5 text-xs rounded hover:bg-[#3a3a4a]">취소</button>
         </div>
