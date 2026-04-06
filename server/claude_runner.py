@@ -365,7 +365,7 @@ def get_claude_version() -> str:
 # ── 실행 중인 subprocess PID 추적 ─────────────────────
 AGENT_PIDS: dict[str, int] = {}  # team_id -> PID (실행 중일 때만)
 AGENT_TOKENS: dict[str, dict] = {}  # team_id -> {prompts: int, chars: int}
-MAX_CONCURRENT_AGENTS = 3  # 동시 실행 상한 (유령 프로세스 폭주 방지)
+MAX_CONCURRENT_AGENTS = 8  # 동시 실행 상한 (팀 9개 중 8개까지 동시 가능)
 STANDBY_FLAG = False  # main.py에서 직접 설정 (순환 import 방지)
 
 # ── 토큰 예산 제한 (에이전트 폭주 방지) ─────────────────
