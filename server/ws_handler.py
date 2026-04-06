@@ -371,6 +371,7 @@ async def handle_chat(ws: WebSocket, team_id: str, project_path: str | None):
                                 team_id, msg2["prompt"],
                                 callback=lambda tid, merged: task_queue.enqueue(tid, merged)
                             )
+                            await manager.send_json(team_id, {"type": "status", "content": f"📋 추가 메시지 대기 중 — 현재 작업 완료 후 이어서 처리합니다"})
                 except WebSocketDisconnect:
                     # 연결 끊김 — Claude 작업은 계속 진행 (결과는 히스토리에 저장됨)
                     return
