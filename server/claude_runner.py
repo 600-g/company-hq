@@ -439,26 +439,33 @@ def _get_window_tokens(window_seconds: int = TOKEN_BUDGET_WINDOW) -> int:
 
 def _check_budget(is_auto: bool = False) -> tuple[bool, int]:
     """예산 확인. (허용 여부, 현재 사용량) 반환
-    is_auto=True 이면 더 낮은 자동 실행 상한 적용"""
+    is_auto=True 이면 자동 실행 상한 적용, 수동(대화)은 무제한 통과"""
     global _budget_paused
-    limit = TOKEN_BUDGET_AUTO if is_auto else TOKEN_BUDGET_LIMIT
     used = _get_window_tokens()
-    if used >= limit:
+    # 수동(대화)은 무조건 통과 — 차단 없음
+    if not is_auto:
+        _budget_paused = False
+        return True, used
+    # 자동 실행만 예산 체크
+    if used >= TOKEN_BUDGET_AUTO:
         _budget_paused = True
         return False, used
     _budget_paused = False
     return True, used
 
 
-def _check_token_spike() -> bool:
-    """최근 TOKEN_SPIKE_WINDOW(10분) 내 급등 감지 → True 면 스탠바이 전환"""
+def _check_token_spike(is_auto: bool = False) -> bool:
+    """최근 TOKEN_SPIKE_WINDOW(10분) 내 급등 감지 → 자동 실행만 스탠바이 전환
+    수동 대화는 스파이크 감지 무시"""
+    if not is_auto:
+        return False
     global STANDBY_FLAG
     spike_tokens = _get_window_tokens(TOKEN_SPIKE_WINDOW)
     if spike_tokens >= TOKEN_SPIKE_LIMIT:
         if not STANDBY_FLAG:
             STANDBY_FLAG = True
             logger.warning(
-                "[토큰급등] %dK / %d분 — 자동 스탠바이 전환",
+                "[토큰급등] %dK / %d분 — 자동 실행만 스탠바이 전환 (수동 대화 정상)",
                 spike_tokens // 1000, TOKEN_SPIKE_WINDOW // 60,
             )
         return True
@@ -622,21 +629,19 @@ async def run_claude(
 
     Yields: dict {"kind": "text"|"status", "content": str}
     """
-    # ── 스탠바이 모드 체크 (main.py에서 STANDBY_FLAG를 직접 설정) ──
-    if STANDBY_FLAG:
-        logger.info("[%s] 스탠바이 모드 — 실행 거부", team_id)
-        yield {"kind": "text", "content": "💤 스탠바이 모드입니다. 에이전트 실행이 중단되어 있습니다. `/api/standby/off`로 해제하세요."}
-        return
-
-    # ── 토큰 예산 체크 (폭주 방지 — 서버는 유지, 에이전트만 중단) ──
-    ok, used = _check_budget(is_auto=is_auto)
-    if not ok:
-        used_k = used // 1000
-        limit_k = (TOKEN_BUDGET_AUTO if is_auto else TOKEN_BUDGET_LIMIT) // 1000
-        mode_str = "자동" if is_auto else "수동"
-        logger.warning("[%s] 토큰 예산 초과 (%dK/%dK, %s) — 에이전트 실행 거부", team_id, used_k, limit_k, mode_str)
-        yield {"kind": "text", "content": f"⚠️ 토큰 예산 초과: {used_k}K / {limit_k}K (1시간, {mode_str}). 서버는 정상 — 에이전트만 일시 중단. 두근이 리셋하면 재개됩니다."}
-        return
+    # ── 스탠바이/예산 체크 (자동 실행만 차단, 수동 대화는 무제한) ──
+    if is_auto:
+        if STANDBY_FLAG:
+            logger.info("[%s] 스탠바이 모드 — 자동 실행 거부", team_id)
+            yield {"kind": "text", "content": "💤 스탠바이 모드입니다. 자동 실행이 중단되어 있습니다. `/api/standby/off`로 해제하세요."}
+            return
+        ok, used = _check_budget(is_auto=True)
+        if not ok:
+            used_k = used // 1000
+            limit_k = TOKEN_BUDGET_AUTO // 1000
+            logger.warning("[%s] 토큰 예산 초과 (%dK/%dK, 자동) — 실행 거부", team_id, used_k, limit_k)
+            yield {"kind": "text", "content": f"⚠️ 자동 실행 토큰 예산 초과: {used_k}K / {limit_k}K (1시간). 수동 대화는 정상 작동합니다."}
+            return
 
     # ── 동시 실행 상한 체크 (유령 방지) ──
     _cleanup_dead_pids()
@@ -738,8 +743,8 @@ async def run_claude(
         team_id, proc.returncode or 0, estimated_tokens // 1000, is_auto,
     )
 
-    # 토큰 급등 감지 → 자동 스탠바이 (매 run 완료 후 체크)
-    _check_token_spike()
+    # 토큰 급등 감지 → 자동 실행만 스탠바이 (수동 대화 무관)
+    _check_token_spike(is_auto=is_auto)
 
     if proc.returncode != 0:
         stderr_data = await proc.stderr.read()
