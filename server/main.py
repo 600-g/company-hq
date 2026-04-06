@@ -1288,8 +1288,8 @@ async def smart_dispatch(body: dict):
                 "유저에게 도움되는 답변을 해줘. 짧고 명확하게."
             )
             direct_text = ""
-            # smart_dispatch CPO 직접 응답 — 자동 라우팅 결과이므로 is_auto=True
-            async for chunk in run_claude(direct_prompt, cpo_team["localPath"], "cpo-claude", is_auto=True):
+            # smart_dispatch CPO 직접 응답 — 사용자 입력이므로 is_auto=False
+            async for chunk in run_claude(direct_prompt, cpo_team["localPath"], "cpo-claude", is_auto=False):
                 if chunk["kind"] == "text":
                     direct_text += chunk["content"]
                     yield f"data: {json.dumps({'phase': 'summary_chunk', 'content': chunk['content']})}\n\n"
@@ -1321,8 +1321,8 @@ async def smart_dispatch(body: dict):
 
             result_text = ""
             try:
-                # smart_dispatch 팀 병렬 실행 — 자동 라우팅 결과이므로 is_auto=True
-                async for chunk in run_claude(prompt, team["localPath"], team_id, is_auto=True):
+                # smart_dispatch 팀 병렬 실행 — 사용자 요청 기반이므로 is_auto=False
+                async for chunk in run_claude(prompt, team["localPath"], team_id, is_auto=False):
                     if chunk["kind"] == "text":
                         result_text += chunk["content"]
                 team_results[team_id] = {
@@ -1377,8 +1377,8 @@ async def smart_dispatch(body: dict):
             )
 
             summary_text = ""
-            # CPO 통합 보고 — 자동 오케스트레이션이므로 is_auto=True
-            async for chunk in run_claude(summary_prompt, cpo_team["localPath"], "cpo-claude", is_auto=True):
+            # CPO 통합 보고 — 사용자 요청 기반이므로 is_auto=False
+            async for chunk in run_claude(summary_prompt, cpo_team["localPath"], "cpo-claude", is_auto=False):
                 if chunk["kind"] == "text":
                     summary_text += chunk["content"]
                     yield f"data: {json.dumps({'phase': 'summary_chunk', 'content': chunk['content']})}\n\n"
