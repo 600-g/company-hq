@@ -445,8 +445,10 @@ async def handle_chat(ws: WebSocket, team_id: str, project_path: str | None):
     except WebSocketDisconnect:
         _ws_alive = False
         ping_task.cancel()
+        _update_status(team_id, working=False, tool=None)
         manager.disconnect(team_id, ws)
     except Exception:
         _ws_alive = False
         ping_task.cancel()
+        _update_status(team_id, working=False, tool=None)
         manager.disconnect(team_id, ws)
