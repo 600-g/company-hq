@@ -649,10 +649,10 @@ async def run_claude(
     team_id: str = "",
     is_auto: bool = False,
 ):
-    """Claude Code CLI 실행 — 세션 영구 유지
+    """[레거시] Claude Code CLI 실행 — claude -p 방식
 
-    is_auto=True : 스케줄/파이프라인/큐 등 자동 트리거 → 낮은 예산 상한(100K) 적용
-    is_auto=False: 사용자 직접 채팅 → 일반 예산 상한(300K) 적용
+    is_auto=True : 자동 트리거 → 예산 체크
+    is_auto=False: 수동 대화 → 무제한
 
     Yields: dict {"kind": "text"|"status", "content": str}
     """
@@ -696,9 +696,10 @@ async def run_claude(
     system_prompt = TEAM_SYSTEM_PROMPTS.get(team_id, DEFAULT_SYSTEM_PROMPT)
     cmd.extend(["--append-system-prompt", system_prompt])
 
-    # ── 모델 + 프롬프트 ──
+    # ── 모델 + 프롬프트 + stream-json ──
     cmd.extend(["-p", prompt])
     cmd.extend(["--model", TEAM_MODELS.get(team_id, "sonnet")])
+    cmd.extend(["--output-format", "stream-json", "--verbose"])
 
     env = os.environ.copy()
     cwd = os.path.expanduser(project_path) if project_path else None
@@ -720,39 +721,67 @@ async def run_claude(
     )
     AGENT_PIDS[team_id] = proc.pid
 
-    buf = b""
+    # ── stream-json 파싱 ──
+    line_buf = b""
     while True:
-        chunk = await proc.stdout.read(1024)
+        chunk = await proc.stdout.read(4096)
         if not chunk:
-            if buf:
-                text = buf.decode("utf-8", errors="replace")
-                if text.strip():
-                    yield {"kind": "text", "content": text}
             break
-        buf += chunk
-        try:
-            text = buf.decode("utf-8")
-            buf = b""
-        except UnicodeDecodeError:
-            continue
+        line_buf += chunk
+        while b"\n" in line_buf:
+            line, line_buf = line_buf.split(b"\n", 1)
+            line_str = line.decode("utf-8", errors="replace").strip()
+            if not line_str:
+                continue
+            try:
+                event = json.loads(line_str)
+            except json.JSONDecodeError:
+                # JSON 아닌 출력 (에러 메시지 등) → 그대로 전달
+                if line_str.strip():
+                    yield {"kind": "text", "content": line_str}
+                continue
 
-        if not text.strip():
-            continue
+            etype = event.get("type", "")
 
-        # 툴 사용 상태 감지
-        status = _parse_status(text)
-        if status:
-            logger.info("[%s] 툴 사용: %s", team_id, status)
-            yield {"kind": "status", "content": status}
+            # 응답 텍스트 (assistant 메시지)
+            if etype == "assistant":
+                msg = event.get("message", {})
+                for block in msg.get("content", []):
+                    if block.get("type") == "text":
+                        text = block["text"]
+                        AGENT_TOKENS[team_id]["chars"] += len(text)
+                        yield {"kind": "text", "content": text}
+                    elif block.get("type") == "tool_use":
+                        tool_name = block.get("name", "")
+                        tool_input = str(block.get("input", ""))[:60]
+                        status_str = _parse_status(f"⚡ {tool_name}({tool_input})") or f"⚡ {tool_name}"
+                        logger.info("[%s] 도구: %s", team_id, status_str)
+                        yield {"kind": "status", "content": status_str}
 
-        # stdout에 에러 패턴이 있으면 감지 (CLI가 exit=0이지만 에러 출력하는 경우)
-        _err_patterns = ["errno", "unknown error", "rate limit", "overloaded", "too many requests"]
-        if any(p in text.lower() for p in _err_patterns) and len(text) < 200:
-            logger.warning("[%s] stdout 에러 감지: %s", team_id, text.strip()[:100])
-            _log_error_lesson(team_id, text.strip())
+            # tool_result (도구 실행 결과)
+            elif etype == "tool_result":
+                # 도구 결과는 스트리밍하지 않음 (claude가 알아서 사용)
+                pass
 
-        AGENT_TOKENS[team_id]["chars"] += len(text)
-        yield {"kind": "text", "content": text}
+            # rate limit 이벤트 — 핵심!
+            elif etype == "rate_limit_event":
+                info = event.get("rate_limit_info", {})
+                status = info.get("status", "")
+                if status != "allowed":
+                    resets = info.get("resetsAt", 0)
+                    import datetime as _dt
+                    reset_time = _dt.datetime.fromtimestamp(resets).strftime("%H:%M") if resets else "?"
+                    logger.warning("[%s] rate limit: status=%s, resets=%s", team_id, status, reset_time)
+                    yield {"kind": "text", "content": f"\n⚠️ Rate limit 도달 — {reset_time}에 해제 예정"}
+
+            # 최종 결과
+            elif etype == "result":
+                result_text = event.get("result", "")
+                is_error = event.get("is_error", False)
+                duration = event.get("duration_ms", 0)
+                if is_error and result_text:
+                    _log_error_lesson(team_id, result_text)
+                    yield {"kind": "text", "content": f"\n❌ {result_text}"}
 
     await proc.wait()
 
