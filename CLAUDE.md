@@ -372,22 +372,24 @@ company-hq/
 
 ---
 
-## 완료 전 필수 검증
+## 완료 전 필수 검증 (QA 필수)
 
-코드 수정 후 **"작동한다"는 증거 없이 완료 보고하지 않는다.**
+코드 수정 후 **QA 통과 없이 완료 보고하지 않는다.**
 
 ```
 코드 수정 완료
-  └→ 1단계: 빌드 성공 확인 (프론트: next build / 서버: import 체크)
-       └→ 2단계: 핵심 동작 검증 (API 호출, 화면 렌더링 등)
-            └→ 3단계: "이게 보이면 성공" 확인 기준 제시
-                 └→ 4단계: 검증 통과 후에만 ✅ 완료 보고
+  └→ 1단계: 빌드 확인 (프론트: next build / 서버: import)
+       └→ 2단계: 서버 재시작 (bash scripts/restart_server.sh)
+            └→ 3단계: QA 실행 (bash scripts/qa_check.sh)
+                 └→ 4단계: QA 통과 후에만 ✅ 완료 보고
+                      └→ QA 실패 → 즉시 수정 루프
 ```
 
-- 프론트 수정 → 반드시 `next build` 성공 확인 후 `bash deploy.sh` 실행 (빌드+Cloudflare 배포 한번에)
-- 서버 수정 → API 엔드포인트 curl 테스트 또는 import 검증
-- 빌드 실패 시 완료 보고 금지, 즉시 수정 루프 진입
-- 두근에게 "이렇게 확인해봐" 가이드 필수 제공
+- **서버 수정 시**: 반드시 `bash scripts/restart_server.sh` 실행 (uvicorn reload 불안정)
+- **모든 패치 후**: `bash scripts/qa_check.sh` 실행 → 7/7 통과해야 배포 가능
+- 프론트 수정 → `next build` + `bash deploy.sh`
+- QA 실패 시 완료 보고 금지
+- 두근에게 QA 결과 포함해서 보고
 
 ---
 
