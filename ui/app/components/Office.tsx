@@ -426,12 +426,20 @@ function DispatchChat({ teams, onOpenChat }: { teams: Team[]; onOpenChat?: (team
           onChange={e => {
             const v = e.target.value;
             setInput(v);
-            // @ 감지 → 자동완성
-            const atIdx = v.lastIndexOf("@");
-            if (atIdx >= 0 && (atIdx === 0 || v[atIdx - 1] === " ")) {
-              const query = v.slice(atIdx + 1).split(/\s/)[0];
-              setMentionQuery(query);
-              setShowMentions(true);
+            // @ 감지 → 자동완성 (커서 위치 기준)
+            const cursorPos = e.target.selectionStart || v.length;
+            const textBeforeCursor = v.slice(0, cursorPos);
+            const lastAtIdx = textBeforeCursor.lastIndexOf("@");
+            if (lastAtIdx >= 0 && (lastAtIdx === 0 || textBeforeCursor[lastAtIdx - 1] === " " || textBeforeCursor[lastAtIdx - 1] === "\n")) {
+              const afterAt = textBeforeCursor.slice(lastAtIdx + 1);
+              // 공백이 포함되면 이미 선택 완료 → 드롭다운 닫기
+              if (afterAt.includes(" ") || afterAt.includes("\n")) {
+                setShowMentions(false);
+              } else {
+                setMentionQuery(afterAt);
+                setMentionIdx(0);
+                setShowMentions(true);
+              }
             } else {
               setShowMentions(false);
             }

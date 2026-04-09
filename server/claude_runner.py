@@ -745,6 +745,12 @@ async def run_claude(
             logger.info("[%s] 툴 사용: %s", team_id, status)
             yield {"kind": "status", "content": status}
 
+        # stdout에 에러 패턴이 있으면 감지 (CLI가 exit=0이지만 에러 출력하는 경우)
+        _err_patterns = ["errno", "unknown error", "rate limit", "overloaded", "too many requests"]
+        if any(p in text.lower() for p in _err_patterns) and len(text) < 200:
+            logger.warning("[%s] stdout 에러 감지: %s", team_id, text.strip()[:100])
+            _log_error_lesson(team_id, text.strip())
+
         AGENT_TOKENS[team_id]["chars"] += len(text)
         yield {"kind": "text", "content": text}
 
