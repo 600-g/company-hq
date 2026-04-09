@@ -126,7 +126,7 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
   const [connected, setConnected] = useState(false);
   const [toolStatus, setToolStatus] = useState<string>("");
   // ── 진행 추적 ──
-  const [toolLog, setToolLog] = useState<string[]>([]);          // 이번 작업 툴 목록
+  const [toolLog, setToolLog] = useState<{time: string; text: string}[]>([]);  // 이번 작업 툴 타임라인
   const [elapsed, setElapsed] = useState(0);                      // 경과 초
   const [lastDone, setLastDone] = useState<{ sec: number; tools: number } | null>(null); // 완료 정보
   const [showToolLog, setShowToolLog] = useState(false);
@@ -235,7 +235,7 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
           setMessages(prev => [...prev, { type: "user", content: data.content }]);
         } else if (data.type === "status") {
           setToolStatus(data.content);
-          setToolLog(prev => [...prev, data.content]);
+          setToolLog(prev => [...prev, { time: new Date().toLocaleTimeString("ko-KR", { hour12: false }), text: data.content }]);
         } else if (data.type === "ai_start") {
           setStreaming(true);
           setToolStatus("");
@@ -446,61 +446,50 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
               </div>
             </div>
           ))}
-          {/* 작업 진행 패널 + 취소 버튼 */}
+          {/* 터미널 작업 로그 */}
           {streaming && (
-            <div className="bg-[#0f1a0f] border border-green-900/40 rounded p-2 space-y-1.5">
+            <div className="rounded overflow-hidden" style={{ background: '#080818', border: '1px solid #1a1a3a' }}>
               {/* 헤더 */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5">
-                  <div className="flex gap-0.5">
-                    <span className="w-1 h-1 bg-green-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-                    <span className="w-1 h-1 bg-green-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-                    <span className="w-1 h-1 bg-green-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
-                  </div>
-                  <span className="text-[10px] text-green-400/70">작업중</span>
-                  <span className="text-[9px] text-gray-600 font-mono">{fmtTime(elapsed)}</span>
-                </div>
+              <div className="flex items-center justify-between px-2 py-1.5" style={{ borderBottom: '1px solid #1a1a3a' }}>
                 <div className="flex items-center gap-2">
-                  {toolLog.length > 0 && (
-                    <button onClick={() => setShowToolLog(v => !v)}
-                      className="text-[8px] text-gray-600 hover:text-gray-400 transition-colors">
-                      {showToolLog ? "▲" : "▼"} {toolLog.length}개
-                    </button>
-                  )}
-                  <button onClick={cancelWork}
-                    className="bg-red-500/90 hover:bg-red-500 text-white text-[9px] font-bold px-2.5 py-0.5 rounded transition-colors">
-                    ■ 취소
-                  </button>
+                  <span className="text-[10px] text-[#f5c842] font-mono">▶ 작업중</span>
+                  <span className="text-[9px] text-gray-600 font-mono">{fmtTime(elapsed)}</span>
+                  <span className="text-[8px] text-gray-700 font-mono">{toolLog.length}개 실행</span>
                 </div>
+                <button onClick={cancelWork}
+                  className="bg-red-500/90 hover:bg-red-500 text-white text-[9px] font-bold px-2.5 py-0.5 rounded transition-colors">
+                  ■ 취소
+                </button>
               </div>
-              {/* 현재 툴 */}
-              {toolStatus && (
-                <div className="text-[10px] text-yellow-300/80 truncate pl-1 border-l border-yellow-600/30">
-                  {toolStatus}
-                </div>
-              )}
-              {/* 툴 타임라인 (펼침) */}
-              {showToolLog && toolLog.length > 0 && (
-                <div className="max-h-24 overflow-y-auto space-y-0.5 pt-1 border-t border-green-900/30">
-                  {toolLog.map((t, i) => (
-                    <div key={i} className="flex items-center gap-1.5 text-[8px] text-gray-500">
-                      <span className="text-green-800 shrink-0">✓</span>
-                      <span className="truncate">{t}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
+              {/* 로그 영역 */}
+              <div className="max-h-[160px] overflow-y-auto px-2 py-1.5 space-y-0.5 font-mono" style={{ fontSize: '11px' }}>
+                {toolLog.map((entry, i) => (
+                  <div key={i} className="flex gap-2 leading-tight">
+                    <span className="text-gray-700 shrink-0">{entry.time}</span>
+                    <span className="text-[#50d070]">✓</span>
+                    <span className="text-gray-400 truncate">{entry.text}</span>
+                  </div>
+                ))}
+                {/* 현재 진행 중 (커서 깜빡임) */}
+                {toolStatus && (
+                  <div className="flex gap-2 leading-tight">
+                    <span className="text-gray-700 shrink-0">{new Date().toLocaleTimeString("ko-KR", { hour12: false })}</span>
+                    <span className="text-[#f5c842]">▶</span>
+                    <span className="text-[#f5c842]">{toolStatus}</span>
+                    <span className="text-[#f5c842] animate-pulse">▌</span>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
           {/* 완료 배지 */}
           {!streaming && lastDone && (
-            <div className="flex items-center gap-2 px-2 py-1.5 bg-green-500/10 border border-green-600/20 rounded text-[10px]">
-              <span className="text-green-400">✅</span>
-              <span className="text-green-400/80">완료</span>
-              <span className="text-gray-600 ml-auto font-mono">{fmtTime(lastDone.sec)}</span>
+            <div className="flex items-center gap-2 px-2 py-1.5 rounded font-mono" style={{ background: '#080818', border: '1px solid #1a1a3a', fontSize: '11px' }}>
+              <span className="text-[#50d070]">✓ 완료</span>
+              <span className="text-gray-600 ml-auto">{fmtTime(lastDone.sec)}</span>
               {lastDone.tools > 0 && (
-                <span className="text-gray-700">툴 {lastDone.tools}회</span>
+                <span className="text-gray-700">{lastDone.tools}개 도구</span>
               )}
             </div>
           )}
