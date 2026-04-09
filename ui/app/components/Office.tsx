@@ -1153,16 +1153,20 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
     return () => clearInterval(id);
   }, []);
 
-  // 에이전트 working 상태 폴링 (3초마다) → 채팅창 안 열어도 말풍선/글로우 표시
+  // 에이전트 working 상태 폴링 (3초마다) → 게임 + 사이드바 표시
+  const [workingSet, setWorkingSet] = useState<Set<string>>(new Set());
   useEffect(() => {
     const poll = async () => {
       try {
         const res = await fetch(`${getApiBase()}/api/dashboard`);
         if (!res.ok) return;
         const data = await res.json();
-        (data.agents as { id: string; working: boolean }[]).forEach(agent => {
+        const newWorking = new Set<string>();
+        (data.agents as { id: string; working: boolean; tool?: string | null }[]).forEach(agent => {
           gameRef.current?.setWorking(agent.id, agent.working);
+          if (agent.working) newWorking.add(agent.id);
         });
+        setWorkingSet(newWorking);
       } catch {}
     };
     poll();
@@ -1950,7 +1954,13 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
                         }`}>
                         <div className="flex items-center gap-1.5">
                           <span>{team.emoji} {team.name}</span>
-                          {info?.version && <span className="text-[8px] text-gray-600 font-mono">{info.version}</span>}
+                          {workingSet.has(team.id) && (
+                            <span className="flex items-center gap-1 ml-auto">
+                              <span className="w-1.5 h-1.5 bg-yellow-400 rounded-full animate-pulse" />
+                              <span className="text-[8px] text-yellow-400/70">작업중</span>
+                            </span>
+                          )}
+                          {!workingSet.has(team.id) && info?.version && <span className="text-[8px] text-gray-600 font-mono ml-auto">{info.version}</span>}
                         </div>
                       </button>
                     </div>
@@ -2015,7 +2025,13 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
                             >
                               <div className="flex items-center gap-1.5">
                                 <span>{team.emoji} {team.name}</span>
-                                {info?.version && (
+                                {workingSet.has(team.id) && (
+                                  <span className="flex items-center gap-1 ml-auto">
+                                    <span className="w-1.5 h-1.5 bg-yellow-400 rounded-full animate-pulse" />
+                                    <span className="text-[8px] text-yellow-400/70">작업중</span>
+                                  </span>
+                                )}
+                                {!workingSet.has(team.id) && info?.version && (
                                   <span className="text-[8px] text-gray-600 font-mono">{info.version}</span>
                                 )}
                               </div>

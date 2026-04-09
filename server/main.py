@@ -1368,26 +1368,16 @@ async def smart_dispatch(body: dict):
                 done_teams = list(team_results.keys())
                 yield f"data: {json.dumps({'phase': 'team_done', 'done': len(done_teams), 'total': len(routed_steps), 'teams': done_teams})}\n\n"
 
-                # 1팀이면 통합 보고 스킵
-                if len(team_results) == 1:
-                    tid, result = next(iter(team_results.items()))
-                    summary_text = result.get("result", "")
-                    yield f"data: {json.dumps({'phase': 'summary_chunk', 'content': summary_text})}\n\n"
-                else:
-                    # CPO 통합 보고
-                    cpo_team = next((t for t in TEAMS if t["id"] == "cpo-claude"), None)
-                    results_str = "\n\n".join(f"### {r.get('emoji','')} {r.get('team_name',tid)}\n{r.get('result','에러')[:500]}" for tid, r in team_results.items())
-                    summary_prompt = f"유저 요청: \"{message}\"\n\n아래는 각 팀 결과:\n{results_str}\n\n통합 요약해줘."
-                    summary_text = ""
-                    yield f"data: {json.dumps({'phase': 'summarizing'})}\n\n"
-                    async for chunk in run_claude(summary_prompt, cpo_team["localPath"], "cpo-claude", is_auto=False):
-                        if chunk["kind"] == "text":
-                            summary_text += chunk["content"]
-                            yield f"data: {json.dumps({'phase': 'summary_chunk', 'content': chunk['content']})}\n\n"
+                # 멘션 → 통합보고 없이 각 팀 결과 직접 전달 (토큰 절약)
+                all_results_text = ""
+                for tid, result in team_results.items():
+                    txt = result.get("result", "")
+                    all_results_text += txt + "\n"
+                    yield f"data: {json.dumps({'phase': 'summary_chunk', 'content': txt})}\n\n"
 
                 DISPATCH_TASKS[dispatch_id]["status"] = "done"
                 meta = {"routed_count": len(routed_steps), "total_teams": len(available_teams), "mention": True}
-                yield f"data: {json.dumps({'phase': 'done', 'dispatch_id': dispatch_id, 'summary': summary_text if len(team_results) > 1 else list(team_results.values())[0].get('result',''), 'team_results': team_results, 'meta': meta})}\n\n"
+                yield f"data: {json.dumps({'phase': 'done', 'dispatch_id': dispatch_id, 'summary': all_results_text.strip(), 'team_results': team_results, 'meta': meta})}\n\n"
                 return
 
         team_list_str = "\n".join(
