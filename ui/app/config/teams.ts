@@ -5,6 +5,7 @@ export interface Team {
   repo: string;
   localPath: string;
   status: string;
+  model?: string;
   siteUrl?: string;
   githubUrl?: string;
 }

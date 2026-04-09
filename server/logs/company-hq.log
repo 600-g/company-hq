@@ -1204,3 +1204,190 @@ content-lab 질의 4건: 1)이전 토큰부족으로 미적용된 항목 확인 
 2. 서버실은 에이전트이
 2026-04-06 15:28:10,326 [INFO] [PUSH] 유저 온라인 — 푸시 스킵 (인앱만 저장): 🧠 CPO 응답 완료
 2026-04-06 16:10:58,300 [INFO] [cpo-claude] 프롬프트 수신: 서버실 모니터링이 오류같은데 체크 및 점검 보완해줘
+2026-04-06 23:54:58,494 [INFO] [cpo-claude] 세션 초기화 (이전: 1a0e96c4-08e5-4a82-aa35-5e8cd04882b9)
+2026-04-06 23:54:58,495 [INFO] [cpo-claude] 프롬프트 수신: 정상이니
+2026-04-07 00:02:25,436 [INFO] [light/haiku] 라우팅 완료 (87자, exit=0)
+2026-04-07 00:02:25,438 [INFO] [cpo-claude] 프롬프트 수신: 유저 메시지: "정상인가"
+
+이 메시지는 특정 팀에 전달할 필요 없이 CPO가 직접 답할 수 있다.
+유저에게 도움되는 답변을 해줘. 짧고 명확하게.
+2026-04-07 00:02:48,728 [INFO] [cpo-claude] 응답 완료 (exit=0, ~0K tokens, 자동=True)
+2026-04-07 00:02:56,715 [INFO] [design-team] 프롬프트 수신: 이전(직전)하려고 했던거 지금 가능?
+2026-04-07 00:03:30,847 [INFO] [design-team] 응답 완료 (exit=0, ~0K tokens, 자동=False)
+2026-04-07 00:03:30,851 [INFO] [PUSH] 유저 온라인 — 푸시 스킵 (인앱만 저장): 🎨 디자인팀 응답 완료
+2026-04-07 00:03:59,785 [INFO] [design-team] 프롬프트 수신: 제미나이 안붙여도 가능해 바로>?
+2026-04-07 00:03:59,788 [INFO] [PUSH] 유저 온라인 — 푸시 스킵 (인앱만 저장): 🎨 디자인팀 응답 완료
+2026-04-07 00:33:05,181 [INFO] [content-lab] 프롬프트 수신: 이전에 준 영상 정보 남아있나?
+2026-04-07 00:33:24,805 [INFO] [content-lab] 응답 완료 (exit=0, ~0K tokens, 자동=False)
+2026-04-07 00:33:24,809 [INFO] [PUSH] 유저 온라인 — 푸시 스킵 (인앱만 저장): 🔬 콘텐츠랩 응답 완료
+2026-04-07 00:33:39,584 [INFO] [content-lab] 프롬프트 수신: 그 영상급 으로 우리꺼도 업글해야하는데 필요한 부분 정리해서 cpo 전달해서 파악해봐 규모
+2026-04-07 00:35:11,267 [INFO] [content-lab] 응답 완료 (exit=0, ~1K tokens, 자동=False)
+2026-04-07 00:39:08,705 [INFO] [cpo-claude] 프롬프트 수신: 정상이야?
+2026-04-07 00:39:08,709 [INFO] [PUSH] 유저 온라인 — 푸시 스킵 (인앱만 저장): 🧠 CPO 응답 완료
+2026-04-07 03:19:59,651 [INFO] [cpo-claude] 프롬프트 수신: 정상이야?
+2026-04-07 03:20:10,822 [INFO] [cpo-claude] 응답 완료 (exit=0, ~0K tokens, 자동=False)
+2026-04-07 03:20:10,826 [INFO] [PUSH] 유저 온라인 — 푸시 스킵 (인앱만 저장): 🧠 CPO 응답 완료
+2026-04-07 03:21:31,665 [INFO] [cpo-claude] 프롬프트 수신: 디자인 에이전트한태 전달한 정보가 있을텐데 우리가 그정도 급이 되려면 어떻게 되어야할까 기획 및 보고 규모 스펙 가능성 판단해서 보고해
+2026-04-07 03:23:50,194 [INFO] [cpo-claude] 프롬프트 수신: 디자인 에이전트한태 전달한 정보가 있을텐데 우리가 그정도 급이 되려면 어떻게 되어야할까 기획 및 보고 규모 스펙 가능성 판단해서 보고해
+2026-04-07 03:25:13,147 [INFO] [cpo-claude] 응답 완료 (exit=0, ~3K tokens, 자동=False)
+2026-04-07 03:27:36,365 [INFO] [PUSH] 유저 온라인 — 푸시 스킵 (인앱만 저장): 🚔 112 서비스 점검
+2026-04-07 07:45:10,566 [ERROR] ConnectionClosedError exception in shielded future
+future: <Future finished exception=ConnectionClosedError(None, Close(code=<CloseCode.INTERNAL_ERROR: 1011>, reason='keepalive ping timeout'), None)>
+Traceback (most recent call last):
+  File "/Users/600mac/Developer/my-company/company-hq/server/venv/lib/python3.14/site-packages/websockets/legacy/protocol.py", line 1276, in close_connection
+    await self.transfer_data_task
+  File "/Users/600mac/Developer/my-company/company-hq/server/venv/lib/python3.14/site-packages/websockets/legacy/protocol.py", line 940, in transfer_data
+    message = await self.read_message()
+              ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/600mac/Developer/my-company/company-hq/server/venv/lib/python3.14/site-packages/websockets/legacy/protocol.py", line 1010, in read_message
+    frame = await self.read_data_frame(max_size=self.max_size)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/600mac/Developer/my-company/company-hq/server/venv/lib/python3.14/site-packages/websockets/legacy/protocol.py", line 1087, in read_data_frame
+    frame = await self.read_frame(max_size)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/600mac/Developer/my-company/company-hq/server/venv/lib/python3.14/site-packages/websockets/legacy/protocol.py", line 1144, in read_frame
+    frame = await Frame.read(
+            ^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+    )
+    ^
+  File "/Users/600mac/Developer/my-company/company-hq/server/venv/lib/python3.14/site-packages/websockets/legacy/framing.py", line 70, in read
+    data = await reader(2)
+           ^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/asyncio/streams.py", line 769, in readexactly
+    await self._wait_for_data('readexactly')
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/asyncio/streams.py", line 539, in _wait_for_data
+    await self._waiter
+asyncio.exceptions.CancelledError
+
+The above exception was the direct cause of the following exception:
+
+websockets.exceptions.ConnectionClosedError: sent 1011 (internal error) keepalive ping timeout; no close frame received
+2026-04-07 07:57:20,330 [ERROR] ConnectionClosedError exception in shielded future
+future: <Future finished exception=ConnectionClosedError(None, Close(code=<CloseCode.INTERNAL_ERROR: 1011>, reason='keepalive ping timeout'), None)>
+Traceback (most recent call last):
+  File "/Users/600mac/Developer/my-company/company-hq/server/venv/lib/python3.14/site-packages/websockets/legacy/protocol.py", line 1276, in close_connection
+    await self.transfer_data_task
+  File "/Users/600mac/Developer/my-company/company-hq/server/venv/lib/python3.14/site-packages/websockets/legacy/protocol.py", line 940, in transfer_data
+    message = await self.read_message()
+              ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/600mac/Developer/my-company/company-hq/server/venv/lib/python3.14/site-packages/websockets/legacy/protocol.py", line 1010, in read_message
+    frame = await self.read_data_frame(max_size=self.max_size)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/600mac/Developer/my-company/company-hq/server/venv/lib/python3.14/site-packages/websockets/legacy/protocol.py", line 1087, in read_data_frame
+    frame = await self.read_frame(max_size)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/600mac/Developer/my-company/company-hq/server/venv/lib/python3.14/site-packages/websockets/legacy/protocol.py", line 1144, in read_frame
+    frame = await Frame.read(
+            ^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+    )
+    ^
+  File "/Users/600mac/Developer/my-company/company-hq/server/venv/lib/python3.14/site-packages/websockets/legacy/framing.py", line 70, in read
+    data = await reader(2)
+           ^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/asyncio/streams.py", line 769, in readexactly
+    await self._wait_for_data('readexactly')
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/asyncio/streams.py", line 539, in _wait_for_data
+    await self._waiter
+asyncio.exceptions.CancelledError
+
+The above exception was the direct cause of the following exception:
+
+websockets.exceptions.ConnectionClosedError: sent 1011 (internal error) keepalive ping timeout; no close frame received
+2026-04-07 09:16:28,076 [ERROR] ConnectionClosedError exception in shielded future
+future: <Future finished exception=ConnectionClosedError(None, Close(code=<CloseCode.INTERNAL_ERROR: 1011>, reason='keepalive ping timeout'), None)>
+Traceback (most recent call last):
+  File "/Users/600mac/Developer/my-company/company-hq/server/venv/lib/python3.14/site-packages/websockets/legacy/protocol.py", line 1276, in close_connection
+    await self.transfer_data_task
+  File "/Users/600mac/Developer/my-company/company-hq/server/venv/lib/python3.14/site-packages/websockets/legacy/protocol.py", line 940, in transfer_data
+    message = await self.read_message()
+              ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/600mac/Developer/my-company/company-hq/server/venv/lib/python3.14/site-packages/websockets/legacy/protocol.py", line 1010, in read_message
+    frame = await self.read_data_frame(max_size=self.max_size)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/600mac/Developer/my-company/company-hq/server/venv/lib/python3.14/site-packages/websockets/legacy/protocol.py", line 1087, in read_data_frame
+    frame = await self.read_frame(max_size)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/600mac/Developer/my-company/company-hq/server/venv/lib/python3.14/site-packages/websockets/legacy/protocol.py", line 1144, in read_frame
+    frame = await Frame.read(
+            ^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+    )
+    ^
+  File "/Users/600mac/Developer/my-company/company-hq/server/venv/lib/python3.14/site-packages/websockets/legacy/framing.py", line 70, in read
+    data = await reader(2)
+           ^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/asyncio/streams.py", line 769, in readexactly
+    await self._wait_for_data('readexactly')
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/asyncio/streams.py", line 539, in _wait_for_data
+    await self._waiter
+asyncio.exceptions.CancelledError
+
+The above exception was the direct cause of the following exception:
+
+websockets.exceptions.ConnectionClosedError: sent 1011 (internal error) keepalive ping timeout; no close frame received
+2026-04-07 09:35:07,632 [ERROR] ConnectionClosedError exception in shielded future
+future: <Future finished exception=ConnectionClosedError(None, Close(code=<CloseCode.INTERNAL_ERROR: 1011>, reason='keepalive ping timeout'), None)>
+Traceback (most recent call last):
+  File "/Users/600mac/Developer/my-company/company-hq/server/venv/lib/python3.14/site-packages/websockets/legacy/protocol.py", line 1276, in close_connection
+    await self.transfer_data_task
+  File "/Users/600mac/Developer/my-company/company-hq/server/venv/lib/python3.14/site-packages/websockets/legacy/protocol.py", line 940, in transfer_data
+    message = await self.read_message()
+              ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/600mac/Developer/my-company/company-hq/server/venv/lib/python3.14/site-packages/websockets/legacy/protocol.py", line 1010, in read_message
+    frame = await self.read_data_frame(max_size=self.max_size)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/600mac/Developer/my-company/company-hq/server/venv/lib/python3.14/site-packages/websockets/legacy/protocol.py", line 1087, in read_data_frame
+    frame = await self.read_frame(max_size)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/600mac/Developer/my-company/company-hq/server/venv/lib/python3.14/site-packages/websockets/legacy/protocol.py", line 1144, in read_frame
+    frame = await Frame.read(
+            ^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+    )
+    ^
+  File "/Users/600mac/Developer/my-company/company-hq/server/venv/lib/python3.14/site-packages/websockets/legacy/framing.py", line 70, in read
+    data = await reader(2)
+           ^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/asyncio/streams.py", line 769, in readexactly
+    await self._wait_for_data('readexactly')
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/asyncio/streams.py", line 539, in _wait_for_data
+    await self._waiter
+asyncio.exceptions.CancelledError
+
+The above exception was the direct cause of the following exception:
+
+websockets.exceptions.ConnectionClosedError: sent 1011 (internal error) keepalive ping timeout; no close frame received
+2026-04-08 00:50:59,982 [ERROR] ConnectionClosedError exception in shielded future
+future: <Future finished exception=ConnectionClosedError(None, Close(code=<CloseCode.INTERNAL_ERROR: 1011>, reason='keepalive ping timeout'), None)>
+Traceback (most recent call last):
+  File "/Users/600mac/Developer/my-company/company-hq/server/venv/lib/python3.14/site-packages/websockets/legacy/protocol.py", line 1276, in close_connection
+    await self.transfer_data_task
+  File "/Users/600mac/Developer/my-company/company-hq/server/venv/lib/python3.14/site-packages/websockets/legacy/protocol.py", line 940, in transfer_data
+    message = await self.read_message()
+              ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/600mac/Developer/my-company/company-hq/server/venv/lib/python3.14/site-packages/websockets/legacy/protocol.py", line 1010, in read_message
+    frame = await self.read_data_frame(max_size=self.max_size)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/600mac/Developer/my-company/company-hq/server/venv/lib/python3.14/site-packages/websockets/legacy/protocol.py", line 1087, in read_data_frame
+    frame = await self.read_frame(max_size)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/600mac/Developer/my-company/company-hq/server/venv/lib/python3.14/site-packages/websockets/legacy/protocol.py", line 1144, in read_frame
+    frame = await Frame.read(
+            ^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+    )
+    ^
+  File "/Users/600mac/Developer/my-company/company-hq/server/venv/lib/python3.14/site-packages/websockets/legacy/framing.py", line 70, in read
+    data = await reader(2)
+           ^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/asyncio/streams.py", line 769, in readexactly
+    await self._wait_for_data('readexactly')
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/asyncio/streams.py", line 539, in _wait_for_data
+    await self._waiter
+asyncio.exceptions.CancelledError
+
+The above exception was the direct cause of the following exception:
+
+websockets.exceptions.ConnectionClosedError: sent 1011 (internal error) keepalive ping timeout; no close frame received
