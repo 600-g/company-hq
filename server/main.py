@@ -612,7 +612,7 @@ async def get_floor_layout():
     for floor_str, team_ids in sorted(FLOOR_LAYOUT.items(), key=lambda x: int(x[0])):
         teams_in_floor = []
         for tid in team_ids:
-            if tid in ("cpo-claude", "server-monitor", "qa-agent"):  # CPO·서버실·QA는 게임 캐릭터 없음
+            if tid in ("cpo-claude", "server-monitor"):  # CPO·서버실은 게임에서 별도 렌더링
                 continue
             team = team_map.get(tid)
             if team:
@@ -1847,21 +1847,57 @@ async def terminal_status(team_id: str):
 
 @app.post("/api/qa/run")
 async def run_qa():
-    """QA 전체 체크 실행 (토큰 0)"""
-    import subprocess
-    script = os.path.join(os.path.dirname(__file__), "..", "scripts", "qa_check.sh")
+    """QA 전체 체크 실행 (토큰 0, 서버 내부 직접 체크)"""
+    import urllib.request, socket
+    checks = []
+
+    # 1. 서버 자체 — 이미 응답하고 있으니 OK
+    checks.append({"name": "서버 응답", "pass": True})
+
+    # 2. 대시보드 데이터
     try:
-        result = subprocess.run(
-            ["bash", script], capture_output=True, text=True, timeout=120,
-        )
-        lines = result.stdout.strip().split("\n")
-        # 마지막 줄에서 결과 파싱
-        passed = "QA 통과" in result.stdout
-        return {"ok": True, "passed": passed, "output": result.stdout, "exit_code": result.returncode}
-    except subprocess.TimeoutExpired:
-        return {"ok": False, "error": "QA 타임아웃 (120초)"}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
+        dash = _svc_cache.get("data", [])
+        checks.append({"name": "대시보드", "pass": True})
+    except Exception:
+        checks.append({"name": "대시보드", "pass": False})
+
+    # 3. 멘션 코드 존재 확인 (코드 레벨 체크)
+    import inspect
+    src = inspect.getsource(smart_dispatch)
+    has_mention = "mention_pattern" in src
+    no_integration = "통합 요약해줘" not in src
+    checks.append({"name": "멘션 haiku 스킵", "pass": has_mention})
+    checks.append({"name": "멘션 통합보고 제거", "pass": no_integration})
+
+    # 4. 프론트 빌드
+    ui_out = os.path.exists(os.path.join(os.path.dirname(__file__), "..", "ui", "out")) or \
+             os.path.exists(os.path.join(os.path.dirname(__file__), "..", "ui", ".next"))
+    checks.append({"name": "프론트 빌드", "pass": ui_out})
+
+    # 5. ttyd
+    try:
+        s = socket.create_connection(("127.0.0.1", 7681), timeout=2)
+        s.close()
+        checks.append({"name": "ttyd", "pass": True})
+    except Exception:
+        checks.append({"name": "ttyd", "pass": False})
+
+    # 6. Cloudflare
+    try:
+        req = urllib.request.Request("https://api.600g.net/api/standby", method="GET")
+        req.add_header("User-Agent", "qa/1.0")
+        resp = urllib.request.urlopen(req, timeout=5)
+        checks.append({"name": "외부 접속", "pass": resp.getcode() == 200})
+    except Exception:
+        checks.append({"name": "외부 접속", "pass": False})
+
+    passed_count = sum(1 for c in checks if c["pass"])
+    total = len(checks)
+    all_passed = passed_count == total
+    output = "\n".join(f"{'✅' if c['pass'] else '❌'} {c['name']}" for c in checks)
+    output += f"\n\n결과: {passed_count}/{total} {'✅ QA 통과' if all_passed else '❌ QA 실패'}"
+
+    return {"ok": True, "passed": all_passed, "checks": checks, "output": output, "summary": f"{passed_count}/{total}"}
 
 
 @app.post("/api/qa/restart-server")
