@@ -40,42 +40,53 @@ function SpecPopup({ team, onClose }: { team: Team; onClose: () => void }) {
     setSaving(false);
   };
 
+  // ESC로 닫기
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [onClose]);
+
   return (
-    <div className="absolute inset-0 z-50 bg-[#0a0a18] flex flex-col rounded-lg overflow-hidden">
-      <div className="flex items-center justify-between px-3 py-2 bg-[#14142a] border-b border-[#2a2a5a] shrink-0">
-        <span className="text-[11px] font-bold text-gray-300">{team.emoji} {team.name} 스펙</span>
-        <div className="flex items-center gap-1.5">
-          {saved && <span className="text-[9px] text-green-400">저장됨</span>}
-          {editing ? (
-            <>
-              <button onClick={handleSave} disabled={saving}
-                className="text-[9px] px-2 py-0.5 bg-green-500/20 text-green-400 border border-green-500/30 rounded hover:bg-green-500/30 disabled:opacity-50">
-                {saving ? "..." : "저장"}
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60" onClick={onClose}>
+      <div className="w-[480px] max-w-[90vw] h-[70vh] bg-[#0a0a18] border border-[#3a3a5a] rounded-lg shadow-2xl flex flex-col overflow-hidden"
+        onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-3 py-2 bg-[#14142a] border-b border-[#2a2a5a] shrink-0">
+          <span className="text-[11px] font-bold text-gray-300">{team.emoji} {team.name} — CLAUDE.md</span>
+          <div className="flex items-center gap-1.5">
+            {saved && <span className="text-[9px] text-green-400">저장됨</span>}
+            {editing ? (
+              <>
+                <button onClick={handleSave} disabled={saving}
+                  className="text-[9px] px-2 py-0.5 bg-green-500/20 text-green-400 border border-green-500/30 rounded hover:bg-green-500/30 disabled:opacity-50">
+                  {saving ? "..." : "저장"}
+                </button>
+                <button onClick={() => setEditing(false)}
+                  className="text-[9px] px-2 py-0.5 text-gray-500 hover:text-gray-300">취소</button>
+              </>
+            ) : (
+              <button onClick={() => setEditing(true)}
+                className="text-[9px] px-2 py-0.5 bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 rounded hover:bg-yellow-500/20">
+                수정
               </button>
-              <button onClick={() => setEditing(false)}
-                className="text-[9px] px-2 py-0.5 text-gray-500 hover:text-gray-300">취소</button>
-            </>
-          ) : (
-            <button onClick={() => setEditing(true)}
-              className="text-[9px] px-2 py-0.5 bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 rounded hover:bg-yellow-500/20">
-              수정
-            </button>
-          )}
-          <button onClick={onClose} className="text-gray-400 hover:text-white text-sm px-1">✕</button>
+            )}
+            <button onClick={onClose} className="text-gray-400 hover:text-white text-sm px-1">✕</button>
+            <span className="text-[8px] text-gray-700">ESC</span>
+          </div>
         </div>
-      </div>
-      <div className="flex-1 overflow-y-auto p-2 min-h-0">
-        {loading ? (
-          <span className="text-[11px] text-gray-500 p-2">로딩중...</span>
-        ) : editing ? (
-          <textarea
-            value={md}
-            onChange={e => setMd(e.target.value)}
-            className="w-full h-full bg-[#0f0f1f] text-[11px] text-gray-300 leading-relaxed p-2 border border-[#2a2a5a] rounded resize-none focus:outline-none focus:border-yellow-500/40 font-mono"
-          />
-        ) : (
-          <div className="text-[11px] text-gray-300 leading-relaxed whitespace-pre-wrap p-1">{md}</div>
-        )}
+        <div className="flex-1 overflow-y-auto p-3 min-h-0">
+          {loading ? (
+            <span className="text-[11px] text-gray-500 p-2">로딩중...</span>
+          ) : editing ? (
+            <textarea
+              value={md}
+              onChange={e => setMd(e.target.value)}
+              className="w-full h-full bg-[#0f0f1f] text-[11px] text-gray-300 leading-relaxed p-2 border border-[#2a2a5a] rounded resize-none focus:outline-none focus:border-yellow-500/40 font-mono"
+            />
+          ) : (
+            <div className="text-[11px] text-gray-300 leading-relaxed whitespace-pre-wrap p-1 font-mono">{md}</div>
+          )}
+        </div>
       </div>
     </div>
   );
