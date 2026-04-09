@@ -157,8 +157,11 @@ def _save_layout(layout: dict[str, list[str]]):
         json.dump(layout, f, ensure_ascii=False, indent=2)
 
 def _sync_layout_with_teams(teams: list[dict], layout: dict[str, list[str]]) -> dict[str, list[str]]:
-    """teams.json 변경 시 floor_layout.json에서 삭제된 팀 제거, 신규 팀 자동 배치"""
-    team_ids = {t["id"] for t in teams} - {"cpo-claude"}
+    """teams.json 변경 시 floor_layout.json에서 삭제된 팀 제거, 신규 팀 자동 배치
+    pinned 팀(server-monitor, cpo-claude)은 게임에서 별도 렌더링 → layout 제외
+    """
+    pinned = {tid for tid, _ in _PINNED_ORDERS.items()}  # server-monitor, cpo-claude
+    team_ids = {t["id"] for t in teams} - pinned
     # 레이아웃에 있는 팀 ID 수집
     assigned: set[str] = set()
     new_layout: dict[str, list[str]] = {}
@@ -407,6 +410,8 @@ async def add_team(body: dict):
     if not result["ok"]:
         return result
 
+    # category: "dev"=개발/서포트, "product"=독자 프로젝트
+    category = body.get("category", "product")  # 기본값 = 독자 프로젝트
     new_team = {
         "id": repo_name,
         "name": name,
@@ -414,6 +419,7 @@ async def add_team(body: dict):
         "repo": repo_name,
         "localPath": f"~/Developer/my-company/{repo_name}",
         "status": "운영중",
+        "category": category,
         "order": _next_order(TEAMS),
         "layer": 1,
     }
@@ -1380,20 +1386,25 @@ async def smart_dispatch(body: dict):
                 yield f"data: {json.dumps({'phase': 'done', 'dispatch_id': dispatch_id, 'summary': all_results_text.strip(), 'team_results': team_results, 'meta': meta})}\n\n"
                 return
 
-        team_list_str = "\n".join(
-            f'- {t["id"]}: {t["emoji"]} {t["name"]}' for t in available_teams
-        )
+        # 카테고리별 팀 목록 구성
+        dev_teams = [t for t in available_teams if t.get("category") == "dev"]
+        product_teams = [t for t in available_teams if t.get("category") == "product"]
+        team_list_str = "【개발/서포트팀】 company-hq 개발·디자인·콘텐츠 담당\n"
+        team_list_str += "\n".join(f'- {t["id"]}: {t["emoji"]} {t["name"]}' for t in dev_teams)
+        team_list_str += "\n\n【독자 프로젝트팀】 각자 독립 프로젝트 PM\n"
+        team_list_str += "\n".join(f'- {t["id"]}: {t["emoji"]} {t["name"]}' for t in product_teams)
 
         # ── Phase 1: CPO가 관련 팀 필터링 (멘션 없을 때만) ──
         route_prompt = (
             f"유저 메시지:\n\"{message}\"\n\n"
-            f"현재 팀 목록:\n{team_list_str}\n\n"
+            f"팀 목록:\n{team_list_str}\n\n"
             "이 메시지를 처리하기 위해 어떤 팀이 필요한지 판단해.\n\n"
             "규칙:\n"
-            "1. 관련 팀이 있으면 → JSON 배열로 답해\n"
-            "2. 관련 팀이 없으면 (일반 질문, 인사, CPO가 직접 답할 수 있는 것) → 빈 배열 []로 답해\n"
-            "3. 각 팀에게 줄 프롬프트에는 유저의 원래 메시지 맥락도 포함해\n"
-            "4. 관련 없는 팀은 절대 포함하지 마\n\n"
+            "1. company-hq UI/서버/디자인 관련 → 개발/서포트팀에서 선택\n"
+            "2. 특정 프로젝트(매매봇/데이트지도 등) → 해당 독자 프로젝트팀만\n"
+            "3. 개발팀과 프로젝트팀을 동시에 선택하지 마 (성격이 다름)\n"
+            "4. 관련 팀이 없으면 (일반 질문, 인사) → 빈 배열 []로 답해\n"
+            "5. 관련 없는 팀은 절대 포함하지 마\n\n"
             "형식 (JSON만, 설명 없이):\n"
             '[{"team": "team-id", "prompt": "유저가 OO를 요청했다. 구체적으로 XX를 해줘"}]\n'
             '또는 관련 팀 없으면: []'
