@@ -1,16 +1,18 @@
 {
   "1": [
-    "qa-agent",
+    "cpo-claude",
     "claude-biseo",
     "frontend-team",
     "backend-team",
-    "content-lab"
+    "content-lab",
+    "server-monitor",
+    "qa-agent",
+    "포켓몬-ip-이용한-포트리스"
   ],
   "2": [
     "trading-bot",
     "ai900",
     "design-team",
-    "date-map",
-    "포켓몬-ip-이용한-포트리스"
+    "date-map"
   ]
 }
