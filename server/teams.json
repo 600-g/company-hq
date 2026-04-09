@@ -101,5 +101,15 @@
     "status": "운영중",
     "order": 9,
     "layer": 2
+  },
+  {
+    "id": "포켓몬-ip-이용한-포트리스",
+    "name": "포켓몬 ip 이용한 포트리스",
+    "emoji": "🆕",
+    "repo": "포켓몬-ip-이용한-포트리스",
+    "localPath": "~/Developer/my-company/포켓몬-ip-이용한-포트리스",
+    "status": "운영중",
+    "order": 10,
+    "layer": 1
   }
 ]

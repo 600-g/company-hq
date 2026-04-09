@@ -699,7 +699,8 @@ async def run_claude(
     # ── 모델 + 프롬프트 + stream-json ──
     cmd.extend(["-p", prompt])
     cmd.extend(["--model", TEAM_MODELS.get(team_id, "sonnet")])
-    cmd.extend(["--output-format", "stream-json", "--verbose"])
+    # 참고: stream-json은 --verbose 필수인데 파일 디스크립터 과다 사용 이슈 있음
+    # 안정성 위해 텍스트 모드 유지, JSON 파싱은 result 모드로 보완
 
     env = os.environ.copy()
     cwd = os.path.expanduser(project_path) if project_path else None
@@ -721,67 +722,40 @@ async def run_claude(
     )
     AGENT_PIDS[team_id] = proc.pid
 
-    # ── stream-json 파싱 ──
-    line_buf = b""
+    # ── stdout 텍스트 스트리밍 (안정 모드) ──
+    buf = b""
     while True:
-        chunk = await proc.stdout.read(4096)
+        chunk = await proc.stdout.read(1024)
         if not chunk:
+            if buf:
+                text = buf.decode("utf-8", errors="replace")
+                if text.strip():
+                    yield {"kind": "text", "content": text}
             break
-        line_buf += chunk
-        while b"\n" in line_buf:
-            line, line_buf = line_buf.split(b"\n", 1)
-            line_str = line.decode("utf-8", errors="replace").strip()
-            if not line_str:
-                continue
-            try:
-                event = json.loads(line_str)
-            except json.JSONDecodeError:
-                # JSON 아닌 출력 (에러 메시지 등) → 그대로 전달
-                if line_str.strip():
-                    yield {"kind": "text", "content": line_str}
-                continue
+        buf += chunk
+        try:
+            text = buf.decode("utf-8")
+            buf = b""
+        except UnicodeDecodeError:
+            continue
 
-            etype = event.get("type", "")
+        if not text.strip():
+            continue
 
-            # 응답 텍스트 (assistant 메시지)
-            if etype == "assistant":
-                msg = event.get("message", {})
-                for block in msg.get("content", []):
-                    if block.get("type") == "text":
-                        text = block["text"]
-                        AGENT_TOKENS[team_id]["chars"] += len(text)
-                        yield {"kind": "text", "content": text}
-                    elif block.get("type") == "tool_use":
-                        tool_name = block.get("name", "")
-                        tool_input = str(block.get("input", ""))[:60]
-                        status_str = _parse_status(f"⚡ {tool_name}({tool_input})") or f"⚡ {tool_name}"
-                        logger.info("[%s] 도구: %s", team_id, status_str)
-                        yield {"kind": "status", "content": status_str}
+        # 툴 사용 상태 감지
+        status = _parse_status(text)
+        if status:
+            logger.info("[%s] 도구: %s", team_id, status)
+            yield {"kind": "status", "content": status}
 
-            # tool_result (도구 실행 결과)
-            elif etype == "tool_result":
-                # 도구 결과는 스트리밍하지 않음 (claude가 알아서 사용)
-                pass
+        # 에러 패턴 감지
+        _err_patterns = ["errno", "unknown error", "rate limit", "overloaded", "too many"]
+        if any(p in text.lower() for p in _err_patterns) and len(text) < 300:
+            logger.warning("[%s] 에러 감지: %s", team_id, text.strip()[:100])
+            _log_error_lesson(team_id, text.strip())
 
-            # rate limit 이벤트 — 핵심!
-            elif etype == "rate_limit_event":
-                info = event.get("rate_limit_info", {})
-                status = info.get("status", "")
-                if status != "allowed":
-                    resets = info.get("resetsAt", 0)
-                    import datetime as _dt
-                    reset_time = _dt.datetime.fromtimestamp(resets).strftime("%H:%M") if resets else "?"
-                    logger.warning("[%s] rate limit: status=%s, resets=%s", team_id, status, reset_time)
-                    yield {"kind": "text", "content": f"\n⚠️ Rate limit 도달 — {reset_time}에 해제 예정"}
-
-            # 최종 결과
-            elif etype == "result":
-                result_text = event.get("result", "")
-                is_error = event.get("is_error", False)
-                duration = event.get("duration_ms", 0)
-                if is_error and result_text:
-                    _log_error_lesson(team_id, result_text)
-                    yield {"kind": "text", "content": f"\n❌ {result_text}"}
+        AGENT_TOKENS[team_id]["chars"] += len(text)
+        yield {"kind": "text", "content": text}
 
     await proc.wait()
 

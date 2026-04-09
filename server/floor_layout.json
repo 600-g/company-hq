@@ -1,9 +1,11 @@
 {
   "1": [
+    "cpo-claude",
     "claude-biseo",
     "frontend-team",
     "backend-team",
-    "content-lab"
+    "content-lab",
+    "server-monitor"
   ],
   "2": [
     "trading-bot",
