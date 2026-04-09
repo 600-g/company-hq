@@ -276,10 +276,18 @@ export default function ChatWindow({
             <div className="w-[11px] h-[11px] rounded-full bg-[#28c940]" />
           </div>
 
-          {/* 팀 이모지 + 이름 */}
+          {/* 팀 이모지 + 이름 + 스펙 */}
           <span className="text-[12px] text-[#c8c8d8] font-mono whitespace-nowrap">
             {team.emoji} {team.name}
           </span>
+          {!isDashboard && (
+            <button onClick={() => setShowSpec(true)} onPointerDown={e => e.stopPropagation()}
+              className="text-[9px] text-gray-600 hover:text-yellow-400 transition-colors" title="CLAUDE.md 스펙">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" className="inline">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM6 20V4h5v7h7v9H6zm2-7h8v1.5H8V13zm0 3h8v1.5H8V16zm0-6h3v1.5H8V10z"/>
+              </svg>
+            </button>
+          )}
 
           <div className="flex items-center gap-2 ml-auto shrink-0">
             {/* 모델 뱃지 */}
