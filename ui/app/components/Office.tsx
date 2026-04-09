@@ -54,10 +54,17 @@ function DispatchChat({ teams, onOpenChat }: { teams: Team[]; onOpenChat?: (team
   // 멘션 자동완성
   const [mentionQuery, setMentionQuery] = useState("");
   const [showMentions, setShowMentions] = useState(false);
+  const [mentionIdx, setMentionIdx] = useState(0);
   const mentionTeams = teams.filter(t =>
     t.id !== "server-monitor" &&
     (mentionQuery === "" || t.name.includes(mentionQuery) || t.id.includes(mentionQuery.toLowerCase()))
-  );
+  ).slice(0, 8);
+  const selectMention = (t: Team) => {
+    const atIdx = input.lastIndexOf("@");
+    setInput(input.slice(0, atIdx) + `@${t.name} `);
+    setShowMentions(false);
+    setMentionIdx(0);
+  };
 
   // 메시지 변경 시 localStorage 동기화
   useEffect(() => {
@@ -301,7 +308,9 @@ function DispatchChat({ teams, onOpenChat }: { teams: Team[]; onOpenChat?: (team
           {messages.map((m, i) => (
             m.role === "user" ? (
               <div key={i} className="text-[11px] text-yellow-400 bg-yellow-500/5 border border-yellow-500/10 rounded px-2 py-1.5">
-                ▶ {m.text}
+                ▶ {m.text.split(/(@\S+)/g).map((part, j) =>
+                  part.startsWith("@") ? <span key={j} className="text-yellow-300 font-bold bg-yellow-500/10 px-0.5 rounded">{part}</span> : part
+                )}
               </div>
             ) : (
               <div key={i}
@@ -391,18 +400,18 @@ function DispatchChat({ teams, onOpenChat }: { teams: Team[]; onOpenChat?: (team
       {/* 멘션 자동완성 드롭다운 */}
       {showMentions && mentionTeams.length > 0 && (
         <div className="bg-[#0f0f1f] border border-[#3a3a5a] rounded shadow-lg max-h-32 overflow-y-auto">
-          {mentionTeams.slice(0, 8).map(t => (
-            <button key={t.id} className="w-full text-left px-2 py-1 text-[11px] text-gray-300 hover:bg-[#1a1a3a] flex items-center gap-1.5"
-              onClick={() => {
-                const atIdx = input.lastIndexOf("@");
-                setInput(input.slice(0, atIdx) + `@${t.name} `);
-                setShowMentions(false);
-              }}>
+          {mentionTeams.map((t, i) => (
+            <button key={t.id}
+              className={`w-full text-left px-2 py-1 text-[11px] flex items-center gap-1.5 transition-colors ${
+                i === mentionIdx ? "bg-yellow-500/15 text-yellow-300" : "text-gray-300 hover:bg-[#1a1a3a]"
+              }`}
+              onClick={() => selectMention(t)}>
               <span>{t.emoji}</span>
-              <span>{t.name}</span>
+              <span className={i === mentionIdx ? "text-yellow-300 font-semibold" : ""}>{t.name}</span>
               <span className="text-[8px] text-gray-600 ml-auto">{t.id}</span>
             </button>
           ))}
+          <div className="px-2 py-0.5 text-[8px] text-gray-700 border-t border-[#2a2a4a]">↑↓ 이동 · Tab/Enter 선택 · ESC 닫기</div>
         </div>
       )}
 
@@ -429,6 +438,12 @@ function DispatchChat({ teams, onOpenChat }: { teams: Team[]; onOpenChat?: (team
           }}
           onKeyDown={(e) => {
             if (e.key === "Escape") { setShowMentions(false); return; }
+            // 멘션 드롭다운 키보드 네비게이션
+            if (showMentions && mentionTeams.length > 0) {
+              if (e.key === "ArrowDown") { e.preventDefault(); setMentionIdx(prev => Math.min(prev + 1, mentionTeams.length - 1)); return; }
+              if (e.key === "ArrowUp") { e.preventDefault(); setMentionIdx(prev => Math.max(prev - 1, 0)); return; }
+              if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) { e.preventDefault(); selectMention(mentionTeams[mentionIdx]); return; }
+            }
             if (e.key === "Enter" && !isMobile && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault();
               setShowMentions(false);
