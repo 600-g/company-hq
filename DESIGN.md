@@ -140,6 +140,58 @@ d6: 아랫줄 캐릭 (정면, 가장 앞)
 
 ---
 
+## AI 이미지 생성 (Gemini MCP)
+
+디자인팀은 `mcp__gemini-image__generate_image` 도구로 이미지를 생성할 수 있다.
+
+### 사용법
+```
+mcp__gemini-image__generate_image(
+  prompt: "설명 (영문 권장)",
+  output_directory: "저장 경로",
+  file_name: "파일명 (확장자 없이)",
+  target_image_max_size: 512,        # 최대 픽셀 (긴 변 기준)
+  force_conversion_type: "png",      # png/jpeg/webp
+  input_image_paths: ["참조이미지"]   # 선택: 레퍼런스 기반 생성
+)
+```
+
+### 용도
+| 용도 | 프롬프트 예시 | 저장 경로 |
+|------|-------------|----------|
+| 픽셀아트 에셋 | "16x32 pixel art character, office worker, front view" | `ui/public/assets/original/` |
+| UI 아이콘 | "minimal flat icon, dark background, neon green" | `ui/public/assets/icons/` |
+| 로고/브랜딩 | "minimalist logo, gaming company, dark navy" | `ui/public/assets/brand/` |
+| 배경/일러스트 | "isometric pixel art office, night, warm lighting" | `ui/public/assets/bg/` |
+| 참조 기반 변형 | input_image_paths로 원본 전달 + 변형 지시 | 원본과 같은 경로 |
+
+### 품질 규칙
+- 프롬프트는 **영문** 권장 (AI 품질 향상)
+- 픽셀아트는 `target_image_max_size: 128` 이하로 (확대 시 선명)
+- UI용 이미지는 `png`, 배경은 `webp` (용량 최적화)
+- 생성 후 반드시 `DESIGN.md` 팔레트와 색상 일관성 확인
+- 에셋 3MB 초과 금지
+
+---
+
+## 터미널 UI 디자인 (v2 추가)
+
+### 채팅 윈도우 스타일
+```
+헤더: 신호등(●●●) + 팀이모지+이름 + 스펙아이콘 + 모델뱃지(opus/sonnet)
+배경: #080818 (콘텐츠) / #0f0f1f (헤더)
+폰트: SF Mono, JetBrains Mono (모노폰트)
+메시지: 유저=파랑계열 왼쪽바, AI=초록계열 왼쪽바
+```
+
+### 모델 뱃지 색상
+| 모델 | 배경 | 텍스트 | 테두리 |
+|------|------|--------|--------|
+| opus | #2a1a4a | #a080f0 | #4a2a7a |
+| sonnet | #1a2a3a | #60a0e0 | #2a4a6a |
+
+---
+
 ## 금지 사항
 
 - 하드코딩 색상 → 위 팔레트 사용
