@@ -612,7 +612,7 @@ async def get_floor_layout():
     for floor_str, team_ids in sorted(FLOOR_LAYOUT.items(), key=lambda x: int(x[0])):
         teams_in_floor = []
         for tid in team_ids:
-            if tid in ("cpo-claude", "server-monitor"):  # CPO·서버실은 게임에서 별도 렌더링
+            if tid in ("cpo-claude", "server-monitor", "qa-agent"):  # CPO·서버실·QA는 게임 캐릭터 없음
                 continue
             team = team_map.get(tid)
             if team:
@@ -1841,6 +1841,41 @@ async def stop_terminal(team_id: str):
 async def terminal_status(team_id: str):
     """팀별 터미널 세션 상태 확인"""
     return get_session_info(team_id)
+
+
+# ── QA 에이전트 (토큰 0 — bash 스크립트만 실행) ──────
+
+@app.post("/api/qa/run")
+async def run_qa():
+    """QA 전체 체크 실행 (토큰 0)"""
+    import subprocess
+    script = os.path.join(os.path.dirname(__file__), "..", "scripts", "qa_check.sh")
+    try:
+        result = subprocess.run(
+            ["bash", script], capture_output=True, text=True, timeout=120,
+        )
+        lines = result.stdout.strip().split("\n")
+        # 마지막 줄에서 결과 파싱
+        passed = "QA 통과" in result.stdout
+        return {"ok": True, "passed": passed, "output": result.stdout, "exit_code": result.returncode}
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "error": "QA 타임아웃 (120초)"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/api/qa/restart-server")
+async def qa_restart_server():
+    """서버 재시작 (QA용)"""
+    import subprocess
+    script = os.path.join(os.path.dirname(__file__), "..", "scripts", "restart_server.sh")
+    try:
+        result = subprocess.run(
+            ["bash", script], capture_output=True, text=True, timeout=30,
+        )
+        return {"ok": True, "output": result.stdout}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 
 # ── 서버 실행 ─────────────────────────────────────────

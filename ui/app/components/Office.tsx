@@ -967,6 +967,17 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
   const MAX_OPEN_WINDOWS = 3; // 동시 열 수 있는 최대 채팅창 수
   const [mobileSide, setMobileSide] = useState(false); // 모바일 사이드패널 (목록/통합채팅)
   const [openServerDash, setOpenServerDash] = useState(false); // PC 서버실 대시보드 오버레이
+  const [qaRunning, setQaRunning] = useState(false);
+  const [qaResult, setQaResult] = useState<{passed: boolean; output: string} | null>(null);
+  const runQA = async () => {
+    setQaRunning(true); setQaResult(null);
+    try {
+      const res = await fetch(`${getApiBase()}/api/qa/run`, { method: "POST" });
+      const data = await res.json();
+      setQaResult({ passed: data.passed, output: data.output || data.error || "" });
+    } catch { setQaResult({ passed: false, output: "서버 연결 실패" }); }
+    setQaRunning(false);
+  };
   const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
 
   // ESC 키 — 포커스된 채팅창 닫기 (입력 내용은 chatHistory에 남아 유지됨)
@@ -1197,7 +1208,7 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
 
   // ── 에이전트 패널 드래그 앤 드롭 (층별 순서) — 서버 영구 저장 ──
   const PINNED_IDS = ["cpo-claude"];
-  const SIDEBAR_TOP_IDS = ["cpo-claude", "server-monitor"]; // 사이드바 최상단 고정 항목 (이동 불가)
+  const SIDEBAR_TOP_IDS = ["cpo-claude", "server-monitor", "qa-agent"]; // 사이드바 최상단 고정 항목 (이동 불가)
   const DEFAULT_FLOORS: Record<number, string[]> = {
     1: ["cpo-claude", "claude-biseo", "frontend-team", "backend-team", "content-lab"],
     2: ["trading-bot", "ai900", "design-team", "date-map"],
@@ -1415,6 +1426,11 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
 
   const handleTeamClick = useCallback((teamId: string, screenX?: number, screenY?: number) => {
     // 서버실은 ServerDashboard로 분기
+    // QA — 채팅 없이 스크립트만 실행
+    if (teamId === "qa-agent") {
+      runQA();
+      return;
+    }
     if (teamId === "server-monitor") {
       const mobile = typeof window !== "undefined" && window.innerWidth < 768;
       if (mobile) {
@@ -1922,6 +1938,30 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
                 <span className="text-[7px] bg-gray-700 text-gray-500 px-1 rounded">고정</span>
               </div>
             </button>
+            {/* QA — 토큰 0, 버튼만 */}
+            <button
+              onClick={runQA}
+              disabled={qaRunning}
+              className={`w-full text-left px-2.5 py-1.5 rounded text-[12px] transition-all min-h-[36px] ${
+                qaResult?.passed ? "bg-green-500/10 text-green-400 border border-green-500/20"
+                : qaResult && !qaResult.passed ? "bg-red-500/10 text-red-400 border border-red-500/20"
+                : "text-gray-400 border border-transparent hover:bg-[#1a1a3a]"
+              }`}
+            >
+              <div className="flex items-center gap-1.5">
+                <span>🔍</span>
+                <span>QA</span>
+                <span className="text-[7px] text-gray-600 ml-auto">
+                  {qaRunning ? "검사중..." : qaResult?.passed ? "✅ 통과" : qaResult ? "❌ 실패" : "점검"}
+                </span>
+              </div>
+            </button>
+            {/* QA 결과 (실패 시 표시) */}
+            {qaResult && !qaResult.passed && (
+              <div className="text-[9px] text-red-400/80 bg-red-500/5 rounded px-2 py-1 font-mono whitespace-pre-wrap max-h-20 overflow-y-auto">
+                {qaResult.output.split("\n").filter(l => l.includes("❌")).join("\n")}
+              </div>
+            )}
             {/* CPO */}
             {(() => {
               const cpo = teams.find(t => t.id === "cpo-claude");
