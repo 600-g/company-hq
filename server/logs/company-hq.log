@@ -1452,3 +1452,7 @@ websockets.exceptions.ConnectionClosedError: sent 1011 (internal error) keepaliv
 
 한줄만 대답해
 2026-04-09 21:24:11,581 [INFO] [design-team] 응답 완료 (exit=0, ~0K tokens, 자동=False)
+2026-04-09 21:28:31,114 [INFO] [design-team] 프롬프트 수신: [유저 원래 요청: @디자인팀 한줄만]
+
+한줄만
+2026-04-09 21:28:38,378 [INFO] [design-team] 응답 완료 (exit=0, ~0K tokens, 자동=False)

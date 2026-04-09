@@ -1836,5 +1836,10 @@ async def terminal_status(team_id: str):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
-# reload Sun Apr 06 2026 — ttyd 웹터미널 API 추가
+    uvicorn.run(
+        "main:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=True,
+        reload_excludes=["*.log", "*.json", "chat_history/*", "logs/*", "__pycache__/*"],
+    )
