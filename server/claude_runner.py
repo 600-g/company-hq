@@ -124,6 +124,8 @@ TEAM_SYSTEM_PROMPTS: dict[str, str] = {
         "- 기술 스택, 디렉토리, 작업 규칙 구체적으로\n"
         "- company-hq/CLAUDE.md를 표준 포맷으로 참고\n"
         "- 100줄 이하로 유지\n\n"
+        "【MD 파일 관리 — 필수】\n"
+        "작업 완료 시 반드시: ① 중복 MD 통합/삭제 ② 변경된 스펙 MD 최신화 ③ 모든 수정 레포 커밋+푸시 ④ git status 깨끗 확인\n\n"
         "【프론트엔드 배포】\n"
         "cd ~/Developer/my-company/company-hq/ui && rm -rf .next out && npx next build &&\n"
         "cd ~/Developer/my-company/company-hq && npx wrangler pages deploy ui/out --project-name=company-hq --commit-dirty=true --commit-message='변경내용'\n\n"
