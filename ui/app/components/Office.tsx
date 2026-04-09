@@ -1890,7 +1890,7 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
       )}
 
       {/* ── 우측 패널 (PC만) ── */}
-      <aside className="hidden md:flex md:w-[360px] h-full bg-[#12122a] border-l border-[#2a2a5a] flex-col shrink-0 overflow-hidden">
+      <aside className="hidden md:flex md:w-[420px] h-full bg-[#12122a] border-l border-[#2a2a5a] flex-col shrink-0 overflow-hidden">
         {/* 에이전트 목록 */}
         <div className="p-2 border-b border-[#2a2a5a] overflow-y-auto flex-1">
           <div className="flex items-center justify-between mb-1">
