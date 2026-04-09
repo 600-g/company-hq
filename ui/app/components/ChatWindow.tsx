@@ -228,7 +228,7 @@ export default function ChatWindow({
   // PC: 드래그 + 리사이즈 가능 윈도우
   return (
     <div
-      className="fixed flex flex-col bg-[#080818] border border-[#2a2a5a] rounded-lg shadow-2xl overflow-hidden"
+      className="fixed flex flex-col bg-[#0f0f1f] border border-[#3a3a5a] rounded-lg shadow-2xl overflow-hidden"
       style={{
         left: pos.x, top: pos.y,
         width: size.w, height: size.h,
@@ -259,7 +259,7 @@ export default function ChatWindow({
       {/* ── 터미널 타이틀바 (드래그) ── */}
       <div
         className="flex flex-col border-b border-[#2a2a5a] shrink-0 select-none"
-        style={{ background: '#0f0f1f' }}
+        style={{ background: '#14142a' }}
       >
         {/* 상단: 신호등 + 팀명 + 경로 + 모델 뱃지 */}
         <div
@@ -268,18 +268,11 @@ export default function ChatWindow({
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
         >
-          {/* 신호등 */}
-          <div className="flex gap-1.5 shrink-0">
-            <div onClick={onClose} onPointerDown={e => e.stopPropagation()}
-              className="w-[11px] h-[11px] rounded-full bg-[#ff5f57] hover:brightness-110 cursor-pointer" />
-            <div className="w-[11px] h-[11px] rounded-full bg-[#ffbd2e]" />
-            <div className="w-[11px] h-[11px] rounded-full bg-[#28c940]" />
-          </div>
-
-          {/* 팀 이모지 + 이름 + 스펙 */}
-          <span className="text-[12px] text-[#c8c8d8] font-mono whitespace-nowrap">
+          {/* 팀 이모지 + 이름 */}
+          <span className="text-[12px] text-white font-semibold whitespace-nowrap">
             {team.emoji} {team.name}
           </span>
+          {/* 스펙 보기 */}
           {!isDashboard && (
             <button onClick={() => setShowSpec(true)} onPointerDown={e => e.stopPropagation()}
               className="text-[9px] text-gray-600 hover:text-yellow-400 transition-colors" title="CLAUDE.md 스펙">
@@ -303,6 +296,9 @@ export default function ChatWindow({
             {team.id === "server-monitor" && (
               <span className="text-[9px] text-green-500 font-mono border border-green-800 px-1.5 py-0.5 rounded">LIVE</span>
             )}
+            {/* 닫기 */}
+            <button onClick={onClose} onPointerDown={e => e.stopPropagation()}
+              className="text-gray-500 hover:text-white text-sm px-1 transition-colors ml-1">✕</button>
           </div>
         </div>
       </div>
