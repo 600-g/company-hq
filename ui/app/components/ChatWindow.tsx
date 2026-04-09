@@ -276,12 +276,9 @@ export default function ChatWindow({
             <div className="w-[11px] h-[11px] rounded-full bg-[#28c940]" />
           </div>
 
+          {/* 팀 이모지 + 이름 */}
           <span className="text-[12px] text-[#c8c8d8] font-mono whitespace-nowrap">
             {team.emoji} {team.name}
-          </span>
-
-          <span className="text-[10px] text-[#60a0e0] font-mono opacity-70 truncate">
-            ~/Developer/my-company/{team.repo || team.id}
           </span>
 
           <div className="flex items-center gap-2 ml-auto shrink-0">
@@ -298,41 +295,8 @@ export default function ChatWindow({
             {team.id === "server-monitor" && (
               <span className="text-[9px] text-green-500 font-mono border border-green-800 px-1.5 py-0.5 rounded">LIVE</span>
             )}
-            {/* 스펙 보기 */}
-            {!isDashboard && (
-              <button onClick={() => setShowSpec(true)} onPointerDown={e => e.stopPropagation()}
-                className="text-[9px] text-gray-600 hover:text-yellow-400 transition-colors" title="CLAUDE.md">
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" className="inline">
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM6 20V4h5v7h7v9H6zm2-7h8v1.5H8V13zm0 3h8v1.5H8V16zm0-6h3v1.5H8V10z"/>
-                </svg>
-              </button>
-            )}
-            {/* GitHub */}
-            {team.githubUrl && (
-              <a href={team.githubUrl} target="_blank" rel="noopener noreferrer"
-                onPointerDown={e => e.stopPropagation()}
-                className="text-[9px] text-gray-600 hover:text-gray-300 transition-colors" title="GitHub">
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" className="inline">
-                  <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/>
-                </svg>
-              </a>
-            )}
-            {/* 사이트 */}
-            {team.siteUrl && (
-              <a href={team.siteUrl} target="_blank" rel="noopener noreferrer"
-                onPointerDown={e => e.stopPropagation()}
-                className="text-[9px] text-blue-400/60 hover:text-blue-300 transition-colors" title="사이트">↗</a>
-            )}
           </div>
         </div>
-        {/* 컨텍스트 바 */}
-        {!isDashboard && (
-          <div className="flex items-center gap-2 px-3 py-1 border-t border-[#1a1a3a]" style={{ background: '#080818' }}>
-            <span className="text-[9px] text-[#50d070] tracking-widest font-mono">CONTEXT</span>
-            <span className="text-[9px] text-[#60a0e0] bg-[#1a1a2e] border border-[#2a2a5a] rounded px-1.5 py-0.5 font-mono">CLAUDE.md</span>
-            <span className="text-[9px] text-[#555] font-mono ml-auto truncate">claude --dangerously-skip-permissions</span>
-          </div>
-        )}
       </div>
 
       {/* ── 콘텐츠 영역 ── */}
