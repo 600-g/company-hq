@@ -408,7 +408,7 @@ function DispatchChat({ teams, onOpenChat }: { teams: Team[]; onOpenChat?: (team
             }
           }}
           rows={1}
-          placeholder="명령 입력 (Shift+Enter 줄바꿈, Ctrl+V 이미지 붙여넣기)..."
+          placeholder="명령 입력 (@팀명 멘션 가능, Shift+Enter 줄바꿈)..."
           className="flex-1 bg-[#1a1a2e] border border-[#3a3a5a] text-white text-xs px-2 py-1.5 rounded focus:outline-none focus:border-yellow-400/50 resize-none max-h-20 overflow-y-auto"
           style={{ minHeight: "32px" }}
         />

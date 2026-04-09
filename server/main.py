@@ -1279,11 +1279,122 @@ async def smart_dispatch(body: dict):
 
         # 팀 목록 (CPO 제외)
         available_teams = [t for t in TEAMS if t["id"] not in ("cpo-claude",)]
+        team_map = {t["id"]: t for t in available_teams}
+        # 이름→id 매핑 (멘션용)
+        name_to_id = {}
+        for t in available_teams:
+            name_to_id[t["id"]] = t["id"]
+            name_to_id[t["name"]] = t["id"]
+            # 이모지+이름도 매핑
+            name_to_id[f'{t["emoji"]}{t["name"]}'] = t["id"]
+        # CPO도 멘션 가능
+        for t in TEAMS:
+            if t["id"] == "cpo-claude":
+                name_to_id["cpo"] = "cpo-claude"
+                name_to_id["CPO"] = "cpo-claude"
+                name_to_id["cpo-claude"] = "cpo-claude"
+
+        # ── 멘션 감지 (@팀명 또는 @팀id) ──
+        mention_pattern = r'@(\S+)'
+        mentions = _re.findall(mention_pattern, message)
+        mentioned_ids = []
+        for m in mentions:
+            tid = name_to_id.get(m)
+            if tid and tid not in mentioned_ids:
+                mentioned_ids.append(tid)
+
+        # 멘션된 메시지에서 @태그 제거한 순수 메시지
+        clean_message = _re.sub(mention_pattern, '', message).strip() or message
+
+        # ── 멘션이 있으면 haiku 라우팅 스킵 → 직접 해당 팀에 전달 (토큰 절약) ──
+        if mentioned_ids:
+            # CPO만 멘션 → CPO 직접 응답
+            if mentioned_ids == ["cpo-claude"]:
+                yield f"data: {json.dumps({'phase': 'summarizing', 'message': '🧠 CPO 직접 응답 중...'})}\n\n"
+                cpo_team = next((t for t in TEAMS if t["id"] == "cpo-claude"), None)
+                if not cpo_team:
+                    yield f"data: {json.dumps({'phase': 'error', 'error': 'CPO 팀 없음'})}\n\n"
+                    return
+                direct_text = ""
+                async for chunk in run_claude(clean_message, cpo_team["localPath"], "cpo-claude", is_auto=False):
+                    if chunk["kind"] == "text":
+                        direct_text += chunk["content"]
+                        yield f"data: {json.dumps({'phase': 'summary_chunk', 'content': chunk['content']})}\n\n"
+                DISPATCH_TASKS[dispatch_id]["status"] = "done"
+                DISPATCH_TASKS[dispatch_id]["summary"] = direct_text
+                yield f"data: {json.dumps({'phase': 'done', 'dispatch_id': dispatch_id, 'summary': direct_text, 'team_results': {}})}\n\n"
+                _log_activity("cpo-claude", f"✅ @CPO 멘션 응답: {clean_message[:50]}")
+                return
+
+            # 특정 팀 멘션 → haiku 스킵, 직접 실행
+            routed_steps = []
+            for tid in mentioned_ids:
+                if tid in team_map:
+                    routed_steps.append({"team": tid, "prompt": clean_message})
+            if routed_steps:
+                yield f"data: {json.dumps({'phase': 'routing', 'message': f'📌 멘션 감지 → {len(routed_steps)}팀 직접 실행'})}\n\n"
+                # Phase 2로 바로 점프 (아래 코드에서 처리)
+                routed_team_ids = [s["team"] for s in routed_steps]
+                skipped_teams = [t for t in available_teams if t["id"] not in routed_team_ids]
+                yield f"data: {json.dumps({'phase': 'routed', 'teams': routed_team_ids, 'skipped': [t['id'] for t in skipped_teams]})}\n\n"
+                yield f"data: {json.dumps({'phase': 'executing', 'message': f'⚡ {len(routed_steps)}팀 작업 중...'})}\n\n"
+
+                team_results: dict[str, dict] = {}
+
+                async def run_mentioned_team(step: dict):
+                    _tid = step["team"]
+                    _team = team_map[_tid]
+                    _prompt = f"[유저 원래 요청: {message}]\n\n{step['prompt']}"
+                    _result = ""
+                    try:
+                        async for chunk in run_claude(_prompt, _team["localPath"], _tid, is_auto=False):
+                            if chunk["kind"] == "text":
+                                _result += chunk["content"]
+                        team_results[_tid] = {"status": "done", "team_name": _team["name"], "emoji": _team["emoji"], "result": _result}
+                    except Exception as e:
+                        team_results[_tid] = {"status": "error", "error": str(e)}
+
+                    # ── 에이전트 간 태깅 감지 ──
+                    agent_mentions = _re.findall(r'@(\S+)', _result)
+                    for am in agent_mentions:
+                        next_tid = name_to_id.get(am)
+                        if next_tid and next_tid != _tid and next_tid in team_map:
+                            _log_activity(_tid, f"🔗 @{am} 태그 → {next_tid}에 후속 작업 전달")
+                            from task_queue import task_queue
+                            await task_queue.enqueue(next_tid, f"[{_team['name']}이(가) 요청] {_result[:500]}")
+
+                await asyncio.gather(*[run_mentioned_team(s) for s in routed_steps])
+
+                done_teams = list(team_results.keys())
+                yield f"data: {json.dumps({'phase': 'team_done', 'done': len(done_teams), 'total': len(routed_steps), 'teams': done_teams})}\n\n"
+
+                # 1팀이면 통합 보고 스킵
+                if len(team_results) == 1:
+                    tid, result = next(iter(team_results.items()))
+                    summary_text = result.get("result", "")
+                    yield f"data: {json.dumps({'phase': 'summary_chunk', 'content': summary_text})}\n\n"
+                else:
+                    # CPO 통합 보고
+                    cpo_team = next((t for t in TEAMS if t["id"] == "cpo-claude"), None)
+                    results_str = "\n\n".join(f"### {r.get('emoji','')} {r.get('team_name',tid)}\n{r.get('result','에러')[:500]}" for tid, r in team_results.items())
+                    summary_prompt = f"유저 요청: \"{message}\"\n\n아래는 각 팀 결과:\n{results_str}\n\n통합 요약해줘."
+                    summary_text = ""
+                    yield f"data: {json.dumps({'phase': 'summarizing'})}\n\n"
+                    async for chunk in run_claude(summary_prompt, cpo_team["localPath"], "cpo-claude", is_auto=False):
+                        if chunk["kind"] == "text":
+                            summary_text += chunk["content"]
+                            yield f"data: {json.dumps({'phase': 'summary_chunk', 'content': chunk['content']})}\n\n"
+
+                DISPATCH_TASKS[dispatch_id]["status"] = "done"
+                meta = {"routed_count": len(routed_steps), "total_teams": len(available_teams), "mention": True}
+                yield f"data: {json.dumps({'phase': 'done', 'dispatch_id': dispatch_id, 'summary': summary_text if len(team_results) > 1 else list(team_results.values())[0].get('result',''), 'team_results': team_results, 'meta': meta})}\n\n"
+                return
+
         team_list_str = "\n".join(
             f'- {t["id"]}: {t["emoji"]} {t["name"]}' for t in available_teams
         )
 
-        # ── Phase 1: CPO가 관련 팀 필터링 ──
+        # ── Phase 1: CPO가 관련 팀 필터링 (멘션 없을 때만) ──
         route_prompt = (
             f"유저 메시지:\n\"{message}\"\n\n"
             f"현재 팀 목록:\n{team_list_str}\n\n"
