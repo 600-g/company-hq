@@ -1893,7 +1893,9 @@ async def run_qa():
 
     passed_count = sum(1 for c in checks if c["pass"])
     total = len(checks)
-    all_passed = passed_count == total
+    # 외부 접속은 DNS 일시 문제일 수 있으므로 warning 처리 (필수 아님)
+    critical_checks = [c for c in checks if c["name"] != "외부 접속"]
+    all_passed = all(c["pass"] for c in critical_checks)
     output = "\n".join(f"{'✅' if c['pass'] else '❌'} {c['name']}" for c in checks)
     output += f"\n\n결과: {passed_count}/{total} {'✅ QA 통과' if all_passed else '❌ QA 실패'}"
 

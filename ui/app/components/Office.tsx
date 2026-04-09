@@ -1426,7 +1426,7 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
 
   const handleTeamClick = useCallback((teamId: string, screenX?: number, screenY?: number) => {
     // 서버실은 ServerDashboard로 분기
-    // QA — 채팅 없이 스크립트만 실행
+    // QA — 클릭 시 QA 체크 실행 (사이드바 상태 표시)
     if (teamId === "qa-agent") {
       runQA();
       return;
