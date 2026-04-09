@@ -1391,3 +1391,8 @@ asyncio.exceptions.CancelledError
 The above exception was the direct cause of the following exception:
 
 websockets.exceptions.ConnectionClosedError: sent 1011 (internal error) keepalive ping timeout; no close frame received
+2026-04-09 17:39:53,636 [INFO] [cpo-claude] 프롬프트 수신: 테스트
+2026-04-09 17:39:53,638 [INFO] [PUSH] 유저 온라인 — 푸시 스킵 (인앱만 저장): 🧠 CPO 응답 완료
+2026-04-09 17:55:29,083 [INFO] [cpo-claude] 프롬프트 수신: 테스트
+2026-04-09 17:55:37,426 [INFO] [cpo-claude] 응답 완료 (exit=0, ~0K tokens, 자동=False)
+2026-04-09 17:55:37,429 [INFO] [PUSH] 유저 온라인 — 푸시 스킵 (인앱만 저장): 🧠 CPO 응답 완료

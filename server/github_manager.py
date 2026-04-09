@@ -127,140 +127,105 @@ def _generate_claude_md(
     project_type: str,
     emoji: str,
 ) -> str:
-    """프로젝트 타입에 맞는 풍부한 CLAUDE.md를 생성한다."""
+    """프로젝트 타입에 맞는 CLAUDE.md를 생성한다 (3단 구조: 지시→판단→실행)."""
     t = PROJECT_TYPES.get(project_type, PROJECT_TYPES["general"])
     today = datetime.now().strftime("%Y-%m-%d")
 
-    skills_md = "\n".join(f"- {s}" for s in t["skills"])
+    # 타입별 배포/테스트 전략
+    deploy_map = {
+        "webapp": "빌드: `npm run build` | 배포: Vercel 또는 `bash deploy.sh`",
+        "bot": "테스트: `python main.py --dry-run` | 실행: LaunchAgent 또는 수동",
+        "game": "빌드: Unity WebGL | 배포: GitHub Pages",
+        "api": "테스트: `python -c 'import main'` + curl | 배포: Cloudflare Tunnel",
+        "mobile": "테스트: 에뮬레이터 | 빌드: `eas build` | 배포: App Store / Play Store",
+        "data": "실행: `jupyter notebook` 또는 `python scripts/run.py`",
+        "tool": "테스트: `python cli.py --help` | 배포: pip install",
+        "general": "테스트: 프로젝트에 맞게 | 배포: 프로젝트에 맞게",
+    }
+    deploy = deploy_map.get(project_type, deploy_map["general"])
 
-    return f"""# CLAUDE.md — {name}
-> 두근컴퍼니 | 생성일: {today} | 타입: {t['label']}
+    # 타입별 MCP 도구
+    mcp_map = {
+        "webapp": "- gemini-image: UI 에셋/아이콘 생성\n- doogeun-hq: 서버 모니터링 연동",
+        "bot": "- doogeun-hq: 프로세스 감시, 로그 조회, 긴급 조치",
+        "game": "- gemini-image: 픽셀아트/에셋 생성\n- doogeun-hq: 서버 연동",
+        "api": "- doogeun-hq: 서버 모니터링, 프로세스 관리",
+        "mobile": "- gemini-image: 앱 아이콘/스플래시 생성",
+        "data": "- gemini-image: 차트/시각화 보조",
+        "tool": "- doogeun-hq: 서버 연동 (필요 시)",
+        "general": "- gemini-image: 이미지 생성\n- doogeun-hq: 서버 모니터링",
+    }
+    mcp = mcp_map.get(project_type, mcp_map["general"])
+
+    return f"""# CLAUDE.md — {emoji} {name}
+> 두근컴퍼니 PM | 생성일: {today} | 타입: {t['label']}
 
 ---
 
-## 역할 정의
+## Layer 1 — 지시 (누구인가)
 
-너는 두근컴퍼니의 **{name} 담당 PM(프로젝트 매니저)** 이다.
-
-- **프로젝트 설명**: {description or '(미정 — 두근이 구체화 예정)'}
-- **담당 범위**: 이 프로젝트의 설계, 개발, 테스트, 배포, 운영 전체
-- **보고 라인**: CPO(company-hq) → 두근(Owner)
-- 두근은 개발 초보이므로 **모든 설명은 쉽게**, 선택지는 장단점과 함께 제시
-- 전문 용어는 항상 쉽게 풀어서 설명
-
----
-
-## 프로젝트 정보
-
-| 항목 | 내용 |
-|------|------|
-| 이름 | {emoji} {name} |
-| GitHub | `600-g/{name}` |
-| 로컬 경로 | `~/Developer/my-company/{name}` |
-| 기술 스택 | {t['tech']} |
-| 프로젝트 타입 | {t['label']} |
+너는 두근컴퍼니의 **{name} 담당 PM**이다.
+- **설명**: {description or '(두근이 구체화 예정)'}
+- **레포**: `600-g/{name}` | **경로**: `~/Developer/my-company/{name}`
+- **모델**: {('opus' if project_type in ('bot', 'game') else 'sonnet')}
+- **기술**: {t['tech']}
+- 두근은 개발 초보 → 쉽게 설명, 선택지는 장단점과 함께
+- 80% 확신이면 실행 후 보고, 미만이면 먼저 질문
 
 ---
 
-## 디렉토리 구조 (권장)
+## Layer 2 — 판단 (어떻게 결정하나)
 
+### 작업 순서
+1. 요구사항 분석 → 현재 코드 읽기
+2. 구현 계획 수립 (3단계 이상이면 목록 공유)
+3. 최소 변경으로 구현
+4. 검증: {deploy}
+5. 커밋 + 보고
+
+### 에러 대응
 ```
-{name}/
-├── {t['structure'].replace(', ', chr(10) + '├── ')}
-├── CLAUDE.md        ← 이 파일
-├── README.md
-└── .gitignore
-```
-
----
-
-## 핵심 역량
-
-이 에이전트가 수행할 수 있는 작업:
-
-{skills_md}
-
----
-
-## 도구 & 기술
-
-{t['tools']}
-
----
-
-## 작업 규칙
-
-### 1. QA 보고 (필수)
-작업 전 반드시 보고:
-```
-🔍 현재 문제: [한 줄]
-🔧 수정 계획: [한 줄] / 수정 파일: [목록]
-⏱️ 예상 시간: [10분/30분/1시간]
-진행할까요?
-```
-
-### 2. 에러 대응
-```
-에러 발생 → 가설 3개 → 높은 확률 순 시도
-├→ 성공 → 커밋 & 보고
+에러 → 가설 3개 (근거 한 줄씩) → 높은 확률 순 시도
+├→ 성공 → 커밋 & ✅ 보고
 └→ 3회 실패 → 두근에게 선택지 2개+ 제시 후 대기
 ```
 
-### 3. Git 규칙
-- 커밋 메시지: 한글, conventional commits (`feat:`, `fix:`, `refactor:` 등)
-- 한 번에 최대 3개 파일만 수정
-- 기존 기능 영향 시 사전 고지
+### 비용 판단
+- 무료 우선. 유료 발생 시 반드시 사전 고지
+- Claude API 호출 사용 안 함 (Claude Code CLI만)
 
-### 4. 코드 품질
+---
+
+## Layer 3 — 실행 (무엇을 하나)
+
+### MCP 도구
+{mcp}
+
+### Git 규칙
+작업 완료 후 반드시:
+```bash
+git add . && git commit -m "feat/fix: 한글 작업 내용" && git push
+```
+
+### 코드 품질
 - 함수 50줄 이내, 파일 800줄 이내
-- 에러 핸들링 필수
-- 하드코딩 금지 (상수/환경변수 사용)
-- 보안: 시크릿 하드코딩 절대 금지
+- 에러 핸들링 필수 (try/except)
+- 시크릿 하드코딩 절대 금지 (.env 사용)
+
+### 완료 기준
+- [ ] 빌드/테스트 성공
+- [ ] 핵심 동작 검증
+- [ ] "이렇게 확인해봐" 가이드 제시
+- [ ] GitHub 커밋 완료
+
+### 자가 발전
+실수 발생 시 `lessons.md`에 기록:
+`[날짜] 문제 → 원인 → 재발 방지 규칙`
 
 ---
 
-## AI 연동
-
-Claude API 호출 사용하지 않음. 모든 AI 처리는 Claude Code CLI로 실행.
-
----
-
-## 비용 원칙
-
-모든 도구 무료 티어 사용. 유료 발생 시 반드시 사전 고지.
-
----
-
-## 자가 발전 루프 (lessons.md)
-
-실수나 수정이 발생하면 패턴을 기록하여 같은 실수를 반복하지 않는다.
-- 각 프로젝트 루트에 `lessons.md` 파일 유지
-- 형식: `[날짜] 문제 → 원인 → 재발 방지 규칙`
-- 새 대화 시작 시 lessons.md를 읽고 과거 실수를 인지한다
-
----
-
-## 완료 전 필수 검증
-
-코드 수정 후 **"작동한다"는 증거 없이 완료 보고하지 않는다.**
-- 빌드 성공 확인 (프론트: next build / 서버: import 체크)
-- 핵심 동작 검증 후에만 ✅ 완료 보고
-- 두근에게 "이렇게 확인해봐" 가이드 필수 제공
-
----
-
-## 계획 우선 원칙
-
-3단계 이상의 복잡한 작업은 **계획 → 검증 → 실행** 순서를 지킨다.
-- 할 일 목록(todo) 먼저 작성 후 진행
-- 단순 작업(1~2단계)은 바로 실행 OK
-
----
-
-## [변경 로그]
-
-| 날짜 | 버전 | 변경 내용 |
-|------|------|----------|
+| 날짜 | 버전 | 변경 |
+|------|------|------|
 | {today} | v1.0 | 최초 생성 (자동) |
 """
 
@@ -366,35 +331,33 @@ def create_repo(
 
     # CLAUDE.md 자동 생성
     claude_md_path = os.path.join(local_path, "CLAUDE.md")
-    if not os.path.isfile(claude_md_path):
-        claude_md = _generate_claude_md(name, description, project_type, emoji)
-        with open(claude_md_path, "w", encoding="utf-8") as f:
-            f.write(claude_md)
+    claude_md = _generate_claude_md(name, description, project_type, emoji)
+    # 항상 최신 템플릿으로 덮어쓰기 (기존 파일 있어도)
+    with open(claude_md_path, "w", encoding="utf-8") as f:
+        f.write(claude_md)
 
-        # git config (커밋 에러 방지)
-        subprocess.run(["git", "config", "user.name", "두근컴퍼니"], cwd=local_path, capture_output=True)
-        subprocess.run(["git", "config", "user.email", "admin@600g.net"], cwd=local_path, capture_output=True)
+    # git config (커밋 에러 방지)
+    subprocess.run(["git", "config", "user.name", "두근컴퍼니"], cwd=local_path, capture_output=True)
+    subprocess.run(["git", "config", "user.email", "admin@600g.net"], cwd=local_path, capture_output=True)
 
-        # git commit + push
-        try:
-            subprocess.run(
-                ["git", "add", "CLAUDE.md"],
-                cwd=local_path, capture_output=True, check=True,
-            )
-            subprocess.run(
-                ["git", "commit", "-m", f"feat: CLAUDE.md 자동 생성 ({project_type})"],
-                cwd=local_path, capture_output=True, check=True,
-            )
-            subprocess.run(
-                ["git", "push"],
-                cwd=local_path, capture_output=True, check=True,
-            )
-        except subprocess.CalledProcessError as e:
-            import logging
-            logging.getLogger("company-hq").error(
-                "CLAUDE.md git 커밋/푸시 실패: %s",
-                e.stderr.decode("utf-8", errors="replace") if e.stderr else str(e),
-            )
+    # git commit + push (실패해도 에이전트 생성은 성공 — push는 나중에 해도 됨)
+    import logging as _log
+    try:
+        subprocess.run(["git", "add", "CLAUDE.md"], cwd=local_path, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "commit", "-m", f"feat: CLAUDE.md 자동 생성 ({project_type})"],
+            cwd=local_path, capture_output=True, check=True,
+        )
+    except subprocess.CalledProcessError:
+        pass  # 변경 없으면 커밋 실패 — 정상
+
+    try:
+        subprocess.run(["git", "push"], cwd=local_path, capture_output=True, check=True)
+    except subprocess.CalledProcessError as e:
+        _log.getLogger("company-hq").warning(
+            "CLAUDE.md push 실패 (에이전트는 정상 생성): %s",
+            e.stderr.decode("utf-8", errors="replace")[:100] if e.stderr else str(e),
+        )
 
     # 시스템프롬프트 생성
     system_prompt = _generate_system_prompt(name, description, project_type)
