@@ -51,6 +51,13 @@ function DispatchChat({ teams, onOpenChat }: { teams: Team[]; onOpenChat?: (team
   const [sending, setSending] = useState(false);
   const [phase, setPhase] = useState<DispatchPhase>("idle");
   const [summaryText, setSummaryText] = useState("");
+  // 멘션 자동완성
+  const [mentionQuery, setMentionQuery] = useState("");
+  const [showMentions, setShowMentions] = useState(false);
+  const mentionTeams = teams.filter(t =>
+    t.id !== "server-monitor" &&
+    (mentionQuery === "" || t.name.includes(mentionQuery) || t.id.includes(mentionQuery.toLowerCase()))
+  );
 
   // 메시지 변경 시 localStorage 동기화
   useEffect(() => {
@@ -381,6 +388,24 @@ function DispatchChat({ teams, onOpenChat }: { teams: Team[]; onOpenChat?: (team
         </div>
       )}
 
+      {/* 멘션 자동완성 드롭다운 */}
+      {showMentions && mentionTeams.length > 0 && (
+        <div className="bg-[#0f0f1f] border border-[#3a3a5a] rounded shadow-lg max-h-32 overflow-y-auto">
+          {mentionTeams.slice(0, 8).map(t => (
+            <button key={t.id} className="w-full text-left px-2 py-1 text-[11px] text-gray-300 hover:bg-[#1a1a3a] flex items-center gap-1.5"
+              onClick={() => {
+                const atIdx = input.lastIndexOf("@");
+                setInput(input.slice(0, atIdx) + `@${t.name} `);
+                setShowMentions(false);
+              }}>
+              <span>{t.emoji}</span>
+              <span>{t.name}</span>
+              <span className="text-[8px] text-gray-600 ml-auto">{t.id}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* 입력 (Shift+Enter=줄바꿈) */}
       <input ref={dispatchFileRef} type="file" accept="image/*" multiple hidden
         onChange={(e) => { Array.from(e.target.files || []).forEach(f => setPendingImages(prev => [...prev, { file: f }])); e.target.value = ""; }} />
@@ -389,10 +414,24 @@ function DispatchChat({ teams, onOpenChat }: { teams: Team[]; onOpenChat?: (team
           className="px-1.5 py-1.5 text-gray-500 hover:text-yellow-400 shrink-0" title="이미지 첨부"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button>
         <textarea
           value={input}
-          onChange={e => setInput(e.target.value)}
+          onChange={e => {
+            const v = e.target.value;
+            setInput(v);
+            // @ 감지 → 자동완성
+            const atIdx = v.lastIndexOf("@");
+            if (atIdx >= 0 && (atIdx === 0 || v[atIdx - 1] === " ")) {
+              const query = v.slice(atIdx + 1).split(/\s/)[0];
+              setMentionQuery(query);
+              setShowMentions(true);
+            } else {
+              setShowMentions(false);
+            }
+          }}
           onKeyDown={(e) => {
+            if (e.key === "Escape") { setShowMentions(false); return; }
             if (e.key === "Enter" && !isMobile && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault();
+              setShowMentions(false);
               dispatch();
             }
           }}

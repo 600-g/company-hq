@@ -7,6 +7,7 @@ export interface Message {
   type: "user" | "ai";
   content: string;
   cancelled?: boolean;
+  timestamp?: string;
 }
 
 interface Props {
@@ -232,7 +233,7 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
           return;
         }
         if (data.type === "user") {
-          setMessages(prev => [...prev, { type: "user", content: data.content }]);
+          setMessages(prev => [...prev, { type: "user", content: data.content, timestamp: new Date().toLocaleString("ko-KR", { hour12: false }) }]);
         } else if (data.type === "status") {
           setToolStatus(data.content);
           setToolLog(prev => [...prev, { time: new Date().toLocaleTimeString("ko-KR", { hour12: false }), text: data.content }]);
@@ -247,7 +248,7 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
             setElapsed(Math.floor((Date.now() - startTimeRef.current) / 1000));
           }, 1000);
           onWorkingChangeRef.current(true);
-          setMessages(prev => [...prev, { type: "ai", content: "" }]);
+          setMessages(prev => [...prev, { type: "ai", content: "", timestamp: new Date().toLocaleString("ko-KR", { hour12: false }) }]);
         } else if (data.type === "ai_chunk") {
           setMessages(prev => {
             const u = [...prev]; const l = u[u.length - 1];
@@ -419,6 +420,10 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
                 ? "bg-blue-600/15 text-blue-200 border-l-2 border-blue-500"
                 : "bg-[#1a2a1a] text-green-300 border-l-2 border-green-600"
             }`}>
+              {/* 타임스탬프 */}
+              {msg.timestamp && (
+                <div className="text-[8px] text-gray-600 font-mono mb-0.5">{msg.timestamp}</div>
+              )}
               {msg.type === "ai"
                 ? <div className="font-mono text-xs"><MarkdownMessage content={msg.content} /></div>
                 : <div className="whitespace-pre-wrap break-words">{msg.content}</div>
