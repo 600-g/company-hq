@@ -616,7 +616,7 @@ def _parse_status(text: str) -> str | None:
 
 
 # ── 세션 파일 경로 탐색 ────────────────────────────────
-_SESSION_SIZE_LIMIT = 5 * 1024 * 1024  # 5MB 초과 시 새 세션
+_SESSION_SIZE_LIMIT = 10 * 1024 * 1024  # 10MB 초과 시 새 세션 (5MB → 10MB로 상향)
 
 def _find_session_file(session_id: str, project_path: str | None = None) -> Path | None:
     """세션 ID에 해당하는 .jsonl 파일 위치를 반환. 없으면 None."""
@@ -652,14 +652,22 @@ def _session_ok(session_id: str, project_path: str | None = None) -> bool:
 
 
 def _cleanup_dead_pids():
-    """종료된 프로세스를 AGENT_PIDS에서 제거"""
+    """종료된 프로세스를 AGENT_PIDS에서 제거 (macOS 호환 강화)"""
     dead = []
     for tid, pid in AGENT_PIDS.items():
         try:
-            os.kill(pid, 0)  # 프로세스 존재 확인
-        except (ProcessLookupError, PermissionError):
-            dead.append(tid)
+            # waitpid WNOHANG: 자식 프로세스가 종료됐으면 수거
+            wpid, _ = os.waitpid(pid, os.WNOHANG)
+            if wpid == pid:
+                dead.append(tid)
+        except ChildProcessError:
+            # 자식이 아닌 프로세스 → kill(0)으로 존재 확인
+            try:
+                os.kill(pid, 0)
+            except (ProcessLookupError, PermissionError, OSError):
+                dead.append(tid)
     for tid in dead:
+        logger.info("[PID정리] 좀비 제거: %s (pid=%d)", tid, AGENT_PIDS.get(tid, 0))
         AGENT_PIDS.pop(tid, None)
 
 
@@ -702,11 +710,14 @@ async def run_claude(
 
     # ── 세션 유지 (파일 존재 + 크기 체크 후 resume) ──
     session_id = TEAM_SESSIONS.get(team_id)
+    session_rotated = False
     if session_id and _session_ok(session_id, project_path):
         cmd.extend(["--resume", session_id])
     else:
         if session_id:
             logger.info("[%s] 세션 초기화 (이전: %s)", team_id, session_id)
+            session_rotated = True
+            yield {"kind": "status", "content": "🔄 세션 초기화 중..."}
         new_id = str(uuid.uuid4())
         TEAM_SESSIONS[team_id] = new_id
         _save_sessions(TEAM_SESSIONS)

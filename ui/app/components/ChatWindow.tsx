@@ -14,17 +14,23 @@ function getApiBase(): string {
 }
 
 function SpecPopup({ team, onClose }: { team: Team; onClose: () => void }) {
-  const [md, setMd] = useState("");
+  const [claudeMd, setClaudeMd] = useState("");
+  const [systemPrompt, setSystemPrompt] = useState("");
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [tab, setTab] = useState<"spec" | "prompt" | "info">("spec");
 
   useEffect(() => {
     fetch(`${getApiBase()}/api/teams/${team.id}/guide`)
       .then(r => r.json())
-      .then(d => { setMd(d.claude_md || d.system_prompt || "스펙 없음"); setLoading(false); })
-      .catch(() => { setMd("불러오기 실패"); setLoading(false); });
+      .then(d => {
+        setClaudeMd(d.claude_md || "스펙 없음");
+        setSystemPrompt(d.system_prompt || "프롬프트 없음");
+        setLoading(false);
+      })
+      .catch(() => { setClaudeMd("불러오기 실패"); setLoading(false); });
   }, [team.id]);
 
   const handleSave = async () => {
@@ -34,58 +40,97 @@ function SpecPopup({ team, onClose }: { team: Team; onClose: () => void }) {
       const res = await fetch(`${getApiBase()}/api/teams/${team.id}/guide`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ claude_md: md }),
+        body: JSON.stringify({ claude_md: claudeMd }),
       });
       if (res.ok) { setSaved(true); setEditing(false); setTimeout(() => setSaved(false), 2000); }
     } catch { /* ignore */ }
     setSaving(false);
   };
 
-  // ESC로 닫기
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
   }, [onClose]);
 
+  const tabBtn = (id: typeof tab, label: string) => (
+    <button onClick={() => { setTab(id); setEditing(false); }}
+      className={`text-[10px] px-2 py-1 rounded transition-colors ${
+        tab === id ? "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30" : "text-gray-500 hover:text-gray-300"
+      }`}>{label}</button>
+  );
+
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60" onClick={onClose}>
-      <div className="w-[480px] max-w-[90vw] h-[70vh] bg-[#0a0a18] border border-[#3a3a5a] rounded-lg shadow-2xl flex flex-col overflow-hidden"
+      <div className="w-[520px] max-w-[90vw] h-[75vh] bg-[#0a0a18] border border-[#3a3a5a] rounded-lg shadow-2xl flex flex-col overflow-hidden"
         onClick={e => e.stopPropagation()}>
+        {/* 헤더 */}
         <div className="flex items-center justify-between px-3 py-2 bg-[#14142a] border-b border-[#2a2a5a] shrink-0">
-          <span className="text-[11px] font-bold text-gray-300">{team.emoji} {team.name} — CLAUDE.md</span>
+          <span className="text-[11px] font-bold text-gray-300">{team.emoji} {team.name}</span>
           <div className="flex items-center gap-1.5">
             {saved && <span className="text-[9px] text-green-400">저장됨</span>}
-            {editing ? (
+            {tab === "spec" && !editing && (
+              <button onClick={() => setEditing(true)}
+                className="text-[9px] px-2 py-0.5 bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 rounded hover:bg-yellow-500/20">수정</button>
+            )}
+            {tab === "spec" && editing && (
               <>
                 <button onClick={handleSave} disabled={saving}
                   className="text-[9px] px-2 py-0.5 bg-green-500/20 text-green-400 border border-green-500/30 rounded hover:bg-green-500/30 disabled:opacity-50">
-                  {saving ? "..." : "저장"}
-                </button>
-                <button onClick={() => setEditing(false)}
-                  className="text-[9px] px-2 py-0.5 text-gray-500 hover:text-gray-300">취소</button>
+                  {saving ? "..." : "저장"}</button>
+                <button onClick={() => setEditing(false)} className="text-[9px] px-2 py-0.5 text-gray-500 hover:text-gray-300">취소</button>
               </>
-            ) : (
-              <button onClick={() => setEditing(true)}
-                className="text-[9px] px-2 py-0.5 bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 rounded hover:bg-yellow-500/20">
-                수정
-              </button>
             )}
             <button onClick={onClose} className="text-gray-400 hover:text-white text-sm px-1">✕</button>
-            <span className="text-[8px] text-gray-700">ESC</span>
           </div>
         </div>
+        {/* 탭 */}
+        <div className="flex gap-1 px-3 py-1.5 border-b border-[#1a1a3a] shrink-0">
+          {tabBtn("spec", "CLAUDE.md")}
+          {tabBtn("prompt", "시스템 프롬프트")}
+          {tabBtn("info", "팀 정보")}
+        </div>
+        {/* 콘텐츠 */}
         <div className="flex-1 overflow-y-auto p-3 min-h-0">
           {loading ? (
             <span className="text-[11px] text-gray-500 p-2">로딩중...</span>
-          ) : editing ? (
-            <textarea
-              value={md}
-              onChange={e => setMd(e.target.value)}
-              className="w-full h-full bg-[#0f0f1f] text-[11px] text-gray-300 leading-relaxed p-2 border border-[#2a2a5a] rounded resize-none focus:outline-none focus:border-yellow-500/40 font-mono"
-            />
+          ) : tab === "spec" ? (
+            editing ? (
+              <textarea value={claudeMd} onChange={e => setClaudeMd(e.target.value)}
+                className="w-full h-full bg-[#0f0f1f] text-[11px] text-gray-300 leading-relaxed p-2 border border-[#2a2a5a] rounded resize-none focus:outline-none focus:border-yellow-500/40 font-mono" />
+            ) : (
+              <div className="text-[11px] text-gray-300 leading-relaxed whitespace-pre-wrap p-1 font-mono">{claudeMd}</div>
+            )
+          ) : tab === "prompt" ? (
+            <div className="text-[11px] text-gray-300 leading-relaxed whitespace-pre-wrap p-1 font-mono">{systemPrompt}</div>
           ) : (
-            <div className="text-[11px] text-gray-300 leading-relaxed whitespace-pre-wrap p-1 font-mono">{md}</div>
+            <div className="space-y-3 text-[11px]">
+              <div className="bg-[#12122a] rounded-lg p-3 border border-[#2a2a5a]">
+                <div className="text-gray-500 text-[9px] mb-2">기본 정보</div>
+                <div className="grid grid-cols-2 gap-y-1.5">
+                  <span className="text-gray-500">팀 ID</span>
+                  <span className="text-gray-300 font-mono">{team.id}</span>
+                  <span className="text-gray-500">이름</span>
+                  <span className="text-white">{team.emoji} {team.name}</span>
+                  <span className="text-gray-500">모델</span>
+                  <span className={`font-mono ${team.model === "opus" ? "text-purple-400" : "text-blue-400"}`}>{team.model || "sonnet"}</span>
+                  <span className="text-gray-500">레포</span>
+                  <span className="text-gray-300 font-mono">{team.repo || "-"}</span>
+                  <span className="text-gray-500">상태</span>
+                  <span className={team.status === "운영중" ? "text-green-400" : "text-gray-500"}>{team.status}</span>
+                  {team.siteUrl && (<><span className="text-gray-500">사이트</span>
+                    <a href={team.siteUrl} target="_blank" rel="noreferrer" className="text-yellow-400 hover:underline truncate">{team.siteUrl}</a></>)}
+                  {team.githubUrl && (<><span className="text-gray-500">GitHub</span>
+                    <a href={team.githubUrl} target="_blank" rel="noreferrer" className="text-yellow-400 hover:underline truncate">{team.githubUrl}</a></>)}
+                </div>
+              </div>
+              <div className="bg-[#12122a] rounded-lg p-3 border border-[#2a2a5a]">
+                <div className="text-gray-500 text-[9px] mb-2">역할 요약</div>
+                <div className="text-gray-300 leading-relaxed">
+                  {systemPrompt.split("\n").slice(0, 5).join("\n") || "역할 정보 없음"}
+                </div>
+              </div>
+            </div>
           )}
         </div>
       </div>
