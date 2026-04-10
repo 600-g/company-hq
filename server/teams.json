@@ -43,6 +43,7 @@
     "repo": "upbit-auto-trading-bot",
     "localPath": "~/Developer/my-company/upbit-auto-trading-bot",
     "status": "운영중",
+    "model": "opus",
     "category": "product",
     "order": 2,
     "layer": 1,
