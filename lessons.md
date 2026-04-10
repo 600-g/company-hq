@@ -35,3 +35,5 @@
 - **문제**: 취소 버튼이 인라인/모달/통합채팅에서 각각 다르게 동작
 - **원인**: 모드별로 따로 구현하다 보니 불일치 발생
 - **재발 방지**: 공통 기능(취소, 스크롤 등)은 하나의 로직으로 통일하고, UI만 모드별로 다르게 렌더링
+- [2026-04-10 02:23] design-team: env: node: No such file or directory
+- [2026-04-10 02:39] cpo-claude: env: node: No such file or directory
