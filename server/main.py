@@ -1666,6 +1666,162 @@ async def smart_dispatch(body: dict):
     return StreamingResponse(stream(), media_type="text/event-stream")
 
 
+# ── 토론 + QA 자동 관여 디스패치 ─────────────────────────
+
+DISCUSS_TASKS: dict[str, dict] = {}
+
+@app.post("/api/dispatch/discuss")
+async def dispatch_discuss(body: dict):
+    """CPO 주도 토론: 개발진 의견 수렴 → 토론 → QA 검증 → CPO 최종 결정
+
+    flow:
+    1. CPO가 작업 분석 + 관련 팀 선정
+    2. 각 팀 병렬로 의견 제출
+    3. CPO가 의견 종합 + 반론 유도 (소크라테스)
+    4. QA가 기술적 리스크/검증 포인트 제시
+    5. CPO 최종 결정 + 실행 계획
+
+    body: { "instruction": "채팅 기능 개선해", "teams": ["frontend-team", "backend-team"] (선택) }
+    """
+    from fastapi.responses import StreamingResponse
+    import re as _re
+
+    instruction = body.get("instruction", "")
+    forced_teams = body.get("teams", [])
+    if not instruction:
+        return {"ok": False, "error": "instruction이 필요합니다"}
+
+    discuss_id = str(uuid.uuid4())[:8]
+    DISCUSS_TASKS[discuss_id] = {
+        "instruction": instruction,
+        "status": "running",
+        "phases": [],
+        "started": datetime.now().isoformat(),
+    }
+
+    async def stream():
+        cpo_team = next((t for t in TEAMS if t["id"] == "cpo-claude"), None)
+        if not cpo_team:
+            yield f"data: {json.dumps({'phase': 'error', 'error': 'CPO 없음'})}\n\n"
+            return
+
+        dev_teams = [t for t in TEAMS if t.get("category") == "dev" and t.get("status") == "운영중"]
+        team_map = {t["id"]: t for t in TEAMS}
+
+        # ── Phase 1: CPO 분석 + 팀 선정 ──
+        yield f"data: {json.dumps({'phase': 'analyzing', 'message': '🧠 CPO가 작업을 분석하고 참여 팀을 선정 중...'})}\n\n"
+
+        if forced_teams:
+            selected_ids = forced_teams
+        else:
+            route_prompt = (
+                f"작업: {instruction}\n\n"
+                f"개발진 목록:\n" + "\n".join(f"- {t['id']}: {t['emoji']} {t['name']}" for t in dev_teams) + "\n\n"
+                "이 작업에 참여해야 할 팀 ID만 JSON 배열로 답해. 설명 없이.\n"
+                '예: ["frontend-team", "backend-team"]'
+            )
+            route_result = await run_claude_light(route_prompt, cpo_team["localPath"])
+            json_match = _re.search(r'\[.*?\]', route_result, _re.DOTALL)
+            selected_ids = json.loads(json_match.group()) if json_match else [t["id"] for t in dev_teams]
+
+        # QA는 항상 포함
+        if "qa-agent" not in selected_ids:
+            selected_ids.append("qa-agent")
+
+        selected_teams = [t for t in TEAMS if t["id"] in selected_ids]
+        yield f"data: {json.dumps({'phase': 'team_selected', 'teams': [{'id': t['id'], 'name': t['name'], 'emoji': t['emoji']} for t in selected_teams]})}\n\n"
+
+        # ── Phase 2: 각 팀 의견 수렴 (병렬) ──
+        yield f"data: {json.dumps({'phase': 'opinions', 'message': f'💬 {len(selected_teams)}팀 의견 수렴 중...'})}\n\n"
+
+        opinions: dict[str, dict] = {}
+
+        async def get_opinion(team: dict):
+            tid = team["id"]
+            role = "QA 엔지니어" if tid == "qa-agent" else team["name"]
+            prompt = (
+                f"[토론 참여 요청]\n"
+                f"작업: {instruction}\n\n"
+                f"너는 {role} 역할이야. 이 작업에 대해:\n"
+                f"1. 접근 방법 제안 (구체적으로)\n"
+                f"2. 예상 리스크 또는 주의점\n"
+                f"3. 다른 팀과의 의존성\n"
+                f"간결하게 답해 (300자 이내)."
+            )
+            result = ""
+            try:
+                async for chunk in run_claude(prompt, team["localPath"], tid, is_auto=True):
+                    if chunk["kind"] == "text":
+                        result += chunk["content"]
+                opinions[tid] = {"name": team["name"], "emoji": team["emoji"], "opinion": result}
+            except Exception as e:
+                opinions[tid] = {"name": team["name"], "emoji": team["emoji"], "opinion": f"❌ 오류: {e}"}
+
+        await asyncio.gather(*[get_opinion(t) for t in selected_teams])
+
+        for tid, op in opinions.items():
+            yield f"data: {json.dumps({'phase': 'opinion', 'team_id': tid, **op})}\n\n"
+
+        # ── Phase 3: CPO 토론 리딩 (소크라테스) ──
+        yield f"data: {json.dumps({'phase': 'discussion', 'message': '⚖️ CPO가 토론을 주도합니다...'})}\n\n"
+
+        opinion_summary = "\n\n".join(
+            f"[{op['emoji']} {op['name']}]\n{op['opinion']}" for op in opinions.values()
+        )
+
+        discuss_prompt = (
+            f"작업: {instruction}\n\n"
+            f"각 팀의 의견:\n{opinion_summary}\n\n"
+            "너는 CPO(프로덕트 오너)야. 위 의견을 종합해서:\n"
+            "1. 각 팀 의견의 강점과 약점을 짚어줘\n"
+            "2. 충돌하는 부분이 있으면 어떤 게 더 나은지 판단해\n"
+            "3. QA 관점의 리스크를 반영해서 최종 실행 계획을 세워\n"
+            "4. 팀별 구체적 할 일을 배정해\n\n"
+            "형식:\n"
+            "## 토론 요약\n(2-3줄)\n\n"
+            "## 최종 결정\n(실행 계획)\n\n"
+            "## 팀별 할 일\n- 팀명: 할 일\n"
+        )
+
+        decision_text = ""
+        async for chunk in run_claude(discuss_prompt, cpo_team["localPath"], "cpo-claude", is_auto=False):
+            if chunk["kind"] == "text":
+                decision_text += chunk["content"]
+                yield f"data: {json.dumps({'phase': 'decision_chunk', 'content': chunk['content']})}\n\n"
+
+        # ── Phase 4: 결과 저장 + 학습 기록 ──
+        DISCUSS_TASKS[discuss_id]["status"] = "done"
+        DISCUSS_TASKS[discuss_id]["completed"] = datetime.now().isoformat()
+        DISCUSS_TASKS[discuss_id]["phases"] = [
+            {"phase": "opinions", "data": opinions},
+            {"phase": "decision", "data": decision_text},
+        ]
+        DISCUSS_TASKS[discuss_id]["teams"] = selected_ids
+        DISCUSS_TASKS[discuss_id]["decision"] = decision_text
+
+        # 자가학습 히스토리에 토론 기록
+        evo = _load_evolution()
+        for tid in selected_ids:
+            if tid not in evo:
+                evo[tid] = {"version": "1.0", "history": []}
+        _save_evolution(evo)
+
+        _log_activity("cpo-claude", f"✅ 토론 완료: {instruction[:50]}")
+
+        yield f"data: {json.dumps({'phase': 'done', 'discuss_id': discuss_id, 'decision': decision_text, 'teams': selected_ids, 'opinions': {tid: op['opinion'][:500] for tid, op in opinions.items()}})}\n\n"
+
+    return StreamingResponse(stream(), media_type="text/event-stream")
+
+
+@app.get("/api/dispatch/discuss/{discuss_id}")
+async def get_discuss(discuss_id: str):
+    """토론 결과 조회"""
+    task = DISCUSS_TASKS.get(discuss_id)
+    if not task:
+        return {"ok": False, "error": "토론을 찾을 수 없습니다"}
+    return {"ok": True, **task}
+
+
 # ── 웹 푸시 알림 ──────────────────────────────────────
 
 @app.get("/api/push/vapid-key")
