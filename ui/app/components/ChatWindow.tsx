@@ -4,6 +4,7 @@ import { useRef, useState, useCallback, useEffect } from "react";
 import { Team } from "../config/teams";
 import ChatPanel, { Message } from "./ChatPanel";
 import ServerDashboard from "./ServerDashboard";
+import TradingDashboard from "./TradingDashboard";
 
 function getApiBase(): string {
   if (typeof window === "undefined") return "";
@@ -111,7 +112,9 @@ export default function ChatWindow({
   team, messages, onMessages, onClose, onWorkingChange, onFocus, zIndex, initialX, initialY
 }: Props) {
   const isDashboard = team.id === "server-monitor";
+  const isTrading = team.id === "trading-bot";
   const [showSpec, setShowSpec] = useState(false);
+  const [showTradingDash, setShowTradingDash] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [pos, setPos] = useState({ x: initialX, y: initialY });
 
@@ -215,16 +218,25 @@ export default function ChatWindow({
               <div className="w-[11px] h-[11px] rounded-full bg-[#28c940]" />
             </div>
             <span className="text-[12px] text-[#c8c8d8] font-mono">{team.emoji} {team.name}</span>
-            {!isDashboard && (
-              <span className={`text-[9px] px-1.5 py-0.5 rounded font-mono border ml-auto ${
-                team.model === 'opus'
-                  ? 'bg-[#2a1a4a] text-[#a080f0] border-[#4a2a7a]'
-                  : 'bg-[#1a2a3a] text-[#60a0e0] border-[#2a4a6a]'
-              }`}>{team.model || 'sonnet'}</span>
-            )}
+            <div className="flex items-center gap-1.5 ml-auto">
+              {isTrading && (
+                <button onClick={() => setShowTradingDash(v => !v)}
+                  className="text-[9px] px-1.5 py-0.5 rounded border bg-yellow-900/20 text-yellow-400 border-yellow-800/40 hover:bg-yellow-900/40 transition-colors">
+                  📊
+                </button>
+              )}
+              {!isDashboard && (
+                <span className={`text-[9px] px-1.5 py-0.5 rounded font-mono border ${
+                  team.model === 'opus'
+                    ? 'bg-[#2a1a4a] text-[#a080f0] border-[#4a2a7a]'
+                    : 'bg-[#1a2a3a] text-[#60a0e0] border-[#2a4a6a]'
+                }`}>{team.model || 'sonnet'}</span>
+              )}
+            </div>
           </div>
           <div className="flex-1 min-h-0 overflow-hidden p-2 flex flex-col relative">
             {showSpec && <SpecPopup team={team} onClose={() => setShowSpec(false)} />}
+            {showTradingDash && <TradingDashboard onClose={() => setShowTradingDash(false)} />}
             {team.id === "server-monitor"
               ? <ServerDashboard onClose={onClose} />
               : <ChatPanel team={team} onClose={onClose} onWorkingChange={onWorkingChange}
@@ -294,6 +306,17 @@ export default function ChatWindow({
           )}
 
           <div className="flex items-center gap-2 ml-auto shrink-0">
+            {/* 매매봇 대시보드 */}
+            {isTrading && (
+              <button onClick={() => setShowTradingDash(v => !v)} onPointerDown={e => e.stopPropagation()}
+                className={`text-[9px] px-1.5 py-0.5 rounded border transition-colors ${
+                  showTradingDash
+                    ? "bg-yellow-500/30 text-yellow-300 border-yellow-500/50"
+                    : "bg-yellow-900/20 text-yellow-400 border-yellow-800/40 hover:bg-yellow-900/40"
+                }`} title="매매봇 대시보드">
+                📊
+              </button>
+            )}
             {/* 모델 뱃지 */}
             {!isDashboard && (
               <span className={`text-[9px] px-1.5 py-0.5 rounded font-mono border ${
@@ -317,6 +340,7 @@ export default function ChatWindow({
       {/* ── 콘텐츠 영역 ── */}
       <div className="flex-1 min-h-0 overflow-hidden p-2 flex flex-col relative" style={{ background: '#0a0a18' }}>
         {showSpec && <SpecPopup team={team} onClose={() => setShowSpec(false)} />}
+        {showTradingDash && <TradingDashboard onClose={() => setShowTradingDash(false)} />}
         {team.id === "server-monitor"
           ? <ServerDashboard onClose={onClose} />
           : <ChatPanel team={team} onClose={onClose} onWorkingChange={onWorkingChange}

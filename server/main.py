@@ -7,6 +7,7 @@ import time
 import shutil
 import json
 import uuid
+from pathlib import Path
 from datetime import datetime, timedelta
 from fastapi import FastAPI, WebSocket, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
@@ -787,6 +788,19 @@ async def _check_services() -> list:
     loop = asyncio.get_event_loop()
     loop.run_in_executor(None, _check_services_sync)  # fire-and-forget
     return _svc_cache["data"]  # 이전 캐시 즉시 반환
+
+
+@app.get("/api/trading-bot/status")
+async def get_trading_bot_status():
+    """매매봇 status.json 프록시 — 대시보드 팝업용"""
+    status_path = Path.home() / "Desktop" / "업비트자동" / "docs" / "status.json"
+    if not status_path.exists():
+        return {"ok": False, "error": "status.json not found"}
+    try:
+        data = json.loads(status_path.read_text(encoding="utf-8"))
+        return {"ok": True, **data}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 
 @app.get("/api/dashboard")
