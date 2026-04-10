@@ -31,11 +31,10 @@
     "repo": "company-hq",
     "localPath": "~/Developer/my-company/company-hq",
     "status": "운영중",
-    "category": "system",
+    "category": "dev",
     "model": "sonnet",
-    "order": 2,
-    "layer": 0,
-    "pinned": true
+    "order": 6,
+    "layer": 2
   },
   {
     "id": "trading-bot",
@@ -58,20 +57,6 @@
     "category": "product",
     "order": 3,
     "layer": 1
-  },
-  {
-    "id": "claude-biseo",
-    "name": "클로드비서",
-    "emoji": "🤵",
-    "repo": "claude-biseo-v1.0",
-    "localPath": "~/Developer/my-company/claude-biseo-v1.0",
-    "status": "은퇴",
-    "category": "product",
-    "order": 4,
-    "layer": 1,
-    "hidden": true,
-    "retiredAt": "2026-04-10",
-    "retiredReason": "CPO가 기능 흡수 (문서처리 스킬 글로벌 이전 완료)"
   },
   {
     "id": "ai900",

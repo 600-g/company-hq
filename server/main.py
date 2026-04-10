@@ -790,6 +790,69 @@ async def _check_services() -> list:
     return _svc_cache["data"]  # 이전 캐시 즉시 반환
 
 
+# ── 자가학습 히스토리 API ──────────────────────────────
+_EVOLUTION_PATH = Path(__file__).parent / "team_evolution.json"
+
+def _load_evolution() -> dict:
+    if _EVOLUTION_PATH.exists():
+        try:
+            return json.loads(_EVOLUTION_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    return {}
+
+def _save_evolution(data: dict):
+    _EVOLUTION_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+@app.get("/api/teams/{team_id}/evolution")
+async def get_team_evolution(team_id: str):
+    """팀 자가학습 히스토리 조회"""
+    evo = _load_evolution()
+    team_evo = evo.get(team_id, {"version": "1.0", "history": []})
+    # lessons.md가 있으면 카운트
+    team = next((t for t in TEAMS if t["id"] == team_id), None)
+    lessons_count = 0
+    if team:
+        lp = Path(os.path.expanduser(team.get("localPath", ""))).resolve() / "lessons.md"
+        if lp.exists():
+            lessons_count = sum(1 for line in lp.read_text(encoding="utf-8", errors="ignore").splitlines() if line.strip().startswith("-") or line.strip().startswith("["))
+    return {"ok": True, "team_id": team_id, **team_evo, "lessons_count": lessons_count}
+
+@app.get("/api/teams/{team_id}/activity")
+async def get_team_activity(team_id: str):
+    """팀 최근 활동 — 커밋, 작업 상태"""
+    team = next((t for t in TEAMS if t["id"] == team_id), None)
+    if not team:
+        return {"ok": False, "error": "팀 없음"}
+    local = Path(os.path.expanduser(team.get("localPath", ""))).resolve()
+    # 최근 커밋 5개
+    commits = []
+    if (local / ".git").exists():
+        import subprocess
+        try:
+            out = subprocess.run(
+                ["git", "log", "--oneline", "-5", "--format=%h|%s|%ar"],
+                capture_output=True, text=True, cwd=str(local), timeout=5
+            )
+            for line in out.stdout.strip().splitlines():
+                parts = line.split("|", 2)
+                if len(parts) == 3:
+                    commits.append({"hash": parts[0], "message": parts[1], "ago": parts[2]})
+        except Exception:
+            pass
+    # 에이전트 상태
+    from ws_handler import AGENT_STATUS
+    status = AGENT_STATUS.get(team_id, {})
+    return {
+        "ok": True,
+        "team_id": team_id,
+        "commits": commits,
+        "status": status.get("state", "idle"),
+        "current_tool": status.get("tool"),
+        "last_active": status.get("last_active"),
+    }
+
+
 @app.post("/api/trading-bot/mode")
 async def switch_trading_bot_mode(request: dict):
     """매매봇 데모/리얼 모드 전환 — Firebase upbit_control에 기록"""
