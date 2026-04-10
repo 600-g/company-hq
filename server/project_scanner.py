@@ -1,9 +1,12 @@
-"""프로젝트 현황 스캐너 — 각 팀 레포의 최근 커밋, 상태, 버전 등을 수집"""
+"""프로젝트 현황 스캐너 — 각 팀 레포의 최근 커밋, 상태, 버전 등을 수집
+
+FD 누수 방지: GitPython 대신 subprocess로 git 명령 직접 실행
+"""
 
 import os
 import re
+import subprocess
 from datetime import datetime, timezone
-from git import Repo, InvalidGitRepositoryError
 
 
 def _parse_claude_md_version(local_path: str) -> dict:
@@ -14,18 +17,28 @@ def _parse_claude_md_version(local_path: str) -> dict:
         return result
     try:
         with open(claude_md, "r", encoding="utf-8") as f:
-            head = f.read(2000)  # 앞부분만
-        # 버전: v1.2 형태
+            head = f.read(2000)
         m = re.search(r"버전:\s*(v[\d.]+)", head)
         if m:
             result["version"] = m.group(1)
-        # 업데이트 날짜
         m = re.search(r"업데이트:\s*(\d{4}-\d{2}-\d{2})", head)
         if m:
             result["updated"] = m.group(1)
     except Exception:
         pass
     return result
+
+
+def _git(path: str, *args, timeout: int = 5) -> str:
+    """git 명령 실행 — subprocess로 FD 누수 없이"""
+    try:
+        r = subprocess.run(
+            ["git", *args],
+            capture_output=True, text=True, cwd=path, timeout=timeout,
+        )
+        return r.stdout.strip()
+    except Exception:
+        return ""
 
 
 def scan_project(local_path: str) -> dict:
@@ -47,33 +60,30 @@ def scan_project(local_path: str) -> dict:
     if not info["exists"]:
         return info
 
-    try:
-        repo = Repo(path)
-    except InvalidGitRepositoryError:
+    if not os.path.isdir(os.path.join(path, ".git")):
         return info
 
-    if repo.head.is_detached:
-        info["branch"] = "(detached)"
-    else:
-        info["branch"] = repo.active_branch.name
+    # 브랜치
+    branch = _git(path, "rev-parse", "--abbrev-ref", "HEAD")
+    info["branch"] = branch or "(detached)"
 
-    info["dirty"] = repo.is_dirty(untracked_files=True)
+    # dirty 체크 (빠르게)
+    status = _git(path, "status", "--porcelain", "--short")
+    info["dirty"] = bool(status)
 
+    # 최근 커밋
+    log = _git(path, "log", "-1", "--format=%s|%aI")
+    if "|" in log:
+        parts = log.split("|", 1)
+        info["last_commit"] = parts[0]
+        info["last_commit_date"] = parts[1]
+
+    # 최근 30일 커밋 수
+    since = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    count_str = _git(path, "rev-list", "--count", "--since=30 days ago", "HEAD")
     try:
-        last = repo.head.commit
-        info["last_commit"] = last.message.strip()
-        info["last_commit_date"] = last.committed_datetime.isoformat()
-
-        # 최근 30일 커밋 수
-        since = datetime.now(timezone.utc).timestamp() - (30 * 86400)
-        count = 0
-        for c in repo.iter_commits(max_count=200):
-            if c.committed_date >= since:
-                count += 1
-            else:
-                break
-        info["commit_count_30d"] = count
-    except Exception:
+        info["commit_count_30d"] = int(count_str)
+    except ValueError:
         pass
 
     # CLAUDE.md 버전 파싱

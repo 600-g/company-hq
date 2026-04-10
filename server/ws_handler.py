@@ -336,11 +336,19 @@ async def handle_chat(ws: WebSocket, team_id: str, project_path: str | None):
             _update_status(team_id, working=True, tool=None, last_active=datetime.now().strftime("%H:%M:%S"), last_prompt=prompt[:60])
             _log_activity(team_id, f"📨 {prompt[:50]}")
 
+            # 이전 작업 실행 중이면 자동 취소 (동일 팀 블로킹 방지)
+            from claude_runner import AGENT_PIDS
+            if AGENT_PIDS.get(team_id):
+                _cancel_flags[team_id] = True
+                await _do_cancel(team_id)
+                await asyncio.sleep(0.5)
+
             _cancel_flags[team_id] = False
             full_response = ""
             cancelled = False
 
-            # Claude 스트리밍을 큐 기반으로 처리
+            # Claude 스트리밍을 큐 기반으로 처리 (3분 타임아웃)
+            _CLAUDE_TIMEOUT = 180  # 3분
             event_queue: asyncio.Queue = asyncio.Queue()
 
             async def _stream_claude():
@@ -384,14 +392,25 @@ async def handle_chat(ws: WebSocket, team_id: str, project_path: str | None):
                 except Exception:
                     return
 
-            # 두 태스크를 동시에 실행
+            # 두 태스크를 동시에 실행 (타임아웃 감시 포함)
             stream_task = asyncio.create_task(_stream_claude())
             listen_task = asyncio.create_task(_listen_ws())
+            _stream_start = asyncio.get_event_loop().time()
 
             # 이벤트 큐에서 소비하면서 클라이언트에 전송
             while True:
                 if cancelled or _cancel_flags.get(team_id):
                     stream_task.cancel()
+                    break
+                # 타임아웃 체크
+                elapsed = asyncio.get_event_loop().time() - _stream_start
+                if elapsed > _CLAUDE_TIMEOUT and not full_response:
+                    # 3분 동안 출력 없음 → 강제 종료
+                    _cancel_flags[team_id] = True
+                    await _do_cancel(team_id)
+                    stream_task.cancel()
+                    full_response = f"⚠️ ���답 타임아웃 ({_CLAUDE_TIMEOUT}초). 다시 시도해주세요."
+                    await manager.send_json(team_id, {"type": "ai_chunk", "content": full_response})
                     break
                 try:
                     event = await asyncio.wait_for(event_queue.get(), timeout=0.5)
