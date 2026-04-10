@@ -421,6 +421,12 @@ export default function ServerDashboard({ onClose }: { onClose: () => void }) {
   const [lastUpdated, setLastUpdated] = useState("");
   const [error, setError] = useState(false);
 
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [onClose]);
+
   const fetchData = useCallback(async () => {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 5000);

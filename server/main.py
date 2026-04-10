@@ -790,6 +790,33 @@ async def _check_services() -> list:
     return _svc_cache["data"]  # 이전 캐시 즉시 반환
 
 
+@app.post("/api/trading-bot/mode")
+async def switch_trading_bot_mode(request: dict):
+    """매매봇 데모/리얼 모드 전환 — Firebase upbit_control에 기록"""
+    import requests as req_lib
+    target = request.get("mode", "")
+    pin = request.get("pin", "")
+    if target not in ("demo", "real"):
+        return {"ok": False, "error": "mode must be 'demo' or 'real'"}
+    if target == "real" and (not pin or len(pin) != 4):
+        return {"ok": False, "error": "PIN 4자리 필요"}
+    fb_url = "https://firestore.googleapis.com/v1/projects/datemap-759bf/databases/(default)/documents/upbit_control"
+    fields: dict = {
+        "action": {"stringValue": "switch"},
+        "mode": {"stringValue": target},
+        "ts": {"timestampValue": datetime.now().strftime('%Y-%m-%dT%H:%M:%S.000Z')},
+    }
+    if pin:
+        fields["pin"] = {"stringValue": pin}
+    try:
+        resp = req_lib.post(fb_url, json={"fields": fields}, timeout=10)
+        if resp.status_code in (200, 201):
+            return {"ok": True, "message": f"{target} 모드 전환 요청 전송됨"}
+        return {"ok": False, "error": f"Firebase 응답 {resp.status_code}"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 @app.get("/api/trading-bot/status")
 async def get_trading_bot_status():
     """매매봇 status.json 프록시 — 대시보드 팝업용"""

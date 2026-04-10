@@ -71,6 +71,48 @@ export default function TradingDashboard({ onClose }: { onClose: () => void }) {
   const [data, setData] = useState<StatusData | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<"overview" | "positions" | "recent">("overview");
+  const [switching, setSwitching] = useState(false);
+
+  const switchMode = useCallback(async (toReal: boolean) => {
+    const target = toReal ? "real" : "demo";
+    let pin = "";
+    if (toReal) {
+      pin = window.prompt("⚠️ REAL 모드 전환\n실제 자금으로 거래됩니다.\n\nPIN 4자리를 입력하세요:") || "";
+      if (pin.length !== 4) return;
+    } else {
+      if (!window.confirm("DEMO 모드로 전환하시겠습니까?")) return;
+    }
+    setSwitching(true);
+    try {
+      const res = await fetch(`${getApiBase()}/api/trading-bot/mode`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: target, pin }),
+      });
+      const d = await res.json();
+      if (d.ok) {
+        // 30초간 폴링하며 모드 변경 확인
+        const start = Date.now();
+        const poll = setInterval(async () => {
+          if (Date.now() - start > 30000) { clearInterval(poll); setSwitching(false); return; }
+          try {
+            const sr = await fetch(`${getApiBase()}/api/trading-bot/status`);
+            const sd = await sr.json();
+            if (sd.bot_mode === target) {
+              setData(sd as StatusData);
+              clearInterval(poll);
+              setSwitching(false);
+            }
+          } catch { /* ignore */ }
+        }, 3000);
+      } else {
+        window.alert(d.error || "전환 실패");
+        setSwitching(false);
+      }
+    } catch {
+      setSwitching(false);
+    }
+  }, []);
 
   const fetchData = useCallback(async () => {
     try {
@@ -136,9 +178,19 @@ export default function TradingDashboard({ onClose }: { onClose: () => void }) {
           }`}>
             {data.bot_running ? "실행중" : "중지"}
           </span>
-          <span className="text-[9px] text-gray-600 font-mono">
-            {data.bot_mode?.toUpperCase()}
-          </span>
+          {/* 모드 토글 */}
+          <button
+            onClick={() => switchMode(data.bot_mode !== "real")}
+            disabled={switching}
+            className={`text-[9px] px-2 py-0.5 rounded border font-mono transition-colors ${
+              switching ? "opacity-50 cursor-wait" :
+              data.bot_mode === "real"
+                ? "bg-red-900/30 text-red-400 border-red-800 hover:bg-red-900/50"
+                : "bg-gray-800/50 text-gray-400 border-gray-700 hover:bg-gray-700/50"
+            }`}
+          >
+            {switching ? "전환중..." : data.bot_mode?.toUpperCase()}
+          </button>
         </div>
         <button onClick={onClose} className="text-gray-500 hover:text-white text-sm transition-colors">✕</button>
       </div>
