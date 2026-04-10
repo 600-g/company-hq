@@ -11,9 +11,9 @@ function getApiBase(): string {
 
 interface Commit { hash: string; message: string; ago: string; }
 interface EvoEntry { ver: string; date: string; changes: string[]; }
-interface Props { teamId: string; teamName: string; teamEmoji: string; model?: string; onClose: () => void; }
+interface Props { teamId: string; teamName: string; teamEmoji: string; model?: string; siteUrl?: string; onClose: () => void; }
 
-export default function TeamMonitor({ teamId, teamName, teamEmoji, model, onClose }: Props) {
+export default function TeamMonitor({ teamId, teamName, teamEmoji, model, siteUrl, onClose }: Props) {
   const [commits, setCommits] = useState<Commit[]>([]);
   const [status, setStatus] = useState("idle");
   const [currentTool, setCurrentTool] = useState<string | null>(null);
@@ -84,6 +84,12 @@ export default function TeamMonitor({ teamId, teamName, teamEmoji, model, onClos
           {currentTool && <span className="text-[9px] text-gray-500">⚡ {currentTool}</span>}
         </div>
         <div className="flex items-center gap-2">
+          {siteUrl && (
+            <a href={siteUrl} target="_blank" rel="noreferrer"
+              className="text-[9px] px-2 py-0.5 rounded border bg-blue-900/20 text-blue-400 border-blue-800/40 hover:bg-blue-900/40 transition-colors">
+              🔗 사이트
+            </a>
+          )}
           <span className="text-[9px] text-gray-600 font-mono">v{evolution.version}</span>
           <button onClick={onClose} className="text-gray-500 hover:text-white text-sm transition-colors">✕</button>
         </div>

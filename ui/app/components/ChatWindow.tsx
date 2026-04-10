@@ -7,8 +7,8 @@ import ServerDashboard from "./ServerDashboard";
 import TradingDashboard from "./TradingDashboard";
 import TeamMonitor from "./TeamMonitor";
 
-// 채팅 가능한 팀 (나머지는 모니터링 대시보드)
-const CHAT_TEAMS = new Set(["cpo-claude", "trading-bot", "date-map"]);
+// 채팅 가능한 팀 — CPO와 매매봇만 (나머지는 모니터링 대시보드)
+const CHAT_TEAMS = new Set(["cpo-claude", "trading-bot"]);
 
 function getApiBase(): string {
   if (typeof window === "undefined") return "";
@@ -289,7 +289,7 @@ export default function ChatWindow({
             {team.id === "server-monitor"
               ? <ServerDashboard onClose={onClose} />
               : !CHAT_TEAMS.has(team.id)
-                ? <TeamMonitor teamId={team.id} teamName={team.name} teamEmoji={team.emoji} model={team.model} onClose={onClose} />
+                ? <TeamMonitor teamId={team.id} teamName={team.name} teamEmoji={team.emoji} model={team.model} siteUrl={team.siteUrl} onClose={onClose} />
                 : <ChatPanel team={team} onClose={onClose} onWorkingChange={onWorkingChange}
                     inline messages={messages} onMessages={onMessages} />
             }
@@ -395,7 +395,7 @@ export default function ChatWindow({
         {team.id === "server-monitor"
           ? <ServerDashboard onClose={onClose} />
           : !CHAT_TEAMS.has(team.id)
-            ? <TeamMonitor teamId={team.id} teamName={team.name} teamEmoji={team.emoji} model={team.model} onClose={onClose} />
+            ? <TeamMonitor teamId={team.id} teamName={team.name} teamEmoji={team.emoji} model={team.model} siteUrl={team.siteUrl} onClose={onClose} />
             : <ChatPanel team={team} onClose={onClose} onWorkingChange={onWorkingChange}
                 inline messages={messages} onMessages={onMessages} />
         }
