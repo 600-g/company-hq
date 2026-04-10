@@ -8,6 +8,9 @@
 SERVER_DIR="$HOME/Developer/my-company/company-hq/server"
 ENV_FILE="$SERVER_DIR/.env"
 
+# PATH 보장 — launchd 환경에서 node, git, claude 등 찾을 수 있도록
+export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$HOME/.local/bin:$PATH"
+
 # .env 로드 (값 자동 export)
 if [ -f "$ENV_FILE" ]; then
     set -a

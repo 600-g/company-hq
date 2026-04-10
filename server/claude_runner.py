@@ -61,6 +61,7 @@ TEAM_MODELS: dict[str, str] = {
     "cpo-claude": "opus",
     "trading-bot": "opus",
     "design-team": "opus",
+    "qa-agent": "opus",
     # 나머지는 기본값 sonnet (프론트/백엔드 포함)
 }
 

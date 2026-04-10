@@ -32,7 +32,7 @@
     "localPath": "~/Developer/my-company/company-hq",
     "status": "운영중",
     "category": "dev",
-    "model": "sonnet",
+    "model": "opus",
     "order": 6,
     "layer": 2
   },
