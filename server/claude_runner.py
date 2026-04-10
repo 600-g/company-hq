@@ -813,7 +813,7 @@ async def run_claude(
                 _log_error_lesson(team_id, err_msg, retried=False)
                 yield {"kind": "text", "content": "⏳ 일시적 오류 — 5초 후 자동 재시도 중..."}
                 await asyncio.sleep(5)
-                async for event in run_claude(prompt, project_path, team_id, is_auto=True):
+                async for event in run_claude(prompt, project_path, team_id, is_auto=False):
                     yield event
                 return
             _log_error_lesson(team_id, err_msg)
