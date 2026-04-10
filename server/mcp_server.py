@@ -20,7 +20,7 @@ SERVER_DIR = PROJECTS_ROOT / "company-hq" / "server"
 TEAM_PATHS = {
     "trading-bot":   UPBIT_ROOT,
     "date-map":      PROJECTS_ROOT / "date-map",
-    "claude-biseo":  PROJECTS_ROOT / "claude-biseo-v1.0",
+    # "claude-biseo": 은퇴 (2026-04-10, CPO 흡수)
     "ai900":         PROJECTS_ROOT / "ai900",
     "cl600g":        PROJECTS_ROOT / "cl600g",
     "company-hq":    PROJECTS_ROOT / "company-hq",
@@ -28,7 +28,7 @@ TEAM_PATHS = {
 
 TEAM_LOG_FILES = {
     "trading-bot":  UPBIT_ROOT / "logs" / "bot.log",
-    "claude-biseo": PROJECTS_ROOT / "claude-biseo-v1.0" / "claude_task.log",
+    # "claude-biseo": 은퇴 (2026-04-10)
 }
 
 # ── 서비스 프로세스 관리 설정 ──────────────────────────────
@@ -45,11 +45,7 @@ SERVICE_REGISTRY = {
         "restart": f"cd {UPBIT_ROOT} && {UPBIT_ROOT}/venv/bin/python3 upbit_bot_v3_0_complete.py &",
         "pre_restart": None,
     },
-    "claude-biseo": {
-        "display": "비서 텔레그램봇",
-        "keywords": ["telegram_bot"],
-        "restart": None,
-    },
+    # "claude-biseo": 은퇴 (2026-04-10, CPO 흡수)
 }
 
 

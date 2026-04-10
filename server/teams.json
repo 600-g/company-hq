@@ -65,10 +65,13 @@
     "emoji": "🤵",
     "repo": "claude-biseo-v1.0",
     "localPath": "~/Developer/my-company/claude-biseo-v1.0",
-    "status": "운영중",
+    "status": "은퇴",
     "category": "product",
     "order": 4,
-    "layer": 1
+    "layer": 1,
+    "hidden": true,
+    "retiredAt": "2026-04-10",
+    "retiredReason": "CPO가 기능 흡수 (문서처리 스킬 글로벌 이전 완료)"
   },
   {
     "id": "ai900",

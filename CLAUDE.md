@@ -23,7 +23,7 @@
   └── CPO (company-hq) — Level 4
         ├── PM: 매매봇       → upbit-auto-trading-bot    🤖
         ├── PM: 데이트지도   → date-map                  🗺️
-        ├── PM: 클로드비서   → claude-biseo-v1.0         🤵
+        ├── PM: 클로드비서   → claude-biseo-v1.0         🤵 (은퇴 2026-04-10, CPO 흡수)
         ├── PM: AI900        → ai900                     📚
         ├── PM: 디자인팀     → design-team               🎨
         ├── PM: 콘텐츠랩     → content-lab               🔬

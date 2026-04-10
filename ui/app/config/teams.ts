@@ -54,7 +54,7 @@ export const defaultTeams: Team[] = [
     emoji: "🤵",
     repo: "claude-biseo-v1.0",
     localPath: "~/Developer/my-company/claude-biseo-v1.0",
-    status: "운영중",
+    status: "은퇴",
     githubUrl: "https://github.com/600-g/claude-biseo-v1.0",
   },
   {
