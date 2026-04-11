@@ -5,6 +5,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 from fastapi import WebSocket, WebSocketDisconnect
+from websockets.exceptions import ConnectionClosedError, ConnectionClosedOK
 from claude_runner import run_claude
 from push_notifications import send_agent_complete, set_online_checker
 from trading_stats import has_trading_keywords, format_trading_context
@@ -273,14 +274,14 @@ async def handle_chat(ws: WebSocket, team_id: str, project_path: str | None):
     """WebSocket 연결 하나를 처리한다. 각 팀은 독립적으로 병렬 실행된다."""
     await manager.connect(team_id, ws)
 
-    # ── keepalive ping (30초 간격) — 연결 끊김 방지 ──
+    # ── keepalive ping (20초 간격) — 연결 끊김 방지 ──
     _ws_alive = True
 
     async def _keepalive():
         """주기적으로 ping 전송 — 프록시/로드밸런서 타임아웃 방지"""
         while _ws_alive:
             try:
-                await asyncio.sleep(25)
+                await asyncio.sleep(20)
                 if not _ws_alive:
                     break
                 await ws.send_json({"type": "ping", "ts": datetime.now().strftime("%H:%M:%S")})
@@ -481,6 +482,11 @@ async def handle_chat(ws: WebSocket, team_id: str, project_path: str | None):
                 pass
 
     except WebSocketDisconnect:
+        _ws_alive = False
+        ping_task.cancel()
+        _update_status(team_id, working=False, tool=None)
+        manager.disconnect(team_id, ws)
+    except (ConnectionClosedError, ConnectionClosedOK):
         _ws_alive = False
         ping_task.cancel()
         _update_status(team_id, working=False, tool=None)

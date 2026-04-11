@@ -510,7 +510,7 @@ async def delete_team(team_id: str):
     # 5) team_sessions.json에서 세션 제거
     try:
         TEAM_SESSIONS.pop(team_id, None)
-        _save_sessions()
+        _save_sessions(TEAM_SESSIONS)
         logging.info(f"[DELETE] 세션 정리 완료: {team_id}")
     except Exception as e:
         logging.warning(f"[DELETE] 세션 정리 실패: {e}")
@@ -2192,4 +2192,6 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=8000,
         reload=False,
+        ws_ping_interval=20,
+        ws_ping_timeout=30,
     )

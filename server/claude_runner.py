@@ -562,6 +562,12 @@ async def run_claude_light(prompt: str, project_path: str | None = None) -> str:
 
     cmd = ["claude", "--dangerously-skip-permissions", "-p", prompt, "--model", "haiku"]
     env = os.environ.copy()
+    # PATH에 homebrew 경로 보장 (node 등 도구 참조)
+    _path = env.get("PATH", "")
+    for _p in ["/opt/homebrew/bin", "/usr/local/bin"]:
+        if _p not in _path:
+            _path = _p + ":" + _path
+    env["PATH"] = _path
     # project_path 는 cwd 로 사용하지 않음 — CLAUDE.md 오염 방지
     # (라우팅 프롬프트는 project context 없이 중립적으로 실행)
 
@@ -735,6 +741,12 @@ async def run_claude(
     # 안정성 위해 텍스트 모드 유지, JSON 파싱은 result 모드로 보완
 
     env = os.environ.copy()
+    # PATH에 homebrew 경로 보장 (node 등 도구 참조)
+    _path = env.get("PATH", "")
+    for _p in ["/opt/homebrew/bin", "/usr/local/bin"]:
+        if _p not in _path:
+            _path = _p + ":" + _path
+    env["PATH"] = _path
     cwd = os.path.expanduser(project_path) if project_path else None
 
     logger.info("[%s] 프롬프트 수신: %s", team_id, prompt[:100])
