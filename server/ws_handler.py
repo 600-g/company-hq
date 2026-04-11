@@ -7,6 +7,7 @@ from pathlib import Path
 from fastapi import WebSocket, WebSocketDisconnect
 from claude_runner import run_claude
 from push_notifications import send_agent_complete, set_online_checker
+from trading_stats import has_trading_keywords, format_trading_context
 
 # ── 팀 정보 룩업 (push 알림용) ────────────────────────
 _TEAM_LOOKUP: dict[str, dict] = {}
@@ -351,9 +352,21 @@ async def handle_chat(ws: WebSocket, team_id: str, project_path: str | None):
             _CLAUDE_TIMEOUT = 180  # 3분
             event_queue: asyncio.Queue = asyncio.Queue()
 
+            # ── 매매봇 컨텍스트 자동 주입 (CPO 채팅에서 매매 키워드 감지 시) ──
+            _claude_prompt = prompt
+            if team_id == "cpo-claude" and has_trading_keywords(prompt):
+                _trading_ctx = format_trading_context()
+                if _trading_ctx:
+                    _claude_prompt = (
+                        f"{prompt}\n\n"
+                        f"───── 참고: 매매봇 실시간 데이터 ─────\n"
+                        f"{_trading_ctx}\n"
+                        f"───── 데이터 끝 ─────"
+                    )
+
             async def _stream_claude():
                 try:
-                    async for event in run_claude(prompt, project_path, team_id):
+                    async for event in run_claude(_claude_prompt, project_path, team_id):
                         await event_queue.put(event)
                 except Exception as e:
                     await event_queue.put({"kind": "error", "content": str(e)})

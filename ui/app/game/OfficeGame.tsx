@@ -76,20 +76,24 @@ const OfficeGame = forwardRef<OfficeGameHandle, Props>(({ onTeamClick }, ref) =>
       const scene = new OfficeScene();
       sceneRef.current = scene;
 
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const dpr = Math.min(window.devicePixelRatio || 1, 3);
       const game = new Phaser.Game({
-        type: Phaser.AUTO,
+        type: Phaser.WEBGL,
         parent: containerRef.current,
-        width: 832,
-        height: 576,
+        width: Math.round(832 * dpr),
+        height: Math.round(576 * dpr),
         pixelArt: false,
         antialias: true,
         roundPixels: false,
         backgroundColor: "#1a1a2e",
+        render: {
+          mipmapFilter: "LINEAR_MIPMAP_LINEAR",
+          powerPreference: "high-performance",
+        },
         scale: {
           mode: Phaser.Scale.FIT,
           autoCenter: Phaser.Scale.CENTER_BOTH,
-          zoom: dpr,
+          zoom: 1 / dpr,
         },
         scene: [scene, new OutdoorScene(), new LoginScene()],
       });

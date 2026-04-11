@@ -5,6 +5,7 @@ import { teams as defaultTeamList, Team } from "../config/teams";
 import ChatPanel, { Message, getWsStorageKey } from "./ChatPanel";
 import ChatWindow from "./ChatWindow";
 import ServerDashboard from "./ServerDashboard";
+import TradingDashboard from "./TradingDashboard";
 import WeatherBoard from "./WeatherBoard";
 import type { OfficeGameHandle } from "../game/OfficeGame";
 import DevTerminal from "./DevTerminal";
@@ -206,36 +207,24 @@ function DispatchChat({ teams, onOpenChat }: { teams: Team[]; onOpenChat?: (team
       }
     } catch (e: unknown) {
       if (e instanceof Error && e.name !== "AbortError") {
-        // 자동 재시도: 서버 reload 중일 수 있으므로 3초 후 헬스체크 → 재시도
+        // 자동 재시도: 2초 후 헬스체크 → 서버 살아있으면 조용히 재시도
         const apiBase = getApiBase();
         const retryCheck = async () => {
           try {
             const health = await fetch(`${apiBase}/api/standby`);
-            if (health.ok) return true;
-          } catch { /* */ }
-          return false;
+            return health.ok;
+          } catch { return false; }
         };
-        setMessages(prev => [...prev, {
-          role: "agent", text: `⚠️ 연결 실패 — 서버 복구 확인 중...`,
-          teamId: "cpo-claude", emoji: "🧠", name: "CPO",
-        }]);
-        // 3초 후 헬스체크
         setTimeout(async () => {
           const alive = await retryCheck();
-          if (alive) {
-            setMessages(prev => prev.map((m, i) =>
-              i === prev.length - 1 && m.text.includes("복구 확인 중")
-                ? { ...m, text: "✅ 서버 복구 완료 — 다시 시도해주세요." }
-                : m
-            ));
-          } else {
-            setMessages(prev => prev.map((m, i) =>
-              i === prev.length - 1 && m.text.includes("복구 확인 중")
-                ? { ...m, text: `❌ 연결 실패: ${e.message}. 서버 상태를 확인해주세요.` }
-                : m
-            ));
+          if (!alive) {
+            setMessages(prev => [...prev, {
+              role: "agent", text: `❌ 서버에 연결할 수 없습니다. 잠시 후 다시 시도해주세요.`,
+              teamId: "cpo-claude", emoji: "🧠", name: "CPO",
+            }]);
           }
-        }, 3000);
+          // 서버가 살아있으면 메시지 없이 조용히 처리 (일시적 네트워크 오류)
+        }, 2000);
       }
       setSending(false);
       setPhase("idle");
@@ -967,6 +956,7 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
   const MAX_OPEN_WINDOWS = 3; // 동시 열 수 있는 최대 채팅창 수
   const [mobileSide, setMobileSide] = useState(false); // 모바일 사이드패널 (목록/통합채팅)
   const [openServerDash, setOpenServerDash] = useState(false); // PC 서버실 대시보드 오버레이
+  const [openTradingDash, setOpenTradingDash] = useState(false); // PC 매매 분석 대시보드 오버레이
   const [qaRunning, setQaRunning] = useState(false);
   const [qaResult, setQaResult] = useState<{passed: boolean; output: string} | null>(null);
   const runQA = async () => {
@@ -1638,23 +1628,26 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
             onClick={e => e.stopPropagation()}
           >
             {mobileChat ? (() => {
-              const team = teams.find(t => t.id === mobileChat);
-              if (!team) return null;
-              const isServerMonitor = team.id === "server-monitor";
+              const isTradingDash = mobileChat === "trading-dashboard";
+              const team = isTradingDash ? null : teams.find(t => t.id === mobileChat);
+              if (!team && !isTradingDash) return null;
+              const isServerMonitor = team?.id === "server-monitor";
               return (
                 <>
                   {/* 채팅/대시보드 헤더 */}
                   <div className="flex items-center gap-2 px-3 py-3 bg-[#0e0e20] border-b border-[#2a2a5a] shrink-0">
                     <button onClick={(e) => { e.stopPropagation(); setMobileChat(null); }} className="text-gray-400 active:text-white text-lg px-1">←</button>
-                    <span className="text-lg">{team.emoji}</span>
-                    <span className="text-sm font-semibold text-white flex-1 truncate">{team.name}</span>
+                    <span className="text-lg">{isTradingDash ? "📊" : team?.emoji}</span>
+                    <span className="text-sm font-semibold text-white flex-1 truncate">{isTradingDash ? "매매 분석" : team?.name}</span>
                     <button onClick={(e) => { e.stopPropagation(); setMobileChat(null); setMobileSide(false); }} className="text-gray-500 active:text-white text-xl px-1">✕</button>
                   </div>
-                  {/* 서버모니터 → 대시보드, 그 외 → 채팅 */}
+                  {/* 서버모니터 → 대시보드, 매매분석 → TradingDashboard, 그 외 → 채팅 */}
                   <div className="flex-1 min-h-0 flex flex-col">
-                    {isServerMonitor
+                    {isTradingDash
+                      ? <TradingDashboard onClose={() => setMobileChat(null)} />
+                      : isServerMonitor
                       ? <ServerDashboard onClose={() => setMobileChat(null)} />
-                      : <ChatPanel
+                      : team && <ChatPanel
                           team={team}
                           onClose={() => setMobileChat(null)}
                           onWorkingChange={(working) => handleWorkingChange(team.id, working)}
@@ -1720,6 +1713,22 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
                         </button>
                       );
                     })()}
+                    {/* 매매 분석 */}
+                    <button
+                      onClick={() => { setMobileChat("trading-dashboard"); setMobileSide(true); }}
+                      className={`w-full text-left px-2.5 py-1.5 rounded text-[12px] transition-all min-h-[36px] ${
+                        mobileChat === "trading-dashboard"
+                          ? "bg-green-500/10 text-green-400 border border-green-500/20"
+                          : "text-gray-400 border border-transparent active:bg-[#1a1a3a]"
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <span>📊</span>
+                        <span>매매 분석</span>
+                        <span className="text-[7px] text-gray-600 ml-auto">트레이딩</span>
+                        <span className="text-[7px] bg-gray-700 text-gray-500 px-1 rounded">고정</span>
+                      </div>
+                    </button>
                   </div>
                   <div className="p-2 flex flex-col gap-0">
                     {(() => {
@@ -1868,6 +1877,15 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
         </div>
       )}
 
+      {/* ── 매매 분석 대시보드 오버레이 (PC) ── */}
+      {openTradingDash && (
+        <div className="fixed inset-0 z-[80] bg-black/50 flex items-start justify-center pt-12" onClick={() => setOpenTradingDash(false)}>
+          <div className="bg-[#0a0e1a] border border-[#2a2a5a] rounded-lg w-[480px] max-h-[80vh] shadow-2xl flex flex-col relative" onClick={e => e.stopPropagation()}>
+            <TradingDashboard onClose={() => setOpenTradingDash(false)} />
+          </div>
+        </div>
+      )}
+
       {/* ── 다중 채팅 모달 (최대 3개 병렬) ── */}
       {openWindows.length > 0 && (
         <div
@@ -1955,6 +1973,22 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
                 </button>
               );
             })()}
+            {/* 매매 분석 */}
+            <button
+              onClick={() => setOpenTradingDash(true)}
+              className={`w-full text-left px-2.5 py-1.5 rounded text-[12px] transition-all min-h-[36px] ${
+                openTradingDash
+                  ? "bg-green-500/10 text-green-400 border border-green-500/20"
+                  : "text-gray-400 border border-transparent hover:bg-[#1a1a3a]"
+              }`}
+            >
+              <div className="flex items-center gap-1.5">
+                <span>📊</span>
+                <span>매매 분석</span>
+                <span className="text-[7px] text-gray-600 ml-auto">트레이딩</span>
+                <span className="text-[7px] bg-gray-700 text-gray-500 px-1 rounded">고정</span>
+              </div>
+            </button>
           </div>
 
           <div className="flex flex-col gap-0">

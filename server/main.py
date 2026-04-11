@@ -33,6 +33,7 @@ from push_notifications import (
 )
 from task_queue import task_queue, pipeline_engine, debouncer
 from ttyd_manager import start_team_terminal, stop_team_terminal, get_session_info
+from trading_stats import get_trading_stats
 
 load_dotenv()
 
@@ -891,6 +892,12 @@ async def get_trading_bot_status():
         return {"ok": True, **data}
     except Exception as e:
         return {"ok": False, "error": str(e)}
+
+
+@app.get("/api/trading/stats")
+async def get_trading_stats_api():
+    """매매봇 통계 API — 승률, 손익, 포지션, 모멘텀 등 통합 조회"""
+    return get_trading_stats()
 
 
 @app.get("/api/dashboard")
@@ -2184,6 +2191,5 @@ if __name__ == "__main__":
         "main:app",
         host="0.0.0.0",
         port=8000,
-        reload=True,
-        reload_excludes=["*.log", "*.json", "chat_history/*", "logs/*", "__pycache__/*"],
+        reload=False,
     )
