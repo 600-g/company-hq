@@ -1,7 +1,7 @@
 /**
- * LimeZu Modern Interiors + Pixel Agents 기반 스프라이트 시스템
- * 캐릭터 0~3: LimeZu (112x192, 16x32 프레임, 7열x6행)
- * 캐릭터 4~5: Pixel Agents 원본 (112x96, 16x16 프레임, 7열x6행)
+ * Pixel Agents + Pixel Forge 기반 스프라이트 시스템
+ * 캐릭터 0~5: Pixel Agents MIT (112x96, 16x16 프레임, 7열x6행) — 2등신 원본 복구
+ * 캐릭터 6: 정장 캐릭터 (224x384, 32x64 프레임, 7열x6행) — CPO 전용
  * 가구: 개별 PNG (desk, PC, chair 등)
  * 바닥: 16x16 타일
  */
@@ -13,14 +13,18 @@ import * as Phaser from "phaser";
 // ═══════════════════════════════════
 
 export function preloadAssets(scene: Phaser.Scene) {
-  // 캐릭터 0~3: LimeZu 2× 업스케일 (32×64 프레임) — 전 팀 공용
-  // 캐릭터 6: 정장 캐릭터 (suit_1 업스케일) — CPO용
-  for (const i of [0, 1, 2, 3, 6]) {
+  // 캐릭터 0~5: Pixel Agents 2등신 원본 (16×16 프레임, 7열×6행)
+  for (const i of [0, 1, 2, 3, 4, 5]) {
     scene.load.spritesheet(`char_${i}`, `/assets/char_${i}.png`, {
-      frameWidth: 32,
-      frameHeight: 64,
+      frameWidth: 16,
+      frameHeight: 16,
     });
   }
+  // 캐릭터 6: CPO 전용 정장 (32×64 프레임, 7열×6행)
+  scene.load.spritesheet("char_6", "/assets/char_6.png", {
+    frameWidth: 32,
+    frameHeight: 64,
+  });
 
   // 가구
   scene.load.image("desk_front", "/assets/furniture/DESK/DESK_FRONT.png");
@@ -77,7 +81,7 @@ export function preloadAssets(scene: Phaser.Scene) {
 // ═══════════════════════════════════
 // 애니메이션 등록
 // 캐릭터 시트 레이아웃 (7열 x 6행):
-// char_0~3: LimeZu 16x32 | char_4~5: Pixel Agents 16x16
+// char_0~5: Pixel Agents 16x16 | char_6: CPO 32x64
 // 행0: 아래 idle + walk (front)
 // 행1: 왼쪽
 // 행2: 오른쪽
@@ -87,7 +91,7 @@ export function preloadAssets(scene: Phaser.Scene) {
 // ═══════════════════════════════════
 
 export function registerCharAnims(scene: Phaser.Scene) {
-  for (let i of [0, 1, 2, 3, 6]) {
+  for (let i of [0, 1, 2, 3, 4, 5, 6]) {
     const key = `char_${i}`;
     const cols = 7;
 

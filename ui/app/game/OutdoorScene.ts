@@ -37,9 +37,10 @@ export default class OutdoorScene extends Phaser.Scene {
 
   preload() {
     // 캐릭터 스프라이트 — OfficeScene과 공유 (이미 로드됐으면 skip)
-    for (const i of [0, 1, 2, 3, 6]) {
+    // char_0~3: Pixel Agents 16×16 프레임
+    for (const i of [0, 1, 2, 3]) {
       if (!this.textures.exists(`char_${i}`)) {
-        this.load.spritesheet(`char_${i}`, `/assets/char_${i}.png`, { frameWidth: 32, frameHeight: 64 });
+        this.load.spritesheet(`char_${i}`, `/assets/char_${i}.png`, { frameWidth: 16, frameHeight: 16 });
       }
     }
   }
@@ -232,7 +233,7 @@ export default class OutdoorScene extends Phaser.Scene {
   // ══════════════════════════════════════════════════════════
   private spawnPedestrians() {
     const groundY = Math.round(H * 0.58);
-    const S = 0.5; // 스케일
+    const S = 1.5; // Pixel Agents 16×16 × 1.5 = 24px (야외 보행자)
 
     [0, 1, 2, 3].forEach((charIdx, i) => {
       const startX = 280 + i * 140;
@@ -322,7 +323,7 @@ export default class OutdoorScene extends Phaser.Scene {
   // 애니메이션 보장
   // ══════════════════════════════════════════════════════════
   private ensureAnims() {
-    for (const i of [0, 1, 2, 3, 6]) {
+    for (const i of [0, 1, 2, 3]) {
       const key = `char_${i}`;
       const cols = 7;
       const anims: [string, number[]][] = [

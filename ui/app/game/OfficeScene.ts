@@ -806,12 +806,12 @@ export default class OfficeScene extends Phaser.Scene {
 
     // 2x2 등맞대기 배치
     // 윗줄: PC → 데스크 → 캐릭(정면) | 아랫줄: 캐릭(뒷면) → 데스크 → PC뒷면
-    // 2× 업스케일 스프라이트 (32×64) — 정수 배율만 사용해야 선명
+    // char_0~5: Pixel Agents 16×16 (S=1.2 → 19px) | char_6: CPO 32×64 (S=0.5 → 16×32)
     const members: MemberSprite[] = [];
-    const S = 0.5;       // 32×64 × 0.5 = 16×32 (원본 크기, 픽셀 퍼펙트)
+    const charScale = (idx: number) => idx === 6 ? 0.5 : 1.2;
     const gapX = 30;
 
-    // 모니터 옆모습 (16x32 캐릭에 맞는 크기)
+    // 모니터 옆모습 (픽셀 캐릭에 맞는 크기)
     const drawMonSide = (g: Phaser.GameObjects.Graphics, facing: number) => {
       const f = facing;
       g.fillStyle(0x2a2a2a, 1); g.fillRect(-3, -8, 6, 12);            // 모니터 본체
@@ -833,7 +833,7 @@ export default class OfficeScene extends Phaser.Scene {
 
       if (isSolo) {
         const char = this.add.sprite(0, 0, `char_${charIdx}`, 0)
-          .setScale(S).setOrigin(0.5, 0.75)
+          .setScale(charScale(charIdx)).setOrigin(0.5, 0.75)
           .play(`char_${charIdx}_idle`);
         container.add(char);
         members.push({ char, charIdx, baseX: 0, baseY: 0 });
@@ -853,7 +853,7 @@ export default class OfficeScene extends Phaser.Scene {
         container.add(mon);
         const charX = deskX - 18;
         const char = this.add.sprite(charX, dy, `char_${charIdx}`, cols * 2)
-          .setScale(S).setOrigin(0.5, 0.75);
+          .setScale(charScale(charIdx)).setOrigin(0.5, 0.75);
         container.add(char);
         members.push({ char, charIdx, baseX: charX, baseY: dy });
       } else {
@@ -865,7 +865,7 @@ export default class OfficeScene extends Phaser.Scene {
         container.add(mon);
         const charX = deskX + 18;
         const char = this.add.sprite(charX, dy, `char_${charIdx}`, cols)
-          .setScale(S).setOrigin(0.5, 0.75);
+          .setScale(charScale(charIdx)).setOrigin(0.5, 0.75);
         container.add(char);
         members.push({ char, charIdx, baseX: charX, baseY: dy });
       }
