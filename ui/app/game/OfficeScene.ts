@@ -992,8 +992,8 @@ export default class OfficeScene extends Phaser.Scene {
     if (t.chars.length >= 2) drawLaptop(topY, 60);
     if (t.chars.length >= 3) drawLaptop(botY, 65);
 
-    // 화이트보드 명패
-    const nameY = ph / 2 + 2;
+    // 화이트보드 명패 — 팀 사각형 내부 아랫쪽에 걸치도록 (이전엔 사각형 밖 아래였음)
+    const nameY = ph / 2 - 6;
     const nameBg = this.add.graphics();
     nameBg.fillStyle(0xffffff, 0.95);
     nameBg.fillRoundedRect(-42, nameY - 10, 84, 18, 2);
