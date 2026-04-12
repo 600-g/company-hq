@@ -925,14 +925,14 @@ export default class OfficeScene extends Phaser.Scene {
     const botY =  gapY / 2 + charYOffset;
 
     const workstations = [
-      // Top-left: 왼쪽 캐릭 → 오른쪽 바라봄 → 노트북 좌측 반쪽
-      { charX: -gapX, charY: topY, facing: rightFrame, deskX: -deskOffset, laptopKey: "laptop_v_left",  isTopRow: true  },
-      // Top-right: 오른쪽 캐릭 → 왼쪽 바라봄 → 노트북 우측 반쪽
-      { charX:  gapX, charY: topY, facing: leftFrame,  deskX:  deskOffset, laptopKey: "laptop_v_right", isTopRow: true  },
+      // Top-left: 왼쪽 캐릭 → 오른쪽 바라봄 → 왼쪽 반쪽 노트북
+      { charX: -gapX, charY: topY, facing: rightFrame, deskX: -deskOffset, laptopKey: "laptop_pair_left",  isTopRow: true  },
+      // Top-right: 오른쪽 캐릭 → 왼쪽 바라봄 → 오른쪽 반쪽 노트북
+      { charX:  gapX, charY: topY, facing: leftFrame,  deskX:  deskOffset, laptopKey: "laptop_pair_right", isTopRow: true  },
       // Bottom-left
-      { charX: -gapX, charY: botY, facing: rightFrame, deskX: -deskOffset, laptopKey: "laptop_v_left",  isTopRow: false },
+      { charX: -gapX, charY: botY, facing: rightFrame, deskX: -deskOffset, laptopKey: "laptop_pair_left",  isTopRow: false },
       // Bottom-right
-      { charX:  gapX, charY: botY, facing: leftFrame,  deskX:  deskOffset, laptopKey: "laptop_v_right", isTopRow: false },
+      { charX:  gapX, charY: botY, facing: leftFrame,  deskX:  deskOffset, laptopKey: "laptop_pair_right", isTopRow: false },
     ];
 
     t.chars.forEach((charIdx, i) => {
@@ -961,11 +961,9 @@ export default class OfficeScene extends Phaser.Scene {
         .setDepth(deskDepth);
       container.add(desk);
 
-      // 노트북 (좌/우 반쪽) — 책상 visible top 위에 앉히기
-      // 책상 실측: bbox y=2~56 → visible top at charY-34 (bottom=charY+20, 이미지 상단 2px 투명)
-      // 노트북 실측: bbox y=0~28 → 하단 4px 투명. bottom-anchor 기준 실제 바닥=anchor-4
-      // 따라서 laptop y = (책상 visible top) + (노트북 투명 하단 보정) = charY-34 + 4 = charY-30
-      const laptop = this.add.image(ws.deskX, ws.charY - 30, ws.laptopKey)
+      // 노트북 (좌/우 반쪽) — content-bbox로 trim됨. bottom-anchor로 책상 visible top에 안착
+      // 책상 visible top = charY + 20 (bottom) - 54 (visible height, bbox y=2~56) = charY - 34
+      const laptop = this.add.image(ws.deskX, ws.charY - 34, ws.laptopKey)
         .setOrigin(0.5, 1)
         .setDepth(laptopDepth);
       container.add(laptop);
