@@ -935,9 +935,15 @@ export default class OfficeScene extends Phaser.Scene {
       { charX:  gapX, charY: botY, facing: leftFrame,  deskX:  deskOffset, isTopRow: false },
     ];
 
-    // 노트북 B안: 각 캐릭 앞 책상(deskX=±14)에 각자 반쪽 배치 — 캐릭별 1 노트북 소유감
-    // 좌반(V화면) → 왼쪽 캐릭(deskX=-14), 우반(키보드) → 오른쪽 캐릭(deskX=+14)
-    // 각 반쪽 16x32, bbox y=0~28(하단 4px 투명). bottom-anchor y=rowY-30
+    // 노트북 A안: laptop_v 원본 통짜 1개를 줄마다 x=0(두 책상 사이 정중앙)에 배치
+    // y: 캐릭과 마주보는 face-level 높이 (origin 0.5,0.5 센터 기준 charY-18)
+    const drawLaptop = (rowY: number, depth: number) => {
+      container.add(this.add.image(0, rowY - 18, "laptop_v")
+        .setOrigin(0.5, 0.5).setDepth(depth));
+    };
+    if (t.chars.length >= 2) drawLaptop(topY, 60);
+    if (t.chars.length >= 3) drawLaptop(botY, 65);
+
 
     t.chars.forEach((charIdx, i) => {
       if (i >= 4) return;
@@ -964,11 +970,6 @@ export default class OfficeScene extends Phaser.Scene {
         .setDepth(deskDepth);
       container.add(desk);
 
-      // 노트북 (온전한 1대 per 캐릭, laptop_side_single_trim 28x24)
-      // 책상 visible top = charY-34. trim본이라 bottom-anchor 그대로 안착, +4 아래로 내려 책상 면에 밀착
-      const laptopDepth = isTopRow ? 60 : 65;
-      container.add(this.add.image(ws.deskX, ws.charY - 30, "laptop_side_single")
-        .setOrigin(0.5, 1).setDepth(laptopDepth));
 
       // Character facing toward desk (side-view idle frame)
       const char = this.add.sprite(ws.charX, ws.charY, `char_${charIdx}`, ws.facing)
