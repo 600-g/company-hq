@@ -96,6 +96,8 @@ const OfficeGame = forwardRef<OfficeGameHandle, Props>(({ onTeamClick }, ref) =>
         },
         scene: [scene, new OutdoorScene(), new LoginScene()],
       });
+      // 테스트/디버그용: 전역 게임 참조
+      if (typeof window !== "undefined") (window as unknown as { __hqGame?: Phaser.Game }).__hqGame = game;
 
       // apiBase 결정 (서버에서 층 배치 로드용)
       const h = window.location.hostname;

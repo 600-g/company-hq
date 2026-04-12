@@ -915,6 +915,17 @@ function SideMenu({ user, open, onClose, onLogout, pushEnabled, onTogglePush }: 
 
 export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?: () => void }) {
   const [teams, setTeams] = useState<Team[]>(defaultTeamList);
+  const [outdoorActive, setOutdoorActive] = useState(false);
+
+  // 외부 씬(LoginScene) 활성화 시 사이드패널 숨김
+  useEffect(() => {
+    const onOutdoor = (e: Event) => {
+      const active = (e as CustomEvent<{ active: boolean }>).detail?.active ?? false;
+      setOutdoorActive(active);
+    };
+    window.addEventListener("hq-outdoor", onOutdoor);
+    return () => window.removeEventListener("hq-outdoor", onOutdoor);
+  }, []);
 
   // API에서 팀 목록 동적 로드 (teams.json 기반)
   useEffect(() => {
@@ -1508,7 +1519,7 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
       {/* ── 사무실 영역 ── */}
       <div className="flex-1 flex flex-col min-w-0 min-h-0">
         {/* HUD */}
-        <header className="bg-[#0e0e20]/90 border-b border-[#2a2a5a] px-3 py-1.5 flex items-center justify-between shrink-0">
+        <header className={`${outdoorActive ? "hidden" : ""} bg-[#0e0e20]/90 border-b border-[#2a2a5a] px-3 py-1.5 flex items-center justify-between shrink-0`}>
           <div className="flex items-center gap-2">
             {/* 메뉴 버튼 */}
             <button onClick={() => setShowMenu(true)} className="text-gray-500 hover:text-gray-300 transition-colors" title="메뉴">
@@ -1919,8 +1930,8 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
         </div>
       )}
 
-      {/* ── 우측 패널 (PC만) ── */}
-      <aside className="hidden md:flex md:w-[420px] h-full bg-[#12122a] border-l border-[#2a2a5a] flex-col shrink-0 overflow-hidden">
+      {/* ── 우측 패널 (PC만, 외부씬 활성 시 숨김) ── */}
+      <aside className={`${outdoorActive ? "hidden" : "hidden md:flex"} md:w-[420px] h-full bg-[#12122a] border-l border-[#2a2a5a] flex-col shrink-0 overflow-hidden`}>
         {/* 에이전트 목록 */}
         <div className="p-2 border-b border-[#2a2a5a] overflow-y-auto flex-1">
           <div className="flex items-center justify-between mb-1">
