@@ -1,573 +1,483 @@
 /**
- * 로그인 야외 씬 — 정면뷰 거리 씬 (포켓몬 마을 입장 스타일)
- * walk_left / walk_right 프레임 = 캐릭터 옆모습 → 정면뷰에 자연스럽게 맞음
+ * 로그인 & EXIT 공용 씬 — 탑뷰 마을 (2×3)
+ * 뒷줄: 집A / 🏢 두근컴퍼니 HQ (중앙) / 집B
+ * 앞줄: 집C / 🌳 공원 (중앙) / 집D
+ * 대로(HQ 정면), 하단 인도, 골목 세로 보행, 대로 가로 보행
+ * HQ 입구 클릭 → showReturnBtn 모드면 OfficeScene 복귀
  */
 import * as Phaser from "phaser";
 
 const W = 960;
 const H = 540;
-const GROUND_Y = Math.floor(H * 0.72);  // 지면 Y
-const ROAD_Y   = GROUND_Y + 28;         // 도로 시작 Y
-const DPR = typeof window !== "undefined" ? Math.min(window.devicePixelRatio || 1, 3) : 2;
-const TEXT_RES = 8;
 const FONT = "'Pretendard Variable', Pretendard, -apple-system, sans-serif";
+const DPR = typeof window !== "undefined" ? Math.min(window.devicePixelRatio || 1, 3) : 2;
 
-const sR = (a: number, b: number) =>
-  (((a * 1664525 + b * 1013904223) | 0) >>> 1) / 0x7fffffff;
+const SKY_H = 46;
+const BACK_TOP = SKY_H;
+const BACK_BOTTOM = 220;
+const ROAD_TOP = 240;
+const ROAD_BOTTOM = 320;
+const FRONT_TOP = 342;
+const FRONT_BOTTOM = 498;
+const SIDEWALK_BOTTOM = H - 4;
 
-type Walker = {
+const COLS = 3;
+const COL_W = 250;
+const ALLEY_W = 42;
+const ROW_TOTAL = COLS * COL_W + (COLS - 1) * ALLEY_W;
+const ROW_LEFT = Math.round((W - ROW_TOTAL) / 2);
+const HQ_COL = 1;
+const PARK_COL = 1;
+
+const BUILDING_SCALE = 0.85;
+
+interface Walker {
   sprite: Phaser.GameObjects.Sprite;
-  x: number;
-  speed: number;
-  dir: 1 | -1;
-  phase: number;
-  y: number;
   charIdx: number;
-};
+  speed: number;
+  mode: "alley" | "street";
+  dir: -1 | 1;
+  minX?: number; maxX?: number;
+  minY?: number; maxY?: number;
+}
 
 export default class LoginScene extends Phaser.Scene {
   private weatherCode = 0;
-  private season: "spring" | "summer" | "autumn" | "winter" = "spring";
-  private tod: "day" | "sunset" | "night" = "day";
-
-  private walkers: Walker[] = [];
-  private rainDrops:  { x: number; y: number; speed: number; len: number }[] = [];
-  private snowFlakes: { x: number; y: number; speed: number; size: number; dx: number }[] = [];
-  private petals:     { x: number; y: number; s: number; dx: number }[] = [];
-  private leaves:     { x: number; y: number; s: number; dx: number; r: number; rs: number }[] = [];
-  private particleG!: Phaser.GameObjects.Graphics;
-
   private showReturnBtn = false;
+  private walkers: Walker[] = [];
+  private rainDrops: { x: number; y: number; speed: number; len: number }[] = [];
+  private snowFlakes: { x: number; y: number; speed: number; size: number; dx: number }[] = [];
+  private particleG!: Phaser.GameObjects.Graphics;
+  private isNight = false;
+  private isEvening = false;
+  private colCenters: number[] = [];
 
   constructor() { super({ key: "LoginScene" }); }
 
   init(data: { weatherCode?: number; showReturnBtn?: boolean }) {
     this.weatherCode = data.weatherCode ?? 0;
     this.showReturnBtn = data.showReturnBtn ?? false;
-    const now = new Date();
-    const mon = now.getMonth() + 1;
-    const hr  = now.getHours();
-    this.season = mon >= 3 && mon <= 5 ? "spring"
-                : mon >= 6 && mon <= 8 ? "summer"
-                : mon >= 9 && mon <= 11 ? "autumn" : "winter";
-    this.tod = hr >= 6 && hr < 17 ? "day" : hr >= 17 && hr < 20 ? "sunset" : "night";
+    this.walkers = [];
+    this.rainDrops = [];
+    this.snowFlakes = [];
   }
 
   preload() {
-    // 캐릭터 스프라이트시트 (사무실과 동일한 파일 — 2× 업스케일 32×64)
-    for (let i = 0; i < 4; i++) {
-      this.load.spritesheet(`char_${i}`, `/assets/char_${i}.png`, {
-        frameWidth: 32, frameHeight: 64,
-      });
+    for (const i of [0, 1, 2, 3]) {
+      if (!this.textures.exists(`char_${i}`)) {
+        this.load.spritesheet(`char_${i}`, `/assets/char_${i}.png`, { frameWidth: 16, frameHeight: 16 });
+      }
     }
-    // 계절별 나무 이미지
-    const leafKey = this.season === "winter" ? "evergreen" : this.season;
-    (["sm", "md", "lg"] as const).forEach(sz =>
-      this.load.image(`tree_${sz}`, `/assets/trees/tree_${leafKey}_${sz}.png`)
-    );
-    if (this.season === "winter") {
-      (["sm", "md", "lg"] as const).forEach(sz =>
-        this.load.image(`tree_bare_${sz}`, `/assets/trees/tree_winter_${sz}.png`)
-      );
-    }
+    const bldgs = ["hq", "house_purple", "house_yellow", "house_blue", "house_mart"];
+    bldgs.forEach(key => {
+      if (!this.textures.exists(`bld_${key}`)) {
+        this.load.image(`bld_${key}`, `/assets/buildings/${key}.png`);
+      }
+    });
   }
 
   create() {
-    const isN = this.tod === "night";
-    const isS = this.tod === "sunset";
-    const wc  = this.weatherCode;
-    const isRain = (wc >= 51 && wc <= 82) || wc >= 95;
-    const isSnow = wc >= 71 && wc <= 77;
+    this.ensureAnims();
+    this.computeTimeTone();
+    this.computeCols();
+    this.drawSkyAndGround();
+    this.placeBackRow();
+    this.drawMainRoad();
+    this.placeFrontRow();
+    this.drawBottomSidewalk();
+    this.drawStreetFurniture();
+    this.drawHQSign();
+    this.spawnWalkers();
+    this.particleG = this.add.graphics().setDepth(80);
+    this.initWeather();
 
-    this.drawSky(isN, isS, isRain);
-    this.drawBackBuildings(isN);
-    this.drawStreet(isN);
-    this.drawMainBuilding(isN);
-    this.drawSideBuildings(isN);
-    this.drawTrees(isN);
-    this.drawStreetLights(isN, isS);
-    this.createWalkAnims();
-    this.createWalkers(isN);
-    this.createClouds(isN, isS, isRain);
-
-    this.particleG = this.add.graphics().setDepth(50);
-    if (isRain)
-      for (let i = 0; i < 55; i++)
-        this.rainDrops.push({ x: Math.random() * W, y: Math.random() * H, speed: 3 + Math.random() * 3, len: 8 + Math.random() * 10 });
-    if (isSnow || this.season === "winter")
-      for (let i = 0; i < 35; i++)
-        this.snowFlakes.push({ x: Math.random() * W, y: Math.random() * H, speed: 0.3 + Math.random() * 0.5, size: 1.5 + Math.random() * 2, dx: (Math.random() - 0.5) * 0.4 });
-    if (this.season === "spring" && !isRain)
-      for (let i = 0; i < 12; i++)
-        this.petals.push({ x: Math.random() * W, y: -Math.random() * H, s: 0.3 + Math.random() * 0.3, dx: 0.3 + Math.random() * 0.4 });
-    if (this.season === "autumn" && !isRain)
-      for (let i = 0; i < 10; i++)
-        this.leaves.push({ x: Math.random() * W, y: -Math.random() * H, s: 0.4 + Math.random() * 0.4, dx: 0.2 + Math.random() * 0.3, r: Math.random() * 6, rs: (Math.random() - 0.5) * 0.04 });
-
-    this.cameras.main.setBounds(0, 0, W, H);
-    this.time.addEvent({ delay: 40, loop: true, callback: () => this.moveWalkers() });
-
-    // 사무실 복귀 — 건물 문 클릭 (EXIT에서 진입 시만)
     if (this.showReturnBtn) {
       this.cameras.main.fadeIn(300, 0, 0, 0);
-      // 건물 문 영역에 인터랙티브 히트박스
-      const doorX = W / 2, doorY = GROUND_Y - 13;
-      const doorHit = this.add.rectangle(doorX, doorY, 44, 30, 0x000000, 0).setDepth(200).setInteractive({ useHandCursor: true });
-      const doorLabel = this.add.text(doorX, doorY - 22, "▶ 입장", {
-        fontSize: "9px", fontFamily: FONT, color: "#f5c842", resolution: TEXT_RES,
-        backgroundColor: "#0008", padding: { x: 4, y: 2 },
-      }).setOrigin(0.5).setDepth(201).setAlpha(0);
+      this.createReturnButton();
+    }
 
-      doorHit.on("pointerover", () => doorLabel.setAlpha(1));
-      doorHit.on("pointerout",  () => doorLabel.setAlpha(0));
-      doorHit.on("pointerdown", () => {
-        this.cameras.main.fadeOut(200, 0, 0, 0);
-        this.cameras.main.once("camerafadeoutcomplete", () => {
-          this.scene.stop("LoginScene");
-          this.scene.resume("OfficeScene");
-          const officeScene = this.scene.get("OfficeScene");
-          if (officeScene) officeScene.cameras.main.fadeIn(300, 0, 0, 0);
-        });
-      });
+    this.time.addEvent({ delay: 80, loop: true, callback: () => this.moveWalkers() });
+    this.cameras.main.roundPixels = true;
+  }
+
+  private computeTimeTone() {
+    const hr = new Date().getHours() + new Date().getMinutes() / 60;
+    this.isNight = hr >= 20 || hr < 6;
+    this.isEvening = !this.isNight && (hr >= 17 || hr < 7);
+  }
+
+  private computeCols() {
+    this.colCenters = [];
+    for (let i = 0; i < COLS; i++) {
+      const left = ROW_LEFT + i * (COL_W + ALLEY_W);
+      this.colCenters.push(left + COL_W / 2);
     }
   }
 
-  // ═══════════════════════════════
-  private drawSky(isN: boolean, isS: boolean, isRain: boolean) {
+  private drawSkyAndGround() {
     const g = this.add.graphics().setDepth(0);
-    let t: number, b: number;
-    if      (isN)    { t = 0x0a0e1a; b = 0x141e35; }
-    else if (isS)    { t = 0x1a1040; b = 0xe06040; }
-    else if (isRain) { t = 0x404855; b = 0x606870; }
-    else             { t = 0x3498db; b = 0x87ceeb; }
-    g.fillGradientStyle(t, t, b, b, 1);
-    g.fillRect(0, 0, W, GROUND_Y);
+    const wc = this.weatherCode;
+    const isRain = (wc >= 51 && wc <= 82) || wc >= 95;
+    const isSnow = wc >= 71 && wc <= 77;
+    let skyT: number, skyB: number;
+    if (this.isNight)        { skyT = 0x050918; skyB = 0x152040; }
+    else if (isRain)         { skyT = 0x3a4050; skyB = 0x5a6068; }
+    else if (isSnow)         { skyT = 0x7a8090; skyB = 0xbac0cc; }
+    else if (this.isEvening) { skyT = 0xe08858; skyB = 0xf5c860; }
+    else                     { skyT = 0x1e60b0; skyB = 0x9cd6f8; }
+    g.fillGradientStyle(skyT, skyT, skyB, skyB, 1);
+    g.fillRect(0, 0, W, SKY_H);
 
-    // 별 (야간)
-    if (isN) {
-      for (let i = 0; i < 80; i++) {
-        const sx = sR(i, 100) * W, sy = sR(i, 200) * GROUND_Y * 0.6;
-        const bright = 0.15 + sR(i, 300) * 0.6;
-        const sz = sR(i, 400) > 0.9 ? 2 : 1;
-        g.fillStyle(0xddeeff, bright);
-        g.fillRect(sx | 0, sy | 0, sz, sz);
-      }
-      // 달
-      const mx = W * 0.82, my = GROUND_Y * 0.15;
-      g.fillStyle(0xf8f0d0, 0.04); g.fillCircle(mx, my, 28);
-      g.fillStyle(0xf8f0d0, 0.08); g.fillCircle(mx, my, 16);
-      g.fillStyle(0xfff8e0, 0.9); g.fillCircle(mx, my, 9);
+    if (this.isNight) {
+      g.fillStyle(0xffffff, 0.8);
+      for (let i = 0; i < 30; i++) g.fillCircle((i * 113) % W, (i * 17) % (SKY_H - 10) + 4, 1);
     }
-    // 태양
-    if (!isN && !isRain) {
-      const sx = isS ? W * 0.15 : W * 0.78, sy = isS ? GROUND_Y * 0.35 : GROUND_Y * 0.15;
-      g.fillStyle(isS ? 0xff6633 : 0xffee88, 0.06); g.fillCircle(sx, sy, 30);
-      g.fillStyle(isS ? 0xff8844 : 0xffdd66, 0.12); g.fillCircle(sx, sy, 18);
-      g.fillStyle(0xffffff, 0.85); g.fillCircle(sx, sy, 8);
+
+    // 뒷줄 풀밭
+    g.fillStyle(this.isNight ? 0x0a1810 : 0x4a8a3a, 1);
+    g.fillRect(0, SKY_H, W, BACK_BOTTOM - SKY_H);
+    g.fillStyle(this.isNight ? 0x1a2418 : 0x5ca048, 0.45);
+    for (let i = 0; i < 200; i++) {
+      g.fillRect(((i * 43) % W), SKY_H + 4 + ((i * 29) % (BACK_BOTTOM - SKY_H - 6)), 2, 2);
     }
-    // 석양 그라데이션 밴드
-    if (isS) {
-      g.fillStyle(0xff6030, 0.08);
-      g.fillRect(0, GROUND_Y * 0.55, W, GROUND_Y * 0.15);
-      g.fillStyle(0xff9050, 0.05);
-      g.fillRect(0, GROUND_Y * 0.7, W, GROUND_Y * 0.1);
+
+    // 앞줄 풀밭
+    g.fillStyle(this.isNight ? 0x0a1810 : 0x4a8a3a, 1);
+    g.fillRect(0, FRONT_TOP - 18, W, FRONT_BOTTOM - FRONT_TOP + 30);
+    g.fillStyle(this.isNight ? 0x1a2418 : 0x5ca048, 0.4);
+    for (let i = 0; i < 180; i++) {
+      g.fillRect(((i * 47) % W), FRONT_TOP - 14 + ((i * 29) % (FRONT_BOTTOM - FRONT_TOP + 24)), 2, 2);
+    }
+
+    // 숲 실루엣
+    const forestColor = this.isNight ? 0x081508 : 0x1a3818;
+    g.fillStyle(forestColor, 1);
+    for (let x = -10; x < W; x += 22) {
+      const hh = 10 + ((x * 37) % 18);
+      g.fillTriangle(x, SKY_H, x + 11, SKY_H - hh, x + 22, SKY_H);
     }
   }
 
-  // ═══════════════════════════════
-  private drawBackBuildings(isN: boolean) {
-    const g = this.add.graphics().setDepth(1);
-    // 원경 스카이라인 — 연한 실루엣
-    const bc = isN ? 0x0e1520 : 0x7f8c8d;
-    const ba = isN ? 0.7 : 0.2;
-    const buildings = [
-      { x: 20,  w: 22, h: 55 }, { x: 50,  w: 30, h: 80 }, { x: 88,  w: 18, h: 45 },
-      { x: 110, w: 35, h: 95 }, { x: 155, w: 25, h: 60 }, { x: 185, w: 40, h: 110 },
-      { x: 230, w: 20, h: 50 }, { x: 260, w: 32, h: 75 }, { x: 300, w: 28, h: 85 },
-      { x: 340, w: 22, h: 55 }, { x: 370, w: 38, h: 100 },
-      { x: 550, w: 35, h: 90 }, { x: 590, w: 22, h: 65 }, { x: 620, w: 42, h: 105 },
-      { x: 670, w: 28, h: 50 }, { x: 705, w: 30, h: 80 }, { x: 745, w: 20, h: 60 },
-      { x: 775, w: 38, h: 95 }, { x: 820, w: 25, h: 70 }, { x: 855, w: 35, h: 85 },
-      { x: 900, w: 28, h: 55 }, { x: 930, w: 22, h: 75 },
+  private slotCenter(col: number, row: "back" | "front"): { x: number; y: number } {
+    const x = this.colCenters[col];
+    const y = row === "back"
+      ? (BACK_TOP + BACK_BOTTOM) / 2 + 4
+      : (FRONT_TOP + FRONT_BOTTOM) / 2;
+    return { x, y };
+  }
+
+  private placeBackRow() {
+    for (let c = 0; c < COLS; c++) {
+      const { x, y } = this.slotCenter(c, "back");
+      if (c === HQ_COL) this.placeHQ(x, y);
+      else this.placeBuilding(x, y, c === 0 ? "bld_house_purple" : "bld_house_mart");
+    }
+  }
+
+  private placeFrontRow() {
+    for (let c = 0; c < COLS; c++) {
+      if (c === PARK_COL) { this.drawPark(c); continue; }
+      const { x, y } = this.slotCenter(c, "front");
+      this.placeBuilding(x, y, c === 0 ? "bld_house_yellow" : "bld_house_blue");
+    }
+  }
+
+  private placeBuilding(x: number, y: number, key: string) {
+    const img = this.add.image(x, y, key).setOrigin(0.5, 0.5).setDepth(10);
+    const tex = this.textures.get(key);
+    if (tex) tex.setFilter(Phaser.Textures.FilterMode.NEAREST);
+    img.setScale(BUILDING_SCALE);
+    const g = this.add.graphics().setDepth(9);
+    g.fillStyle(0x000000, 0.22);
+    g.fillEllipse(x, y + (img.displayHeight / 2) - 4, img.displayWidth * 0.7, 10);
+  }
+
+  private placeHQ(x: number, y: number) {
+    const img = this.add.image(x, y, "bld_hq").setOrigin(0.5, 0.5).setDepth(10);
+    const tex = this.textures.get("bld_hq");
+    if (tex) tex.setFilter(Phaser.Textures.FilterMode.NEAREST);
+    img.setScale(BUILDING_SCALE * 1.15);
+
+    const glow = this.add.graphics().setDepth(9);
+    glow.fillStyle(0xf5c842, 0.12);
+    glow.fillRoundedRect(x - img.displayWidth / 2 - 8, y - img.displayHeight / 2 - 8,
+      img.displayWidth + 16, img.displayHeight + 16, 12);
+    const sh = this.add.graphics().setDepth(9);
+    sh.fillStyle(0x000000, 0.28);
+    sh.fillEllipse(x, y + img.displayHeight / 2 - 4, img.displayWidth * 0.75, 12);
+
+    if (this.showReturnBtn) {
+      const zoneW = img.displayWidth * 0.4;
+      const zoneH = img.displayHeight * 0.4;
+      const zoneY = y + img.displayHeight / 2 - zoneH / 2 - 4;
+      const zone = this.add.zone(x, zoneY, zoneW, zoneH)
+        .setDepth(20).setInteractive({ useHandCursor: true });
+      let hoverGlow: Phaser.GameObjects.Graphics | null = null;
+      zone.on("pointerover", () => {
+        hoverGlow = this.add.graphics().setDepth(19);
+        hoverGlow.fillStyle(0xf5c842, 0.35);
+        hoverGlow.fillRoundedRect(x - zoneW / 2, zoneY - zoneH / 2, zoneW, zoneH, 8);
+      });
+      zone.on("pointerout", () => { hoverGlow?.destroy(); hoverGlow = null; });
+      zone.on("pointerdown", () => this.enterOffice());
+    }
+  }
+
+  private drawPark(col: number) {
+    const x = this.colCenters[col];
+    const yTop = FRONT_TOP;
+    const yBot = FRONT_BOTTOM;
+    const w = COL_W;
+    const h = yBot - yTop;
+    const g = this.add.graphics().setDepth(10);
+
+    g.fillStyle(this.isNight ? 0x1a3820 : 0x3a9030, 1);
+    g.fillRect(x - w / 2, yTop, w, h);
+    g.fillStyle(this.isNight ? 0x204a2a : 0x5cb04c, 0.55);
+    for (let i = 0; i < 90; i++) {
+      g.fillRect(x - w / 2 + ((i * 17) % w), yTop + ((i * 29) % h), 2, 2);
+    }
+    g.lineStyle(2, this.isNight ? 0x3a2818 : 0x6a4828, 1);
+    g.strokeRect(x - w / 2, yTop, w, h);
+    g.fillStyle(this.isNight ? 0x3a3028 : 0x9a8858, 1);
+    g.fillRect(x - 10, yTop + 2, 20, h - 4);
+    g.fillRect(x - w / 2 + 2, yTop + h / 2 - 8, w - 4, 16);
+    const trees = [[x - w / 2 + 32, yTop + 34], [x + w / 2 - 32, yTop + 34],
+                   [x - w / 2 + 32, yBot - 34], [x + w / 2 - 32, yBot - 34]];
+    trees.forEach(([tx, ty]) => {
+      g.fillStyle(0x3a2818, 1); g.fillRect(tx - 2, ty + 10, 4, 10);
+      g.fillStyle(this.isNight ? 0x0f2010 : 0x2a6a22, 1); g.fillCircle(tx, ty, 20);
+      g.fillStyle(this.isNight ? 0x1a3018 : 0x4ab038, 0.85); g.fillCircle(tx - 5, ty - 5, 9);
+    });
+    [[x, yTop + 44], [x, yBot - 44]].forEach(([bx, by]) => {
+      g.fillStyle(0x6a4828, 1);
+      g.fillRect(bx - 20, by, 40, 5);
+      g.fillRect(bx - 18, by + 5, 3, 7);
+      g.fillRect(bx + 15, by + 5, 3, 7);
+    });
+    g.fillStyle(0x888898, 1); g.fillCircle(x, yTop + h / 2, 18);
+    g.fillStyle(0x6ab8e8, 1); g.fillCircle(x, yTop + h / 2, 13);
+    g.fillStyle(0xaadef8, 0.65); g.fillCircle(x - 3, yTop + h / 2 - 3, 6);
+
+    this.add.text(x, yTop - 6, "🌳 공원", {
+      fontSize: "13px", fontFamily: FONT,
+      color: this.isNight ? "#dadada" : "#1a1a2e",
+      fontStyle: "700", resolution: DPR * 4,
+    }).setOrigin(0.5, 1).setDepth(12);
+  }
+
+  private drawHQSign() {
+    const x = this.colCenters[HQ_COL];
+    const y = SKY_H + 10;
+    const g = this.add.graphics().setDepth(11);
+    g.fillStyle(0x1a1a2e, 0.95);
+    g.fillRoundedRect(x - 100, y - 22, 200, 28, 8);
+    g.lineStyle(2, 0xf5c842, 1);
+    g.strokeRoundedRect(x - 100, y - 22, 200, 28, 8);
+    this.add.text(x, y - 8, "🏢 두근 컴퍼니", {
+      fontSize: "16px", fontFamily: FONT, color: "#f5c842",
+      fontStyle: "700", resolution: DPR * 4,
+    }).setOrigin(0.5).setDepth(12);
+
+    if (this.showReturnBtn) {
+      this.add.text(x, BACK_BOTTOM - 4, "▼ 입구 클릭", {
+        fontSize: "11px", fontFamily: FONT, color: "#f5c842",
+        fontStyle: "700", resolution: DPR * 4,
+        backgroundColor: "#1a1a2ecc", padding: { x: 6, y: 2 },
+      }).setOrigin(0.5, 0).setDepth(15);
+    }
+  }
+
+  private drawMainRoad() {
+    const g = this.add.graphics().setDepth(5);
+    g.fillStyle(this.isNight ? 0x1a1a24 : 0x3a3a48, 1);
+    g.fillRect(0, ROAD_TOP, W, ROAD_BOTTOM - ROAD_TOP);
+    g.fillStyle(0x888898, 1);
+    g.fillRect(0, ROAD_TOP - 3, W, 3);
+    g.fillRect(0, ROAD_BOTTOM, W, 3);
+    g.fillStyle(0xffffff, this.isNight ? 0.35 : 0.6);
+    const midY = (ROAD_TOP + ROAD_BOTTOM) / 2 - 2;
+    for (let x = 10; x < W; x += 56) g.fillRect(x, midY, 36, 4);
+    const hqX = this.colCenters[HQ_COL];
+    g.fillStyle(0xffffff, this.isNight ? 0.55 : 0.85);
+    for (let i = 0; i < 7; i++) g.fillRect(hqX - 36, ROAD_TOP + 4 + i * 10, 72, 5);
+    g.fillStyle(this.isNight ? 0x2a2a38 : 0x6a6a78, 1);
+    g.fillRect(0, BACK_BOTTOM, W, ROAD_TOP - BACK_BOTTOM - 3);
+    g.fillRect(0, ROAD_BOTTOM + 3, W, FRONT_TOP - ROAD_BOTTOM - 3);
+    g.lineStyle(1, 0x3a3a48, 0.4);
+    for (let xx = 0; xx < W; xx += 28) {
+      g.lineBetween(xx, BACK_BOTTOM, xx, ROAD_TOP - 3);
+      g.lineBetween(xx, ROAD_BOTTOM + 3, xx, FRONT_TOP);
+    }
+  }
+
+  private drawBottomSidewalk() {
+    const g = this.add.graphics().setDepth(5);
+    g.fillStyle(this.isNight ? 0x2a2a38 : 0x6a6a78, 1);
+    g.fillRect(0, FRONT_BOTTOM, W, SIDEWALK_BOTTOM - FRONT_BOTTOM);
+    g.lineStyle(1, 0x3a3a48, 0.4);
+    for (let xx = 0; xx < W; xx += 28) g.lineBetween(xx, FRONT_BOTTOM, xx, SIDEWALK_BOTTOM);
+  }
+
+  private drawStreetFurniture() {
+    const g = this.add.graphics().setDepth(15);
+    const lampYs = [BACK_BOTTOM + 10, ROAD_BOTTOM + 14];
+    this.colCenters.forEach(cx => {
+      lampYs.forEach(ly => {
+        g.fillStyle(0x666678, 1);
+        g.fillRect(cx - 1, ly - 6, 2, 12);
+        g.fillStyle(0x555565, 1);
+        g.fillCircle(cx, ly - 6, 4);
+        g.fillStyle(this.isNight ? 0xffeeaa : 0xf0d888, this.isNight ? 1 : 0.55);
+        g.fillCircle(cx, ly - 6, 2.5);
+        if (this.isNight) {
+          g.fillStyle(0xffeeaa, 0.14);
+          g.fillCircle(cx, ly - 6, 28);
+        }
+      });
+    });
+    for (let i = 0; i < COLS - 1; i++) {
+      const alleyX = ROW_LEFT + i * (COL_W + ALLEY_W) + COL_W + ALLEY_W / 2;
+      [BACK_BOTTOM + 12, ROAD_BOTTOM + 16].forEach(ty => {
+        g.fillStyle(0x3a2818, 1); g.fillRect(alleyX - 1, ty + 2, 2, 4);
+        g.fillStyle(this.isNight ? 0x0f2010 : 0x2a6a22, 1); g.fillCircle(alleyX, ty - 2, 9);
+        g.fillStyle(this.isNight ? 0x1a3018 : 0x4aa838, 0.8); g.fillCircle(alleyX - 3, ty - 4, 3);
+      });
+    }
+  }
+
+  private spawnWalkers() {
+    const S = 1.5;
+    for (let i = 0; i < COLS - 1; i++) {
+      const alleyX = ROW_LEFT + i * (COL_W + ALLEY_W) + COL_W + ALLEY_W / 2;
+      {
+        const charIdx = i % 4;
+        const dir: 1 | -1 = Math.random() > 0.5 ? 1 : -1;
+        const startY = BACK_TOP + 30 + Math.random() * (BACK_BOTTOM - BACK_TOP - 60);
+        const sp = this.add.sprite(alleyX, startY, `char_${charIdx}`, 0)
+          .setScale(S).setOrigin(0.5, 0.75).setDepth(30);
+        sp.play(dir > 0 ? `char_${charIdx}_walk_down` : `char_${charIdx}_walk_up`);
+        this.walkers.push({ sprite: sp, charIdx, speed: 0.35 + Math.random() * 0.25,
+          mode: "alley", dir, minY: BACK_TOP + 20, maxY: BACK_BOTTOM - 10 });
+      }
+      {
+        const charIdx = (i + 2) % 4;
+        const dir: 1 | -1 = Math.random() > 0.5 ? 1 : -1;
+        const startY = FRONT_TOP + 30 + Math.random() * (FRONT_BOTTOM - FRONT_TOP - 60);
+        const sp = this.add.sprite(alleyX, startY, `char_${charIdx}`, 0)
+          .setScale(S).setOrigin(0.5, 0.75).setDepth(30);
+        sp.play(dir > 0 ? `char_${charIdx}_walk_down` : `char_${charIdx}_walk_up`);
+        this.walkers.push({ sprite: sp, charIdx, speed: 0.35 + Math.random() * 0.25,
+          mode: "alley", dir, minY: FRONT_TOP + 20, maxY: FRONT_BOTTOM - 10 });
+      }
+    }
+    const streetLanes: { y: number; count: number }[] = [
+      { y: BACK_BOTTOM + 12, count: 3 },
+      { y: ROAD_BOTTOM + 18, count: 2 },
+      { y: FRONT_BOTTOM + 14, count: 3 },
     ];
-    buildings.forEach(b => {
-      g.fillStyle(bc, ba);
-      g.fillRect(b.x, GROUND_Y - b.h, b.w, b.h);
-      // 야간 창문 불빛
-      if (isN) {
-        for (let wy = GROUND_Y - b.h + 6; wy < GROUND_Y - 6; wy += 8) {
-          for (let wx = b.x + 3; wx < b.x + b.w - 3; wx += 6) {
-            if (sR(wx, wy) > 0.5) {
-              g.fillStyle(0xf0d860, 0.12 + sR(wx + 1, wy) * 0.18);
-              g.fillRect(wx, wy, 3, 3);
-            }
-          }
-        }
-      }
-    });
-    // 남산타워
-    const tx = W * 0.52, tBase = GROUND_Y - 95;
-    g.fillStyle(bc, ba + 0.15);
-    g.fillRect(tx - 2, tBase - 55, 4, 55);
-    g.fillRect(tx - 10, tBase, 20, 12);
-    g.fillRect(tx - 1, tBase - 72, 2, 17);
-    // 타워 빨간 점멸등
-    if (isN) {
-      g.fillStyle(0xff3333, 0.6);
-      g.fillCircle(tx, tBase - 72, 2);
-    }
-  }
-
-  // ═══════════════════════════════
-  private drawStreet(isN: boolean) {
-    const g = this.add.graphics().setDepth(2);
-    // 인도 — 깔끔한 보도블록
-    const sidewalkCol = isN ? 0x2a2a35 : 0xbdc3c7;
-    g.fillStyle(sidewalkCol, 1);
-    g.fillRect(0, GROUND_Y, W, ROAD_Y - GROUND_Y);
-    // 보도블록 패턴
-    for (let x = 0; x < W; x += 24) {
-      g.fillStyle(isN ? 0x252530 : 0xb0b6ba, 1);
-      g.fillRect(x, GROUND_Y, 1, ROAD_Y - GROUND_Y);
-    }
-    // 경계석
-    g.fillStyle(isN ? 0x3a3a45 : 0x95a5a6, 1);
-    g.fillRect(0, ROAD_Y - 3, W, 4);
-
-    // 도로 — 아스팔트
-    g.fillStyle(isN ? 0x1a1a22 : 0x2c3e50, 1);
-    g.fillRect(0, ROAD_Y, W, H - ROAD_Y);
-    // 아스팔트 텍스처
-    for (let i = 0; i < 60; i++) {
-      g.fillStyle(isN ? 0x202028 : 0x354a5e, 0.3);
-      g.fillRect(sR(i, 50) * W, ROAD_Y + sR(i, 60) * (H - ROAD_Y), 2 + sR(i, 70) * 4, 1);
-    }
-    // 중앙선 (점선)
-    for (let x = 0; x < W; x += 32) {
-      g.fillStyle(0xf1c40f, isN ? 0.3 : 0.6);
-      g.fillRect(x, ROAD_Y + (H - ROAD_Y) / 2 - 1, 16, 2);
-    }
-    // 겨울 눈
-    if (this.season === "winter") {
-      g.fillStyle(0xe8eef4, 0.25);
-      g.fillRect(0, GROUND_Y, W, 12);
-    }
-  }
-
-  // ═══════════════════════════════
-  private drawMainBuilding(isN: boolean) {
-    const g  = this.add.graphics().setDepth(5);
-    const bx = W / 2 - 90, bw = 180, bh = 180;
-    const by = GROUND_Y - bh;
-
-    // 건물 본체 — 모던 파사드
-    g.fillStyle(isN ? 0x1a2030 : 0x2c3e50, 1);
-    g.fillRect(bx, by, bw, bh);
-    // 유리 외벽
-    g.fillStyle(isN ? 0x151c28 : 0x34495e, 1);
-    g.fillRect(bx + 2, by + 2, bw - 4, bh - 2);
-
-    // 층별 유리창 (4층)
-    for (let f = 0; f < 4; f++) {
-      const fy = by + 18 + f * 38;
-      // 층 구분 선 (슬래브)
-      g.fillStyle(isN ? 0x222c3a : 0x455a6e, 1);
-      g.fillRect(bx + 2, fy - 2, bw - 4, 3);
-
-      for (let c = 0; c < 4; c++) {
-        const fx = bx + 8 + c * 42;
-        // 유리 — 하늘 반사 느낌
-        const lit = isN ? sR(f * 4 + c, 777) > 0.35 : true;
-        if (isN && lit) {
-          g.fillGradientStyle(0xf0c840, 0xf0a020, 0xf0c840, 0xf0a020, 0.35);
-        } else if (isN) {
-          g.fillStyle(0x0a1018, 0.8);
-        } else {
-          g.fillGradientStyle(0x6db3d0, 0x5a9ab8, 0x88cce8, 0x78bcd8, 0.55);
-        }
-        g.fillRect(fx, fy, 36, 28);
-        // 창틀
-        g.fillStyle(isN ? 0x1a2535 : 0x2c3e50, 1);
-        g.fillRect(fx + 17, fy, 2, 28);
-        g.fillRect(fx, fy + 13, 36, 2);
-        // 유리 반사 하이라이트
-        if (!isN) {
-          g.fillStyle(0xffffff, 0.08);
-          g.fillRect(fx + 1, fy + 1, 16, 12);
-        }
-      }
-    }
-
-    // 입구 — 자동문 느낌
-    const dx = bx + bw / 2 - 22, dw = 44, dh = 32;
-    g.fillStyle(0x0a0e18, 1);
-    g.fillRect(dx, GROUND_Y - dh, dw, dh);
-    // 유리문
-    g.fillStyle(isN ? 0x1a2838 : 0x5588aa, 0.6);
-    g.fillRect(dx + 2, GROUND_Y - dh + 2, dw / 2 - 3, dh - 4);
-    g.fillRect(dx + dw / 2 + 1, GROUND_Y - dh + 2, dw / 2 - 3, dh - 4);
-    // 문 반사
-    if (!isN) {
-      g.fillStyle(0xffffff, 0.1);
-      g.fillRect(dx + 3, GROUND_Y - dh + 3, 8, dh - 6);
-    }
-    // 입구 조명
-    g.fillStyle(0xf0d860, isN ? 0.25 : 0.06);
-    g.fillRect(dx - 8, GROUND_Y - dh - 4, dw + 16, 4);
-
-    // 간판 — 깔끔한 LED 스타일
-    const signW = 120, signH = 18;
-    g.fillStyle(0x0a0e18, 0.95);
-    g.fillRoundedRect(bx + bw / 2 - signW / 2, by + 3, signW, signH, 3);
-    g.lineStyle(1, isN ? 0xf0d860 : 0x2c3e50, 0.4);
-    g.strokeRoundedRect(bx + bw / 2 - signW / 2, by + 3, signW, signH, 3);
-    this.add.text(W / 2, by + 12, "(주)두근 컴퍼니", {
-      fontSize: "10px", fontFamily: FONT,
-      color: isN ? "#f0d860" : "#ecf0f1", resolution: TEXT_RES,
-    }).setOrigin(0.5).setDepth(6);
-
-    // 옥상 구조물
-    g.fillStyle(isN ? 0x151c28 : 0x2c3e50, 1);
-    g.fillRect(bx + 30, by - 12, 40, 12);
-    g.fillRect(bx + bw - 55, by - 8, 25, 8);
-  }
-
-  // ═══════════════════════════════
-  private drawSideBuildings(isN: boolean) {
-    const g = this.add.graphics().setDepth(4);
-    // 현대식 도시 건물
-    const palette = isN
-      ? [0x141c28, 0x18222e, 0x121a25, 0x162030]
-      : [0x2c3e50, 0x34495e, 0x3a536b, 0x2e4053];
-    const leftB  = [
-      { x: 0,   w: 75, h: 135 },
-      { x: 80,  w: 58, h: 105 },
-      { x: 142, w: 68, h: 155 },
-      { x: 215, w: 82, h:  95 },
-    ];
-    const rightB = [
-      { x: W - 75,  w: 75, h: 125 },
-      { x: W - 135, w: 58, h: 145 },
-      { x: W - 205, w: 68, h: 100 },
-      { x: W - 285, w: 78, h: 115 },
-    ];
-    [...leftB, ...rightB].forEach((b, i) => {
-      const by = GROUND_Y - b.h;
-      const col = palette[i % palette.length];
-      // 건물 본체
-      g.fillStyle(col, 1);
-      g.fillRect(b.x, by, b.w, b.h);
-      // 옥상 라인
-      g.fillStyle(isN ? 0x1a2535 : 0x455a6e, 1);
-      g.fillRect(b.x, by, b.w, 3);
-      // 창문 — 세련된 그리드
-      for (let wy = by + 8; wy < GROUND_Y - 10; wy += 12) {
-        for (let wx = b.x + 5; wx < b.x + b.w - 5; wx += 10) {
-          const lit = isN ? sR(wx, wy) > 0.4 : false;
-          if (isN) {
-            g.fillStyle(lit ? 0xf0c840 : 0x0a1018, lit ? 0.3 : 0.6);
-          } else {
-            g.fillStyle(0x5dade2, 0.35);
-          }
-          g.fillRect(wx, wy, 7, 8);
-          // 창틀
-          g.fillStyle(col, 1);
-          g.fillRect(wx + 3, wy, 1, 8);
-        }
-      }
-      // 1층 상가 느낌
-      if (b.h > 100) {
-        g.fillStyle(isN ? 0xf0c840 : 0xecf0f1, isN ? 0.15 : 0.2);
-        g.fillRect(b.x + 3, GROUND_Y - 22, b.w - 6, 18);
+    streetLanes.forEach((lane, li) => {
+      for (let i = 0; i < lane.count; i++) {
+        const charIdx = (i + li) % 4;
+        const dir: 1 | -1 = i % 2 === 0 ? 1 : -1;
+        const startX = 40 + Math.random() * (W - 80);
+        const sp = this.add.sprite(startX, lane.y, `char_${charIdx}`, 0)
+          .setScale(S).setOrigin(0.5, 0.75).setDepth(30);
+        sp.play(dir > 0 ? `char_${charIdx}_walk_right` : `char_${charIdx}_walk_left`);
+        this.walkers.push({ sprite: sp, charIdx, speed: 0.5 + Math.random() * 0.4,
+          mode: "street", dir, minX: 20, maxX: W - 20 });
       }
     });
   }
 
-  // ═══════════════════════════════
-  private drawTrees(isN: boolean) {
-    const positions = [50, 190, 310, 650, 770, 910];
-    const isWinter  = this.season === "winter";
-    const sizes: ("sm" | "md" | "lg")[] = ["md", "lg", "sm", "sm", "lg", "md"];
-    const scales = [2.8, 3.2, 2.2, 2.2, 3.2, 2.8];
-
-    positions.forEach((tx, i) => {
-      const sz  = sizes[i];
-      const key = isWinter && i % 2 === 1 ? `tree_bare_${sz}` : `tree_${sz}`;
-      const tree = this.add.image(tx, GROUND_Y, key)
-        .setOrigin(0.5, 1.0)   // 피봇: 바닥 중앙 → 바람 흔들림이 자연스러움
-        .setScale(scales[i])
-        .setDepth(7);
-
-      if (isN) tree.setTint(0x1a2a3a);
-
-      this.tweens.add({
-        targets: tree,
-        angle: { from: -2.5, to: 2.5 },
-        duration: 2000 + i * 380,
-        yoyo: true, repeat: -1, ease: "Sine.easeInOut",
-        delay: i * 220,
-      });
-    });
-  }
-
-  // ═══════════════════════════════
-  private drawStreetLights(isN: boolean, isS: boolean) {
-    [130, 340, 530, 730, 880].forEach(x => {
-      const g = this.add.graphics().setDepth(8);
-      g.fillStyle(isN ? 0x3a4555 : 0x7f8c8d, 1);
-      g.fillRect(x - 1, GROUND_Y - 50, 3, 50);
-      g.fillStyle(isN ? 0x4a5060 : 0x6a7080, 1);
-      g.fillRect(x - 5, GROUND_Y - 52, 11, 3);
-
-      if (isN || isS) {
-        const glow = this.add.graphics().setDepth(7.5);
-        glow.fillStyle(0xf0d860, 0.06); glow.fillCircle(x, GROUND_Y - 50, 28);
-        glow.fillStyle(0xf0d860, 0.15); glow.fillCircle(x, GROUND_Y - 50, 6);
-        this.tweens.add({
-          targets: glow, alpha: 0.7,
-          duration: 2000 + Math.random() * 1500,
-          yoyo: true, repeat: -1, ease: "Sine.easeInOut",
-        });
-      }
-    });
-  }
-
-  // ═══════════════════════════════
-  private createWalkAnims() {
-    const cols = 7;
-    for (let i = 0; i < 4; i++) {
-      const k = `char_${i}`;
-      if (this.anims.exists(`${k}_walk_left`)) continue;
-      // walk_left: row1 (옆모습 왼쪽) — 정면뷰 거리씬에 딱 맞음
-      this.anims.create({
-        key: `${k}_walk_left`,
-        frames: [
-          { key: k, frame: cols },
-          { key: k, frame: cols + 1 },
-          { key: k, frame: cols },
-          { key: k, frame: cols + 2 },
-        ],
-        frameRate: 6, repeat: -1,
-      });
-      // walk_right: row2 (옆모습 오른쪽)
-      this.anims.create({
-        key: `${k}_walk_right`,
-        frames: [
-          { key: k, frame: cols * 2 },
-          { key: k, frame: cols * 2 + 1 },
-          { key: k, frame: cols * 2 },
-          { key: k, frame: cols * 2 + 2 },
-        ],
-        frameRate: 6, repeat: -1,
-      });
-    }
-  }
-
-  // ═══════════════════════════════
-  private createWalkers(isN: boolean) {
-    for (let i = 0; i < 12; i++) {
-      const dir      = (sR(i, 50) > 0.5 ? 1 : -1) as 1 | -1;
-      const charIdx  = i % 4;
-      const animKey  = dir > 0 ? `char_${charIdx}_walk_right` : `char_${charIdx}_walk_left`;
-
-      const startX = dir > 0
-        ? -(20 + sR(i, 60) * W * 0.5)
-        : W + 20 + sR(i, 61) * W * 0.5;
-
-      // 원근감: 앞줄(큰) / 뒷줄(작은) 3단계 (2× 스프라이트 보정: 0.5배)
-      const row    = i % 3;                   // 0=뒤, 1=중, 2=앞
-      const scale  = (0.85 + row * 0.15) * 0.5; // 0.425 / 0.5 / 0.575
-      const walkY  = GROUND_Y + 4 + row * 10; // 깊이별 Y
-
-      const sprite = this.add.sprite(startX, walkY, `char_${charIdx}`, 0)
-        .setOrigin(0.5, 1.0)   // 발바닥 기준
-        .setScale(scale)
-        .setDepth(10 + row)    // 앞줄이 뒷줄 위에
-        .play(animKey);
-
-      if (isN) sprite.setTint(0x3355aa);
-
-      this.walkers.push({
-        sprite, x: startX, charIdx,
-        speed: 0.25 + sR(i, 63) * 0.4,
-        dir,
-        phase: sR(i, 64) * Math.PI * 2,
-        y: walkY,
-      });
-    }
-  }
-
-  // ═══════════════════════════════
   private moveWalkers() {
-    const t = this.time.now * 0.001;
     this.walkers.forEach(w => {
-      w.x += w.speed * w.dir;
-      if (w.dir > 0 && w.x >  W + 40) w.x = -40 - Math.random() * 200;
-      if (w.dir < 0 && w.x < -40)     w.x =  W + 40 + Math.random() * 200;
-      // 미세한 상하 흔들림 (숨소리 느낌)
-      const bob = Math.sin(t * 5 + w.phase) * 0.8;
-      w.sprite.setPosition(w.x, w.y + bob);
+      if (w.mode === "alley") {
+        w.sprite.y += w.speed * w.dir;
+        if (w.dir > 0 && w.sprite.y >= (w.maxY ?? H)) {
+          w.dir = -1; w.sprite.play(`char_${w.charIdx}_walk_up`);
+        } else if (w.dir < 0 && w.sprite.y <= (w.minY ?? 0)) {
+          w.dir = 1; w.sprite.play(`char_${w.charIdx}_walk_down`);
+        }
+      } else {
+        w.sprite.x += w.speed * w.dir;
+        if (w.dir > 0 && w.sprite.x >= (w.maxX ?? W)) {
+          w.dir = -1; w.sprite.play(`char_${w.charIdx}_walk_left`);
+        } else if (w.dir < 0 && w.sprite.x <= (w.minX ?? 0)) {
+          w.dir = 1; w.sprite.play(`char_${w.charIdx}_walk_right`);
+        }
+      }
     });
   }
 
-  // ═══════════════════════════════
-  private createClouds(isN: boolean, isS: boolean, isRain: boolean) {
-    if (isN) return;
-    const count = isRain ? 6 : 3;
-    for (let i = 0; i < count; i++) {
-      const cg  = this.add.graphics().setDepth(0.5);
-      const cw  = 45 + i * 18, ch = 12 + i * 4;
-      const col = isRain ? 0x5a6070 : (isS ? 0xd09878 : 0xfafafa);
-      const a   = isRain ? 0.6 : 0.35;
-      cg.fillStyle(col, a * 0.7); cg.fillRoundedRect(0, ch * 0.35, cw, ch * 0.5, ch * 0.25);
-      cg.fillStyle(col, a);       cg.fillRoundedRect(cw * 0.1, 0, cw * 0.6, ch, ch * 0.45);
-      cg.setPosition(-cw + i * (W / count), 15 + i * 12);
+  private initWeather() {
+    const wc = this.weatherCode;
+    const isRain = (wc >= 51 && wc <= 82) || wc >= 95;
+    const isSnow = wc >= 71 && wc <= 77;
+    if (isRain) for (let i = 0; i < 45; i++) this.rainDrops.push({
+      x: Math.random() * W, y: Math.random() * H, speed: 2 + Math.random() * 1.5, len: 5 + Math.random() * 4 });
+    if (isSnow) for (let i = 0; i < 40; i++) this.snowFlakes.push({
+      x: Math.random() * W, y: Math.random() * H, speed: 0.3 + Math.random() * 0.4,
+      size: 1 + Math.random() * 1.5, dx: (Math.random() - 0.5) * 0.4 });
+  }
 
-      const move = () => {
-        if (!cg.active) return;
-        this.tweens.add({
-          targets: cg, x: W + cw,
-          duration: 45000 + i * 12000, ease: "Linear",
-          onComplete: () => { if (cg.active) { cg.setPosition(-cw, 12 + Math.random() * 40); move(); } },
-        });
-      };
-      move();
+  private createReturnButton() {
+    const bw = 130, bh = 30;
+    const bx = W - bw - 16, by = 16;
+    const bg = this.add.graphics().setDepth(200);
+    bg.fillStyle(0x1a1a2e, 0.9); bg.fillRoundedRect(bx, by, bw, bh, 6);
+    bg.lineStyle(1.5, 0xf5c842, 0.8); bg.strokeRoundedRect(bx, by, bw, bh, 6);
+    const btn = this.add.text(bx + bw / 2, by + bh / 2, "🏢 사무실로", {
+      fontSize: "11px", fontFamily: FONT, color: "#f5c842",
+      fontStyle: "700", resolution: DPR * 4,
+    }).setOrigin(0.5).setDepth(201).setInteractive({ useHandCursor: true });
+    btn.on("pointerdown", () => this.enterOffice());
+  }
+
+  private enterOffice() {
+    this.cameras.main.fadeOut(200, 0, 0, 0);
+    this.cameras.main.once("camerafadeoutcomplete", () => {
+      this.scene.stop("LoginScene");
+      this.scene.resume("OfficeScene");
+      const officeScene = this.scene.get("OfficeScene");
+      if (officeScene) officeScene.cameras.main.fadeIn(300, 0, 0, 0);
+    });
+  }
+
+  private ensureAnims() {
+    for (const i of [0, 1, 2, 3]) {
+      const key = `char_${i}`;
+      const cols = 7;
+      const anims: [string, number[]][] = [
+        [`${key}_idle`,       [0]],
+        [`${key}_walk_down`,  [0, 1, 0, 2]],
+        [`${key}_walk_left`,  [cols, cols+1, cols, cols+2]],
+        [`${key}_walk_right`, [cols*2, cols*2+1, cols*2, cols*2+2]],
+        [`${key}_walk_up`,    [cols*3, cols*3+1, cols*3, cols*3+2]],
+      ];
+      anims.forEach(([animKey, frames]) => {
+        if (this.anims.exists(animKey)) return;
+        this.anims.create({ key: animKey, frames: frames.map(f => ({ key, frame: f })),
+          frameRate: animKey.includes("idle") ? 1 : 6, repeat: -1 });
+      });
     }
   }
 
-  // ═══════════════════════════════
   update() {
     if (!this.particleG?.active) return;
-    const pg = this.particleG;
-    pg.clear();
-
+    if (this.rainDrops.length === 0 && this.snowFlakes.length === 0) return;
+    this.particleG.clear();
     this.rainDrops.forEach(d => {
-      pg.lineStyle(1, 0x8ab8d8, 0.25);
-      pg.lineBetween(d.x, d.y, d.x - 0.6, Math.min(d.y + d.len, H));
-      d.y += d.speed; d.x -= 0.4;
-      if (d.y > H) { d.y = -d.len - 5; d.x = Math.random() * W; }
-      if (d.x < 0) d.x += W;
+      this.particleG.lineStyle(1, 0x8ab8d8, 0.45);
+      this.particleG.lineBetween(d.x, d.y, d.x - 1, d.y + d.len);
+      d.y += d.speed; d.x -= 0.3;
+      if (d.y > H) { d.y = -d.len; d.x = Math.random() * W; }
     });
-
     this.snowFlakes.forEach(f => {
-      pg.fillStyle(0xeef4ff, 0.55);
-      pg.fillCircle(f.x, f.y, f.size);
-      f.y += f.speed; f.x += f.dx + Math.sin(f.y * 0.02) * 0.3;
-      if (f.y > H) { f.y = -5; f.x = Math.random() * W; }
-      if (f.x < 0) f.x += W; if (f.x > W) f.x -= W;
-    });
-
-    this.petals.forEach(p => {
-      pg.fillStyle(0xffb0c8, 0.45); pg.fillCircle(p.x, p.y, 2);
-      p.y += p.s; p.x += p.dx + Math.sin(p.y * 0.015) * 0.5;
-      if (p.y > H + 10) { p.y = -10; p.x = Math.random() * W; }
-    });
-
-    this.leaves.forEach(l => {
-      pg.fillStyle([0xcc6620, 0xdd8830, 0xbb4410][Math.floor(Math.abs(l.r) * 2) % 3], 0.55);
-      pg.fillRect(l.x - 2, l.y - 1, 5, 3);
-      l.y += l.s; l.x += l.dx + Math.sin(l.y * 0.012) * 0.6; l.r += l.rs;
-      if (l.y > H + 10) { l.y = -10; l.x = Math.random() * W; }
+      this.particleG.fillStyle(0xeeeeff, 0.7);
+      this.particleG.fillCircle(f.x, f.y, f.size);
+      f.y += f.speed; f.x += f.dx + Math.sin(f.y * 0.05) * 0.25;
+      if (f.y > H) { f.y = -4; f.x = Math.random() * W; }
     });
   }
 }
