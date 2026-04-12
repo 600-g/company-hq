@@ -654,14 +654,6 @@ export default class OfficeScene extends Phaser.Scene {
     const monX = WORLD_W - 52;
     const monY = WALL_H * TILE + 16;
 
-    // 바닥 패드 (서버존 구분)
-    const padG = this.add.graphics().setDepth(1);
-    padG.fillStyle(0x2a2a3a, 0.25);
-    padG.fillRoundedRect(monX - 48, monY - 4, 96, 72, 4);
-    padG.lineStyle(1, 0x4a90d9, 0.4);
-    padG.strokeRoundedRect(monX - 48, monY - 4, 96, 72, 4);
-    this.envGroup.add(padG);
-
     // 데스크 (팀 책상과 동일: desk_front = 64x32, center origin)
     const deskCX = monX;
     const deskCY = monY + 32;
