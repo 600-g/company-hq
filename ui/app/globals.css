@@ -1,6 +1,36 @@
 @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css');
 @import "tailwindcss";
 
+/* Pokemon-style pixel fonts (in-game labels) */
+@font-face {
+  font-family: 'PokemonClear';
+  src: url('/assets/fonts/power%20clear%20bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'PokemonClear';
+  src: url('/assets/fonts/power%20clear.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'PokemonRB';
+  src: url('/assets/fonts/power%20red%20and%20blue%20intl.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'PokemonGreen';
+  src: url('/assets/fonts/power%20green.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   --background: #1a1a2e;
   --font-main: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;

@@ -1,49 +1,105 @@
 /**
- * Pixel Agents + Pixel Forge 기반 스프라이트 시스템
- * 캐릭터 0~5: Pixel Agents MIT (112x96, 16x16 프레임, 7열x6행) — 2등신 원본 복구
- * 캐릭터 6: 정장 캐릭터 (224x384, 32x64 프레임, 7열x6행) — CPO 전용
+ * Pokemon Another Red 포맷 스프라이트 시스템
+ * 캐릭터: RPG Maker Essentials (128x192, 32x48 프레임, 4열x4행)
  * 가구: 개별 PNG (desk, PC, chair 등)
  * 바닥: 16x16 타일
  */
 
 import * as Phaser from "phaser";
 
+// NPC 풀 크기 (public/assets/npcs/ 내 npc_01.png ~ npc_NN.png)
+// 노년 + 아동 캐릭터 제외 후 30개 유지
+export const NPC_POOL_SIZE = 27;
+
+// 고유 primary 캐릭터 풀 크기
+// char_0 ~ char_(PRIMARY_CHAR_POOL_SIZE-1)
+// 0~19: 기본 RPG 캐릭터
+// 20~29: phone001~phone010 (폰 캐릭터)
+// 30~207: 이름 있는 트레이너 (RED, BLUE, GREEN, ASH, LEADER_*, ELITEFOUR_*, CHAMPION_* 등)
+export const PRIMARY_CHAR_POOL_SIZE = 208;
+
 // ═══════════════════════════════════
 // 프리로드
 // ═══════════════════════════════════
 
 export function preloadAssets(scene: Phaser.Scene) {
-  // 캐릭터 0~5: Pixel Agents 2등신 원본 (16×16 프레임, 7열×6행)
-  for (const i of [0, 1, 2, 3, 4, 5]) {
-    scene.load.spritesheet(`char_${i}`, `/assets/char_${i}.png`, {
-      frameWidth: 16,
-      frameHeight: 16,
-    });
-  }
-  // 캐릭터 6: CPO 전용 정장 (32×64 프레임, 7열×6행)
-  scene.load.spritesheet("char_6", "/assets/char_6.png", {
+  // CPO 캐릭터 (32×48 프레임, 4열×4행)
+  scene.load.spritesheet("char_cpo", "/assets/chars/char_cpo.png", {
     frameWidth: 32,
-    frameHeight: 64,
+    frameHeight: 48,
   });
 
-  // 가구
-  scene.load.image("desk_front", "/assets/furniture/DESK/DESK_FRONT.png");
-  scene.load.image("desk_side", "/assets/furniture/DESK/DESK_SIDE.png");
-  scene.load.image("pc_on1", "/assets/furniture/PC/PC_FRONT_ON_1.png");
-  scene.load.image("pc_on2", "/assets/furniture/PC/PC_FRONT_ON_2.png");
-  scene.load.image("pc_on3", "/assets/furniture/PC/PC_FRONT_ON_3.png");
-  scene.load.image("pc_off", "/assets/furniture/PC/PC_FRONT_OFF.png");
-  scene.load.image("pc_back", "/assets/furniture/PC/PC_BACK.png");
-  scene.load.image("chair_front", "/assets/furniture/CUSHIONED_CHAIR/CUSHIONED_CHAIR_FRONT.png");
-  scene.load.image("chair_back", "/assets/furniture/CUSHIONED_CHAIR/CUSHIONED_CHAIR_BACK.png");
-  scene.load.image("plant", "/assets/furniture/PLANT/PLANT.png");
-  scene.load.image("large_plant", "/assets/furniture/LARGE_PLANT/LARGE_PLANT.png");
-  scene.load.image("bookshelf", "/assets/furniture/BOOKSHELF/BOOKSHELF.png");
-  scene.load.image("whiteboard", "/assets/furniture/WHITEBOARD/WHITEBOARD.png");
-  scene.load.image("cactus", "/assets/furniture/CACTUS/CACTUS.png");
-  scene.load.image("bin", "/assets/furniture/BIN/BIN.png");
-  scene.load.image("pot", "/assets/furniture/POT/POT.png");
-  scene.load.image("coffee_table", "/assets/furniture/COFFEE_TABLE/COFFEE_TABLE.png");
+  // 캐릭터 0~(PRIMARY_CHAR_POOL_SIZE-1) (32×48 프레임, 4열×4행)
+  for (let i = 0; i < PRIMARY_CHAR_POOL_SIZE; i++) {
+    scene.load.spritesheet(`char_${i}`, `/assets/chars/char_${i}.png`, {
+      frameWidth: 32,
+      frameHeight: 48,
+    });
+  }
+
+  // NPC 풀 (npc_01~npc_30, 동일한 32×48 / 4x4 포맷)
+  // 각 팀의 랜덤 NPC 3명 슬롯에 사용됨
+  for (let i = 1; i <= NPC_POOL_SIZE; i++) {
+    const key = `npc_${String(i).padStart(2, "0")}`;
+    scene.load.spritesheet(`char_${key}`, `/assets/npcs/${key}.png`, {
+      frameWidth: 32,
+      frameHeight: 48,
+    });
+  }
+
+  // 말풍선 스킨 (96x48 windowskin atlas: 좌테두리/중앙/우테두리 3프레임, 각 32x48)
+  scene.load.spritesheet("speech_bubble", "/assets/pokemon_furniture/speech_bubble.png", {
+    frameWidth: 32,
+    frameHeight: 48,
+  });
+
+  // 가구 (Pokemon Another Red 포맷, 32px 그리드)
+  scene.load.image("desk_front", "/assets/pokemon_furniture/desk_1.png");
+  scene.load.image("desk_side", "/assets/pokemon_furniture/desk_2.png");
+  // PC — 단일 이미지 (깜빡임 애니메이션 없음). 하위 호환 위해 모든 키를 동일 이미지로 매핑
+  scene.load.image("pc_on1", "/assets/pokemon_furniture/pc.png");
+  scene.load.image("pc_on2", "/assets/pokemon_furniture/pc.png");
+  scene.load.image("pc_on3", "/assets/pokemon_furniture/pc.png");
+  scene.load.image("pc_off", "/assets/pokemon_furniture/pc.png");
+  scene.load.image("pc_back", "/assets/pokemon_furniture/pc.png");
+  scene.load.image("pc", "/assets/pokemon_furniture/pc.png");
+  scene.load.image("monitor", "/assets/pokemon_furniture/monitor.png");
+  scene.load.image("desk_side_drawers", "/assets/pokemon_furniture/desk_side_with_drawers.png");
+  scene.load.image("desk_side_wicker", "/assets/pokemon_furniture/desk_side_wicker_short.png");
+  scene.load.image("laptop_side_right", "/assets/pokemon_furniture/laptop_side_right.png");
+  scene.load.image("laptop_side_left", "/assets/pokemon_furniture/laptop_side_left.png");
+  // 제대로 된 노트북 페어 (같은 크기 32x64)
+  scene.load.image("laptop_left", "/assets/pokemon_furniture/laptop_left.png");
+  scene.load.image("laptop_right", "/assets/pokemon_furniture/laptop_right.png");
+  // V자 오픈 노트북 (탑뷰, 32x32)
+  scene.load.image("laptop_v", "/assets/pokemon_furniture/laptop_v.png");
+  scene.load.image("chair_front", "/assets/pokemon_furniture/chair_front.png");
+  scene.load.image("chair_back", "/assets/pokemon_furniture/chair_back.png");
+  scene.load.image("plant", "/assets/pokemon_furniture/plant_1.png");
+  scene.load.image("plant_1", "/assets/pokemon_furniture/plant_1.png");
+  scene.load.image("plant_2", "/assets/pokemon_furniture/plant_2.png");
+  scene.load.image("large_plant", "/assets/pokemon_furniture/plant_large.png");
+  scene.load.image("plant_large", "/assets/pokemon_furniture/plant_large.png");
+  scene.load.image("bookshelf", "/assets/pokemon_furniture/bookshelf.png");
+  scene.load.image("cabinet", "/assets/pokemon_furniture/cabinet.png");
+  scene.load.image("whiteboard", "/assets/pokemon_furniture/whiteboard.png");
+  // 카드/쓰레기통 대체 매핑 (Pokemon 세트엔 없음)
+  scene.load.image("cactus", "/assets/pokemon_furniture/plant_2.png");
+  scene.load.image("bin", "/assets/pokemon_furniture/plant_2.png");
+  scene.load.image("pot", "/assets/pokemon_furniture/plant_2.png");
+  scene.load.image("coffee_table", "/assets/pokemon_furniture/coffee_table.png");
+  scene.load.image("table", "/assets/pokemon_furniture/table.png");
+  scene.load.image("sofa_pk", "/assets/pokemon_furniture/sofa.png");
+  scene.load.image("water_cooler_pk", "/assets/pokemon_furniture/water_cooler.png");
+  scene.load.image("vending", "/assets/pokemon_furniture/vending.png");
+  scene.load.image("printer", "/assets/pokemon_furniture/printer.png");
+  scene.load.image("clock", "/assets/pokemon_furniture/clock.png");
+  scene.load.image("door", "/assets/pokemon_furniture/door.png");
+  scene.load.image("elevator_closed", "/assets/pokemon_furniture/elevator_closed.png");
+  scene.load.image("door_office", "/assets/pokemon_furniture/door_office.png");
+  scene.load.image("mailbox", "/assets/pokemon_furniture/mailbox.png");
+  scene.load.image("bench", "/assets/pokemon_furniture/bench.png");
+  scene.load.image("streetlight", "/assets/pokemon_furniture/streetlight.png");
 
   // 오리지널 사무실 에셋 (Pixel Forge)
   scene.load.image("o_laptop", "/assets/original/office/laptop_open.png");
@@ -66,118 +122,140 @@ export function preloadAssets(scene: Phaser.Scene) {
   scene.load.image("o_ac", "/assets/original/office/ac_unit.png");
   scene.load.image("o_fire_ext", "/assets/original/office/fire_extinguisher.png");
 
-  // 바닥/벽
-  scene.load.image("floor_tile", "/assets/floors/floor_0.png");
-  scene.load.image("wall_tile", "/assets/walls/wall_0.png");
+  // 바닥/벽 (Pokemon)
+  scene.load.image("floor_tile", "/assets/pokemon_furniture/floor_wood.png");
+  scene.load.image("floor_wood", "/assets/pokemon_furniture/floor_wood.png");
+  scene.load.image("floor_carpet", "/assets/pokemon_furniture/floor_carpet.png");
+  scene.load.image("wall_tile", "/assets/pokemon_furniture/wall_1.png");
+  scene.load.image("wall_1", "/assets/pokemon_furniture/wall_1.png");
+  scene.load.image("wall_2", "/assets/pokemon_furniture/wall_2.png");
 
-  // 나무 (계절별 x 크기별: 15종)
-  for (const s of ["spring", "summer", "autumn", "winter", "evergreen"]) {
+  // 나무 — 계절별 단일 이미지. 하위 호환 위해 sm/md/lg 키도 동일 파일로 매핑
+  const seasonMap: Record<string, string> = {
+    spring: "/assets/pokemon_furniture/tree_spring.png",
+    summer: "/assets/pokemon_furniture/tree_summer.png",
+    autumn: "/assets/pokemon_furniture/tree_autumn.png",
+    winter: "/assets/pokemon_furniture/tree_winter.png",
+    evergreen: "/assets/pokemon_furniture/tree_summer.png",
+  };
+  for (const [s, path] of Object.entries(seasonMap)) {
+    scene.load.image(`tree_${s}`, path);
     for (const sz of ["sm", "md", "lg"]) {
-      scene.load.image(`tree_${s}_${sz}`, `/assets/trees/tree_${s}_${sz}.png`);
+      scene.load.image(`tree_${s}_${sz}`, path);
     }
   }
 }
 
 // ═══════════════════════════════════
 // 애니메이션 등록
-// 캐릭터 시트 레이아웃 (7열 x 6행):
-// char_0~5: Pixel Agents 16x16 | char_6: CPO 32x64
-// 행0: 아래 idle + walk (front)
-// 행1: 왼쪽
-// 행2: 오른쪽
-// 행3: 위(back)
-// 행4: 앉기/타이핑
-// 행5: 기타
+// 캐릭터 시트 레이아웃 (4열 x 4행, RPG Maker Essentials):
+// 행0: Down (정면) — idle, walk_left_foot, idle, walk_right_foot
+// 행1: Left — 동일 패턴
+// 행2: Right — 동일 패턴
+// 행3: Up (뒷면) — 동일 패턴
 // ═══════════════════════════════════
 
+function registerAnimsForKey(scene: Phaser.Scene, key: string) {
+  const cols = 4;
+
+  // idle (아래 보기, 정면)
+  scene.anims.create({
+    key: `${key}_idle`,
+    frames: [{ key, frame: 0 }],
+    frameRate: 1,
+    repeat: -1,
+  });
+
+  // walk down (행0: idle, left_foot, idle, right_foot)
+  scene.anims.create({
+    key: `${key}_walk_down`,
+    frames: [
+      { key, frame: 0 },
+      { key, frame: 1 },
+      { key, frame: 0 },
+      { key, frame: 3 },
+    ],
+    frameRate: 6,
+    repeat: -1,
+  });
+
+  // walk left (행1)
+  scene.anims.create({
+    key: `${key}_walk_left`,
+    frames: [
+      { key, frame: cols },
+      { key, frame: cols + 1 },
+      { key, frame: cols },
+      { key, frame: cols + 3 },
+    ],
+    frameRate: 6,
+    repeat: -1,
+  });
+
+  // walk right (행2)
+  scene.anims.create({
+    key: `${key}_walk_right`,
+    frames: [
+      { key, frame: cols * 2 },
+      { key, frame: cols * 2 + 1 },
+      { key, frame: cols * 2 },
+      { key, frame: cols * 2 + 3 },
+    ],
+    frameRate: 6,
+    repeat: -1,
+  });
+
+  // walk up (행3)
+  scene.anims.create({
+    key: `${key}_walk_up`,
+    frames: [
+      { key, frame: cols * 3 },
+      { key, frame: cols * 3 + 1 },
+      { key, frame: cols * 3 },
+      { key, frame: cols * 3 + 3 },
+    ],
+    frameRate: 6,
+    repeat: -1,
+  });
+
+  // typing — 정면 프레임으로 대체 (새 포맷에 앉기 애니메이션 없음)
+  scene.anims.create({
+    key: `${key}_type`,
+    frames: [
+      { key, frame: 0 },
+      { key, frame: 1 },
+      { key, frame: 0 },
+    ],
+    frameRate: 4,
+    repeat: -1,
+  });
+
+  // typing left — 왼쪽 프레임으로 대체
+  scene.anims.create({
+    key: `${key}_type_left`,
+    frames: [
+      { key, frame: cols },
+      { key, frame: cols + 1 },
+      { key, frame: cols },
+    ],
+    frameRate: 4,
+    repeat: -1,
+  });
+}
+
 export function registerCharAnims(scene: Phaser.Scene) {
-  for (let i of [0, 1, 2, 3, 4, 5, 6]) {
-    const key = `char_${i}`;
-    const cols = 7;
+  // CPO 캐릭터
+  registerAnimsForKey(scene, "char_cpo");
 
-    // idle (아래 보기)
-    scene.anims.create({
-      key: `${key}_idle`,
-      frames: [{ key, frame: 0 }],
-      frameRate: 1,
-      repeat: -1,
-    });
+  // 캐릭터 0~(PRIMARY_CHAR_POOL_SIZE-1)
+  for (let i = 0; i < PRIMARY_CHAR_POOL_SIZE; i++) {
+    registerAnimsForKey(scene, `char_${i}`);
+  }
 
-    // walk down
-    scene.anims.create({
-      key: `${key}_walk_down`,
-      frames: [
-        { key, frame: 0 },
-        { key, frame: 1 },
-        { key, frame: 0 },
-        { key, frame: 2 },
-      ],
-      frameRate: 6,
-      repeat: -1,
-    });
-
-    // walk left
-    scene.anims.create({
-      key: `${key}_walk_left`,
-      frames: [
-        { key, frame: cols },
-        { key, frame: cols + 1 },
-        { key, frame: cols },
-        { key, frame: cols + 2 },
-      ],
-      frameRate: 6,
-      repeat: -1,
-    });
-
-    // walk right
-    scene.anims.create({
-      key: `${key}_walk_right`,
-      frames: [
-        { key, frame: cols * 2 },
-        { key, frame: cols * 2 + 1 },
-        { key, frame: cols * 2 },
-        { key, frame: cols * 2 + 2 },
-      ],
-      frameRate: 6,
-      repeat: -1,
-    });
-
-    // walk up
-    scene.anims.create({
-      key: `${key}_walk_up`,
-      frames: [
-        { key, frame: cols * 3 },
-        { key, frame: cols * 3 + 1 },
-        { key, frame: cols * 3 },
-        { key, frame: cols * 3 + 2 },
-      ],
-      frameRate: 6,
-      repeat: -1,
-    });
-
-    // typing — 오른쪽 향함 (왼쪽 책상, col0~2=RIGHT 프레임)
-    scene.anims.create({
-      key: `${key}_type`,
-      frames: [
-        { key, frame: cols * 4 },
-        { key, frame: cols * 4 + 1 },
-        { key, frame: cols * 4 + 2 },
-      ],
-      frameRate: 4,
-      repeat: -1,
-    });
-
-    // typing — 왼쪽 향함 (오른쪽 책상, col3~5=LEFT 프레임)
-    scene.anims.create({
-      key: `${key}_type_left`,
-      frames: [
-        { key, frame: cols * 4 + 3 },
-        { key, frame: cols * 4 + 4 },
-        { key, frame: cols * 4 + 5 },
-      ],
-      frameRate: 4,
-      repeat: -1,
-    });
+  // NPC 풀 애니메이션 (char_npc_01 ~ char_npc_NN)
+  for (let i = 1; i <= NPC_POOL_SIZE; i++) {
+    const key = `npc_${String(i).padStart(2, "0")}`;
+    registerAnimsForKey(scene, `char_${key}`);
   }
 
   // PC 깜빡임 애니메이션

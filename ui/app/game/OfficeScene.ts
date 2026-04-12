@@ -7,48 +7,137 @@
  */
 
 import * as Phaser from "phaser";
-import { preloadAssets, registerCharAnims, createCustomFurniture } from "./sprites";
+import { preloadAssets, registerCharAnims, createCustomFurniture, NPC_POOL_SIZE, PRIMARY_CHAR_POOL_SIZE } from "./sprites";
+
+// ─────────────────────────────────────────
+// NPC 랜덤 픽 (팀 ID 시드 기반 — 리로드 간 동일 결과)
+// ─────────────────────────────────────────
+function hashString(s: string): number {
+  let h = 2166136261 >>> 0; // FNV-1a
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return h >>> 0;
+}
+
+function mulberry32(seed: number): () => number {
+  let t = seed >>> 0;
+  return () => {
+    t = (t + 0x6D2B79F9) >>> 0;
+    let r = Math.imul(t ^ (t >>> 15), 1 | t);
+    r = (r + Math.imul(r ^ (r >>> 7), 61 | r)) ^ r;
+    return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function pickNpcs(teamId: string, count: number = 3): string[] {
+  const pool: string[] = [];
+  for (let i = 1; i <= NPC_POOL_SIZE; i++) {
+    pool.push(`npc_${String(i).padStart(2, "0")}`);
+  }
+  const rand = mulberry32(hashString(teamId));
+  // Fisher-Yates partial shuffle (duplicates allowed across teams via seed independence)
+  const picks: string[] = [];
+  for (let i = 0; i < count; i++) {
+    picks.push(pool[Math.floor(rand() * pool.length)]!);
+  }
+  return picks;
+}
+
+/** 팀 id + primary 캐릭터 2개 → [primary1, primary2, ...2 random NPCs] */
+function buildTeamChars(teamId: string, primaries: readonly [number, number]): (number | string)[] {
+  return [primaries[0], primaries[1], ...pickNpcs(teamId, 2)];
+}
 
 const TILE = 32;
 const COLS = 26;
 const ROWS = 18;
 const WORLD_W = COLS * TILE;
 const WORLD_H = ROWS * TILE;
-const SCALE = 1.5;
 const WALL_H = 3; // 벽(통창) 높이 — 3칸으로 확장 (96px)
 const DPR = typeof window !== "undefined" ? Math.min(window.devicePixelRatio || 1, 3) : 2;
 const TEXT_RES = 8; // 텍스트 전용 최고 해상도 (DPR 무관 고정 8x)
 const FONT = "'Pretendard Variable', Pretendard, -apple-system, sans-serif";
+// 게임 내 라벨/말풍선용 포켓몬 스타일 폰트 (globals.css에서 @font-face 로드)
+// 볼드 + 선명한 렌더링용 폰트 스택 (PokemonClearBold 우선)
+const POKEMON_FONT = "'PokemonClearBold', 'PokemonClear', 'Pretendard Variable', sans-serif";
 
 interface TeamConfig {
   id: string; name: string; emoji: string;
-  chars: number[]; gridX: number; gridY: number; gridW: number; gridH: number;
+  chars: (number | string)[]; gridX: number; gridY: number; gridW: number; gridH: number;
 }
 
 // 팀 메타데이터 (서버 floor_layout.json이 층 배치의 소스오브트루스)
 // gridX/gridY = 기본 위치. localStorage로 덮어씌워짐.
 // 팀 메타 — 서버 동기화 시 동적으로 업데이트됨
-// chars: 캐릭터 스프라이트 인덱스 배열 (팀별 고유 외형)
-const CHAR_POOL = [[0,3,1,2],[1,2,3,0],[2,0,1,3],[3,1,0,2],[1,3,0,2],[2,0,3,1],[3,1,0,2],[0,3,2,1]];
+// 팀별 primary 캐릭터 2개 (0 ~ PRIMARY_CHAR_POOL_SIZE-1, 전체 팀 간 중복 없음)
+// 0~19: 기본 캐릭터 / 20~29: phone001~010 / 30~207: 이름 있는 트레이너
+// 나머지 2명은 buildTeamChars()가 NPC 풀에서 시드 기반으로 픽
+const PRIMARY_CHARS: Record<string, [number, number]> = {
+  "trading-bot":   [0, 100],
+  "date-map":      [4, 104],
+  "claude-biseo":  [8, 108],
+  "ai900":         [12, 112],
+  "design-team":   [16, 116],
+  "content-lab":   [1, 101],
+  "frontend-team": [2, 102],
+  "backend-team":  [3, 103],
+  "qa-agent":      [5, 105],
+};
+
+/** 이미 쓰인 primary 집합 */
+function usedPrimarySet(): Set<number> {
+  const used = new Set<number>();
+  for (const pair of Object.values(PRIMARY_CHARS)) {
+    used.add(pair[0]);
+    used.add(pair[1]);
+  }
+  return used;
+}
+
+/** 사용 중이지 않은 primary 2개를 결정적으로 할당 (teamId 해시 시드) */
+function allocatePrimaryPair(teamId: string): [number, number] {
+  const used = usedPrimarySet();
+  const rand = mulberry32(hashString(teamId));
+  const picks: number[] = [];
+  // 1차: 사용되지 않은 슬롯 중 시드 기반 랜덤 픽
+  const available: number[] = [];
+  for (let i = 0; i < PRIMARY_CHAR_POOL_SIZE; i++) {
+    if (!used.has(i)) available.push(i);
+  }
+  while (picks.length < 2 && available.length > 0) {
+    const idx = Math.floor(rand() * available.length);
+    picks.push(available.splice(idx, 1)[0]!);
+  }
+  // 풀 소진 시 해시 폴백 (중복 허용)
+  while (picks.length < 2) {
+    picks.push(hashString(teamId + "#" + picks.length) % PRIMARY_CHAR_POOL_SIZE);
+  }
+  return [picks[0]!, picks[1]!];
+}
+
 const TEAM_META: Record<string, Omit<TeamConfig, "id" | "gridX" | "gridY">> = {
-  "trading-bot":   { name: "매매봇",    emoji: "🤖", chars: CHAR_POOL[0], gridW: 4, gridH: 4 },
-  "date-map":      { name: "데이트지도", emoji: "🗺️", chars: CHAR_POOL[1], gridW: 4, gridH: 4 },
-  "claude-biseo":  { name: "클로드비서", emoji: "🤵", chars: CHAR_POOL[2], gridW: 4, gridH: 4 },
-  "ai900":         { name: "AI900",     emoji: "📚", chars: CHAR_POOL[3], gridW: 4, gridH: 4 },
-  "design-team":   { name: "디자인팀",  emoji: "🎨", chars: CHAR_POOL[4], gridW: 4, gridH: 4 },
-  "content-lab":   { name: "콘텐츠랩",  emoji: "🔬", chars: CHAR_POOL[5], gridW: 4, gridH: 4 },
-  "frontend-team": { name: "프론트엔드",emoji: "🖼",  chars: CHAR_POOL[6], gridW: 4, gridH: 4 },
-  "backend-team":  { name: "백엔드",    emoji: "⚙️", chars: CHAR_POOL[7], gridW: 4, gridH: 4 },
+  "trading-bot":   { name: "매매봇",    emoji: "🤖", chars: buildTeamChars("trading-bot",   PRIMARY_CHARS["trading-bot"]!),   gridW: 4, gridH: 4 },
+  "date-map":      { name: "데이트지도", emoji: "🗺️", chars: buildTeamChars("date-map",      PRIMARY_CHARS["date-map"]!),      gridW: 4, gridH: 4 },
+  "claude-biseo":  { name: "클로드비서", emoji: "🤵", chars: buildTeamChars("claude-biseo",  PRIMARY_CHARS["claude-biseo"]!),  gridW: 4, gridH: 4 },
+  "ai900":         { name: "AI900",     emoji: "📚", chars: buildTeamChars("ai900",         PRIMARY_CHARS["ai900"]!),         gridW: 4, gridH: 4 },
+  "design-team":   { name: "디자인팀",  emoji: "🎨", chars: buildTeamChars("design-team",   PRIMARY_CHARS["design-team"]!),   gridW: 4, gridH: 4 },
+  "content-lab":   { name: "콘텐츠랩",  emoji: "🔬", chars: buildTeamChars("content-lab",   PRIMARY_CHARS["content-lab"]!),   gridW: 4, gridH: 4 },
+  "frontend-team": { name: "프론트엔드",emoji: "🖼",  chars: buildTeamChars("frontend-team", PRIMARY_CHARS["frontend-team"]!), gridW: 4, gridH: 4 },
+  "backend-team":  { name: "백엔드",    emoji: "⚙️", chars: buildTeamChars("backend-team",  PRIMARY_CHARS["backend-team"]!),  gridW: 4, gridH: 4 },
+  "qa-agent":      { name: "QA에이전트",emoji: "🧪", chars: buildTeamChars("qa-agent",      PRIMARY_CHARS["qa-agent"]!),      gridW: 4, gridH: 4 },
 };
 
 /** 서버에서 받은 팀 정보로 TEAM_META에 없는 팀 자동 등록 */
 function ensureTeamMeta(t: { id: string; name?: string; emoji?: string }) {
   if (!TEAM_META[t.id]) {
-    const idx = Object.keys(TEAM_META).length;
+    const pair = allocatePrimaryPair(t.id);
+    PRIMARY_CHARS[t.id] = pair;
     TEAM_META[t.id] = {
       name: t.name || t.id,
       emoji: t.emoji || "🤖",
-      chars: CHAR_POOL[idx % CHAR_POOL.length],
+      chars: buildTeamChars(t.id, pair),
       gridW: 4, gridH: 4,
     };
   }
@@ -71,7 +160,7 @@ let ALL_FLOORS: Record<number, TeamConfig[]> = {
   ],
 };
 
-interface MemberSprite { char: Phaser.GameObjects.Sprite; charIdx: number; baseX: number; baseY: number; bubble?: Phaser.GameObjects.Graphics; }
+interface MemberSprite { char: Phaser.GameObjects.Sprite; charIdx: number | string; baseX: number; baseY: number; bubble?: Phaser.GameObjects.Container; }
 interface TeamGroup {
   container: Phaser.GameObjects.Container; members: MemberSprite[];
   label: Phaser.GameObjects.Text; highlight: Phaser.GameObjects.Rectangle;
@@ -155,7 +244,11 @@ export default class OfficeScene extends Phaser.Scene {
     const keys = ["desk_front","desk_side","pc_on1","pc_on2","pc_on3","pc_off","pc_back",
       "chair_front","chair_back","plant","large_plant","bookshelf","cactus","bin","pot",
       "floor_tile","wall_tile","whiteboard","coffee_table"];
-    for (let i = 0; i <= 5; i++) keys.push(`char_${i}`);
+    keys.push("char_cpo");
+    for (let i = 0; i <= 19; i++) keys.push(`char_${i}`);
+    for (let i = 1; i <= NPC_POOL_SIZE; i++) {
+      keys.push(`char_npc_${String(i).padStart(2, "0")}`);
+    }
     keys.forEach(k => {
       const tex = this.textures.get(k);
       if (tex && tex.key !== "__MISSING") {
@@ -209,34 +302,30 @@ export default class OfficeScene extends Phaser.Scene {
       for (let y = 0; y < WALL_H; y++) this.grid[y][x] = true;
     }
 
-    // ── 사무실 바닥 (밝은 흰색 대리석) ──
-    const floorG = this.add.graphics();
+    // ── 사무실 바닥 (깨끗한 화이트/라이트 마블 타일) ──
     const fy = WALL_H * TILE;
     const fh = (ROWS - WALL_H) * TILE;
-    const tileSize = 64;
+    const tileSize = 32;
+    const floorG = this.add.graphics();
+    // 베이스: 밝은 화이트/그레이
+    floorG.fillStyle(0xf0f0f0, 1);
+    floorG.fillRect(0, fy, WORLD_W, fh);
+    // 은은한 줄눈 (그리드)
+    floorG.fillStyle(0x000000, 0.06);
+    for (let x = 0; x <= WORLD_W; x += tileSize) {
+      floorG.fillRect(x, fy, 1, fh);
+    }
+    for (let y = fy; y <= fy + fh; y += tileSize) {
+      floorG.fillRect(0, y, WORLD_W, 1);
+    }
+    // 타일 하이라이트 (밝은 빛 반사)
+    floorG.fillStyle(0xffffff, 0.35);
     for (let y = fy; y < fy + fh; y += tileSize) {
       for (let x = 0; x < WORLD_W; x += tileSize) {
-        const isLight = ((x / tileSize) + ((y - fy) / tileSize)) % 2 === 0;
-        floorG.fillStyle(isLight ? 0xe8e8ee : 0xdcdce4, 1);
-        floorG.fillRect(x, y, tileSize, tileSize);
-        // 대리석 결
-        floorG.fillStyle(isLight ? 0xf0f0f4 : 0xe2e2ea, 0.25);
-        for (let s = 3; s < tileSize; s += 10) {
-          floorG.fillRect(x + s, y, 1, tileSize);
-        }
-        for (let s = 5; s < tileSize; s += 14) {
-          floorG.fillRect(x, y + s, tileSize, 1);
-        }
-        // 광택 하이라이트
-        floorG.fillStyle(0xffffff, 0.08);
-        floorG.fillRect(x, y, tileSize, 2);
-        floorG.fillRect(x, y, 2, tileSize);
-        // 줄눈
-        floorG.fillStyle(0xc0c0c8, 0.4);
-        floorG.fillRect(x + tileSize - 1, y, 1, tileSize);
-        floorG.fillRect(x, y + tileSize - 1, tileSize, 1);
+        floorG.fillRect(x + 1, y + 1, 2, 1);
       }
     }
+    floorG.setDepth(0);
     this.envGroup.add(floorG);
 
     // ── 통창 ──
@@ -267,7 +356,7 @@ export default class OfficeScene extends Phaser.Scene {
     // ── CPO: 모든 층에 공용 배치 (엘리베이터 근처 복도 위) ──
     const cpoConfig: TeamConfig = {
       id: "cpo-claude", name: "CPO", emoji: "🧠",
-      chars: [6], gridX: 22, gridY: 11, gridW: 2, gridH: 2,
+      chars: ["cpo"], gridX: 22, gridY: 11, gridW: 2, gridH: 2,
     };
     if (saved && saved[cpoConfig.id]) {
       cpoConfig.gridX = saved[cpoConfig.id].gx;
@@ -427,13 +516,15 @@ export default class OfficeScene extends Phaser.Scene {
       { x: 825, size: "sm", isEv: true },
     ];
 
-    treePositions.forEach(({ x, size, isEv }) => {
-      const treeSeason = isEv ? "evergreen" : season;
-      const key = `tree_${treeSeason}_${size}`;
-      const tree = this.add.image(x, wh, key).setOrigin(0.5, 1).setDepth(6);
-      if (nightT) tree.setTint(0x0a1520);
-      this.envGroup.add(tree);
-    });
+    // 나무 제거 — 도시 실루엣만 유지 (Pokemon 스타일 단순화)
+    // treePositions.forEach(({ x, size, isEv }) => {
+    //   const treeSeason = isEv ? "evergreen" : season;
+    //   const key = `tree_${treeSeason}_${size}`;
+    //   const tree = this.add.image(x, wh, key).setOrigin(0.5, 1).setDepth(6);
+    //   if (nightT) tree.setTint(0x0a1520);
+    //   this.envGroup.add(tree);
+    // });
+    void treePositions; void nightT;
 
     // ── 안개 오버레이 ─────────────────────────────────────────────
     if (isFog) {
@@ -525,38 +616,37 @@ export default class OfficeScene extends Phaser.Scene {
   }
 
   private drawServerRoom() {
-    // 서버실 비주얼 제거 — 벽걸이 서버 모니터만 우상단에 배치
+    // 서버실 컴퓨터 워크스테이션 (우상단 구석) — 시각적 요소 + 클릭 영역
     const monX = WORLD_W - 52;
     const monY = WALL_H * TILE + 16;
 
-    // 벽걸이 모니터 프레임 (중형)
-    const monG = this.add.graphics().setDepth(100);
-    monG.fillStyle(0x222233, 1);
-    monG.fillRoundedRect(monX - 45, monY - 18, 90, 36, 4);
-    monG.fillStyle(0x101828, 1);
-    monG.fillRoundedRect(monX - 41, monY - 15, 82, 30, 3);
-    // 미니 대시보드
-    monG.fillStyle(0x40d080, 0.8);
-    monG.fillRect(monX - 37, monY - 12, 28, 3);
-    monG.fillStyle(0x60a0e0, 0.6);
-    monG.fillRect(monX - 37, monY - 6, 42, 2);
-    monG.fillStyle(0x40d080, 0.5);
-    monG.fillRect(monX - 37, monY - 2, 18, 2);
-    // 미니 그래프
-    [0, 5, 10, 15, 20].forEach((dx, i) => {
-      const h = 5 + Math.sin(i * 1.2) * 3;
-      monG.fillStyle(0x40d080, 0.6);
-      monG.fillRect(monX + 8 + dx, monY + 4 - h, 3, h);
-    });
-    this.envGroup.add(monG);
+    // 바닥 패드 (서버존 구분)
+    const padG = this.add.graphics().setDepth(1);
+    padG.fillStyle(0x2a2a3a, 0.25);
+    padG.fillRoundedRect(monX - 48, monY - 4, 96, 72, 4);
+    padG.lineStyle(1, 0x4a90d9, 0.4);
+    padG.strokeRoundedRect(monX - 48, monY - 4, 96, 72, 4);
+    this.envGroup.add(padG);
 
-    // 모니터 라벨
-    this.envGroup.add(this.add.text(monX, monY - 23, "🖥", {
-      fontSize: "12px", fontFamily: FONT, color: "#50c080", resolution: TEXT_RES,
-    }).setOrigin(0.5).setDepth(101));
+    // 데스크 (팀 책상과 동일: desk_front = 64x32, center origin)
+    const deskCX = monX;
+    const deskCY = monY + 32;
+    this.envGroup.add(
+      this.add.image(deskCX, deskCY, "desk_front").setOrigin(0.5, 0.5).setDepth(50)
+    );
+    // 모니터 (책상 위 — 팀과 동일 앵커링, bottom-origin at desk top edge)
+    this.envGroup.add(
+      this.add.image(deskCX, deskCY - 16, "monitor").setOrigin(0.5, 1).setDepth(60)
+    );
+    // 서버실 라벨
+    const label = this.add.text(monX, monY - 6, "SERVER", {
+      fontSize: "9px", fontFamily: FONT,
+      color: "#4a90d9", resolution: TEXT_RES,
+    }).setOrigin(0.5, 1).setDepth(7);
+    this.envGroup.add(label);
 
-    // 모니터 클릭
-    const monHit = this.add.zone(monX, monY, 100, 44).setInteractive({ useHandCursor: true }).setDepth(102);
+    // 클릭 영역 (대시보드 트리거)
+    const monHit = this.add.zone(monX, monY + 24, 100, 60).setInteractive({ useHandCursor: true }).setDepth(102);
     monHit.on("pointerdown", () => {
       const cam = this.cameras.main;
       const rect = this.game.canvas.getBoundingClientRect();
@@ -584,19 +674,26 @@ export default class OfficeScene extends Phaser.Scene {
     g.fillStyle(0xb8b8c0, 0.3);
     g.fillRect(0, corY + corH / 2, WORLD_W, 1);
 
-    // 복도 상단 벽 (두꺼운 벽)
+    // 복도 상단 벽 (두꺼운 벽) — 중앙에 1타일(32px) 출입구 갭
+    const gapCenterX = WORLD_W / 2;
+    const gapW = 32;
+    const gapLeft = gapCenterX - gapW / 2;
+    const gapRight = gapCenterX + gapW / 2;
     g.fillStyle(0x7a7a8a, 1);
-    g.fillRect(0, corY, WORLD_W, 5);
+    g.fillRect(0, corY, gapLeft, 5);
+    g.fillRect(gapRight, corY, WORLD_W - gapRight, 5);
     g.fillStyle(0x9a9aaa, 0.6);
-    g.fillRect(0, corY + 1, WORLD_W, 1);
-    // 벽 하단 그림자
+    g.fillRect(0, corY + 1, gapLeft, 1);
+    g.fillRect(gapRight, corY + 1, WORLD_W - gapRight, 1);
+    // 벽 하단 그림자 (갭 제외)
     g.fillStyle(0x000000, 0.05);
-    g.fillRect(0, corY + 5, WORLD_W, 3);
+    g.fillRect(0, corY + 5, gapLeft, 3);
+    g.fillRect(gapRight, corY + 5, WORLD_W - gapRight, 3);
 
-    // 복도 출입구 (사무실 → 복도, 가운데)
-    const doorX = WORLD_W / 2 - 20;
-    g.fillStyle(0xe0e0e8, 1);
-    g.fillRect(doorX, corY, 40, 5);
+    // 출입구 갭 측면 기둥(문틀) — 얇은 어두운 선으로 개구부 강조
+    g.fillStyle(0x4a4a5a, 0.8);
+    g.fillRect(gapLeft - 1, corY, 1, 5);
+    g.fillRect(gapRight, corY, 1, 5);
 
     // 소화기 (복도 안 좌측, 고퀄)
     g.fillStyle(0xcc2222, 1);
@@ -650,33 +747,35 @@ export default class OfficeScene extends Phaser.Scene {
     const wallY = WALL_H * TILE + 12;
     const corY = (ROWS - 3) * TILE;
 
-    // ── 좌측 벽면 — 책장 (오리지널 에셋) ──
-    this.envGroup.add(this.add.image(30, wallY + 35, "o_bookshelf").setDepth(5));
-    this.envGroup.add(this.add.image(30, wallY + 110, "o_bookshelf").setDepth(5));
+    // ── 좌측 벽면 — 책장 (Pokemon 에셋, 32x64) ──
+    this.envGroup.add(this.add.image(30, wallY + 40, "bookshelf").setOrigin(0.5, 1).setDepth(5));
+    this.envGroup.add(this.add.image(30, wallY + 110, "bookshelf").setOrigin(0.5, 1).setDepth(5));
 
-    // ── 우측 벽면 — 화이트보드 (서버 모니터 아래) ──
-    this.envGroup.add(this.add.image(WORLD_W - 130, wallY + 20, "o_whiteboard").setDepth(5));
+    // ── 우측 벽면 — 화이트보드 (Pokemon 에셋) ──
+    this.envGroup.add(this.add.image(WORLD_W - 130, wallY + 20, "whiteboard").setDepth(5));
 
-    // ── 벽면 에어컨 ──
-    this.envGroup.add(this.add.image(14 * TILE, wallY - 8, "o_ac").setDepth(5));
-
-    // ── 정수기 (오리지널 에셋) ──
-    this.envGroup.add(this.add.image(30, corY - 22, "o_water_cooler").setDepth(5));
-
-    // ── 커피머신 ──
-    this.envGroup.add(this.add.image(70, corY - 18, "o_coffee").setDepth(5));
-
-    // ── 창가 화분 ──
-    this.envGroup.add(this.add.image(8 * TILE, wallY + 6, "plant").setScale(SCALE));
-    this.envGroup.add(this.add.image(15 * TILE, wallY + 6, "large_plant").setScale(SCALE));
-
-    // ── 소화기 (오리지널) ──
-    this.envGroup.add(this.add.image(WORLD_W - 85, corY - 16, "o_fire_ext").setDepth(5));
+    // ── 사무실 네 구석 — 화분만 ──
+    // 좌하단 구석 (큰 화분)
+    this.envGroup.add(
+      this.add.image(40, corY - 8, "plant_large").setOrigin(0.5, 1).setDepth(5)
+    );
+    // 우하단 구석 (작은 화분)
+    this.envGroup.add(
+      this.add.image(WORLD_W - 40, corY - 8, "plant_1").setOrigin(0.5, 1).setDepth(5)
+    );
+    // 좌상단 (책장 아래, 보조 화분)
+    this.envGroup.add(
+      this.add.image(80, wallY + 130, "plant_1").setOrigin(0.5, 1).setDepth(5)
+    );
+    // 우상단
+    this.envGroup.add(
+      this.add.image(WORLD_W - 80, wallY + 130, "plant_2").setOrigin(0.5, 1).setDepth(5)
+    );
 
     // ── 천장 조명 반사 ──
     [5, 11, 17, 23].forEach(col => {
       [6, 12].forEach(row => {
-        this.envGroup.add(this.add.image(col * TILE, row * TILE, "light_glow").setScale(2));
+        this.envGroup.add(this.add.image(col * TILE, row * TILE, "light_glow"));
       });
     });
 
@@ -804,71 +903,78 @@ export default class OfficeScene extends Phaser.Scene {
       .setStrokeStyle(1, 0xf5c842, 0);
     container.add(highlight);
 
-    // 2x2 등맞대기 배치
-    // 윗줄: PC → 데스크 → 캐릭(정면) | 아랫줄: 캐릭(뒷면) → 데스크 → PC뒷면
-    // char_0~5: Pixel Agents 16×16 (S=1.2 → 19px) | char_6: CPO 32×64 (S=0.5 → 16×32)
+    // 2x2 포켓몬 스타일 사무실 배치
+    // 윗줄: 캐릭(↓ 정면) 위 + 책상 아래 (캐릭이 책상 앞에 서 있음, 캐릭이 책상보다 위 depth)
+    // 아랫줄: 책상 위 + 캐릭(↑ 뒷면) 아래 (책상이 캐릭 앞에 있음, 책상이 캐릭보다 위 depth)
     const members: MemberSprite[] = [];
-    const charScale = (idx: number) => idx === 6 ? 0.5 : 1.2;
-    const gapX = 30;
-
-    // 모니터 옆모습 (픽셀 캐릭에 맞는 크기)
-    const drawMonSide = (g: Phaser.GameObjects.Graphics, facing: number) => {
-      const f = facing;
-      g.fillStyle(0x2a2a2a, 1); g.fillRect(-3, -8, 6, 12);            // 모니터 본체
-      g.fillStyle(0x1a2a40, 1); g.fillRect(f > 0 ? -3 : 1, -7, 3, 9); // 화면
-      g.fillStyle(0x50d070, 0.8); g.fillRect(f > 0 ? -2 : 1, -5, 2, 1); // 초록선
-      g.fillStyle(0x60a0e0, 0.6); g.fillRect(f > 0 ? -2 : 1, -3, 2, 1); // 파란선
-      g.fillStyle(0x50d070, 0.5); g.fillRect(f > 0 ? -2 : 1, -1, 2, 1); // 초록선2
-      g.fillStyle(0x444444, 1); g.fillRect(-1, 4, 2, 3);               // 스탠드
-      g.fillStyle(0x555555, 1); g.fillRect(-4, 7, 8, 2);               // 받침
-    };
+    const S = 1.0;   // 32x48 * 1.0 = 32x48 (정수 스케일 = 선명한 픽셀)
 
     const isSolo = t.chars.length === 1;
 
-    // 좌우 마주보기 배치 — depth 문제 없음
-    // 왼쪽 2명: 오른쪽 바라봄 | 오른쪽 2명: 왼쪽 바라봄
-    const cols = 7; // spritesheet columns
+    const cols = 4; // spritesheet columns (Pokemon Another Red format)
+    // Side-view facing frames (RPG Maker row layout: 0=down,1=left,2=right,3=up)
+    const rightFrame = cols * 2; // facing right (first col of row 2)
+    const leftFrame  = cols * 1; // facing left  (first col of row 1)
+
+    // Side-view 2x2: left-column chars face RIGHT, right-column chars face LEFT
+    // 팀 압축: 캐릭-책상 가까이, 팀 내부 타이트하게
+    const gapX = 44;      // 캐릭 x 위치 (±44) — 팀 총 폭 88px
+    const deskOffset = 14; // 책상이 중앙에서 ±14 (캐릭 바로 옆)
+    const gapY = 40;      // 위아래 줄 간격
+    const topY = -gapY / 2;
+    const botY =  gapY / 2;
+
+    const workstations = [
+      // Top-left: char faces right → desk to its right (inward)
+      { charX: -gapX, charY: topY, facing: rightFrame, deskX: -deskOffset, assetDir: "right" as const, isTopRow: true  },
+      // Top-right: char faces left → desk to its left (inward)
+      { charX:  gapX, charY: topY, facing: leftFrame,  deskX:  deskOffset, assetDir: "left"  as const, isTopRow: true  },
+      // Bottom-left
+      { charX: -gapX, charY: botY, facing: rightFrame, deskX: -deskOffset, assetDir: "right" as const, isTopRow: false },
+      // Bottom-right
+      { charX:  gapX, charY: botY, facing: leftFrame,  deskX:  deskOffset, assetDir: "left"  as const, isTopRow: false },
+    ];
+
     t.chars.forEach((charIdx, i) => {
       if (i >= 4) return;
 
       if (isSolo) {
         const char = this.add.sprite(0, 0, `char_${charIdx}`, 0)
-          .setScale(charScale(charIdx)).setOrigin(0.5, 0.75)
+          .setScale(S).setOrigin(0.5, 0.75)
           .play(`char_${charIdx}_idle`);
         container.add(char);
         members.push({ char, charIdx, baseX: 0, baseY: 0 });
         return;
       }
 
-      const isLeft = i < 2;
-      const row = i % 2;
-      const dy = row === 0 ? -gapX / 2 : gapX / 2;
+      const ws = workstations[i];
+      const { isTopRow } = ws;
 
-      if (isLeft) {
-        // 왼쪽: 캐릭(→) → 책상 → 모니터(→)
-        const deskX = -10;
-        container.add(this.add.image(deskX, dy + 4, "desk_front").setScale(0.55));
-        const mon = this.add.graphics();
-        drawMonSide(mon, 1); mon.setPosition(deskX + 1, dy - 6);
-        container.add(mon);
-        const charX = deskX - 18;
-        const char = this.add.sprite(charX, dy, `char_${charIdx}`, cols * 2)
-          .setScale(charScale(charIdx)).setOrigin(0.5, 0.75);
-        container.add(char);
-        members.push({ char, charIdx, baseX: charX, baseY: dy });
-      } else {
-        // 오른쪽: 모니터(←) → 책상 → 캐릭(←)
-        const deskX = 10;
-        container.add(this.add.image(deskX, dy + 4, "desk_front").setScale(0.55));
-        const mon = this.add.graphics();
-        drawMonSide(mon, -1); mon.setPosition(deskX - 1, dy - 6);
-        container.add(mon);
-        const charX = deskX + 18;
-        const char = this.add.sprite(charX, dy, `char_${charIdx}`, cols)
-          .setScale(charScale(charIdx)).setOrigin(0.5, 0.75);
-        container.add(char);
-        members.push({ char, charIdx, baseX: charX, baseY: dy });
-      }
+      // Distinct base depths per row so bottom row naturally overlaps top row
+      const deskDepth   = isTopRow ? 50 : 55;
+      const charDepth   = isTopRow ? 52 : 57; // char just above desk so body visible
+      const laptopDepth = isTopRow ? 60 : 65; // laptop on top
+
+      // Desk (진짜 옆모습, 32x56 wicker desk — 다리 보이는 측면뷰)
+      const desk = this.add.image(ws.deskX, ws.charY + 8, "desk_side_wicker")
+        .setOrigin(0.5, 1)  // 바닥 정렬 (다리가 바닥에 닿음)
+        .setDepth(deskDepth);
+      container.add(desk);
+
+      // V자 오픈 노트북 (탑뷰, 32x32) — 양쪽 자리 공통
+      const laptop = this.add.image(ws.deskX, ws.charY - 40, "laptop_v")
+        .setOrigin(0.5, 1)
+        .setDepth(laptopDepth);
+      container.add(laptop);
+
+      // Character facing toward desk (side-view idle frame)
+      const char = this.add.sprite(ws.charX, ws.charY, `char_${charIdx}`, ws.facing)
+        .setScale(S).setOrigin(0.5, 0.75)
+        .setDepth(charDepth)
+        .play(`char_${charIdx}_idle`);
+      container.add(char);
+
+      members.push({ char, charIdx, baseX: ws.charX, baseY: ws.charY });
     });
 
     // 화이트보드 명패
@@ -883,9 +989,10 @@ export default class OfficeScene extends Phaser.Scene {
     container.add(nameBg);
 
     const label = this.add.text(0, nameY, `${t.emoji} ${t.name}`, {
-      fontSize: "13px", fontFamily: FONT,
-      color: "#222222", resolution: TEXT_RES,
-      stroke: "#ffffff", strokeThickness: 0.3,
+      fontSize: "14px", fontFamily: POKEMON_FONT,
+      fontStyle: "bold",
+      color: "#111111", resolution: 16,
+      stroke: "#111111", strokeThickness: 0.5,
     }).setOrigin(0.5);
     container.add(label);
 
@@ -1019,7 +1126,7 @@ export default class OfficeScene extends Phaser.Scene {
       const m = tg.members[Phaser.Math.Between(0, tg.members.length - 1)];
       const mx = Phaser.Math.Between(-2, 2);
       if (mx === 0) return;
-      const SPRITE_COLS = 7;
+      const SPRITE_COLS = 4;
       const isDeskChar = m.baseX !== 0;
 
       // 진행 중인 트윈 강제 종료 → 위치를 baseX로 리셋 (stuck 방지)
@@ -1037,8 +1144,13 @@ export default class OfficeScene extends Phaser.Scene {
       if (!isDeskChar) {
         const anim = mx > 0 ? `char_${m.charIdx}_walk_right` : `char_${m.charIdx}_walk_left`;
         m.char.play(anim);
+        // Solo char has no desk/monitor siblings → safe to bring to top
+        tg.container.bringToTop(m.char);
       }
-      tg.container.bringToTop(m.char);
+      // NOTE: Do NOT bringToTop for desk chars — it would render them above
+      // their desk/monitor siblings (Container siblings render in list order,
+      // setDepth is ignored within a Container). Keep creation order intact
+      // so chars stay behind desks/monitors as designed.
 
       // Math.round 보장: 트윈 중간값도 정수 좌표만 사용 (픽셀아트 깨짐 방지)
       this.tweens.add({ targets: m.char, x: Math.round(m.baseX + mx), duration: 350, ease: "Sine.easeInOut",
@@ -1092,35 +1204,59 @@ export default class OfficeScene extends Phaser.Scene {
         const typeAnim = m.baseX > 0 ? `char_${m.charIdx}_type_left` : `char_${m.charIdx}_type`;
         m.char.play(typeAnim);
       } else {
-        const COLS = 7;
-        if (m.baseX < 0) m.char.setFrame(COLS * 2);   // 왼쪽 책상 → 오른쪽 옆모습 복원
-        else if (m.baseX > 0) m.char.setFrame(COLS);  // 오른쪽 책상 → 왼쪽 옆모습 복원
+        const SPRITE_C = 4;
+        if (m.baseX < 0) m.char.setFrame(SPRITE_C * 2);   // 왼쪽 책상 → 오른쪽 옆모습 복원
+        else if (m.baseX > 0) m.char.setFrame(SPRITE_C);  // 오른쪽 책상 → 왼쪽 옆모습 복원
         else m.char.play(`char_${m.charIdx}_idle`);   // 솔로 → 정면
       }
 
       // 말풍선 — 캐릭터 머리 위 (scene 레벨 depth 200)
       if (working && !m.bubble) {
-        const b = this.add.graphics().setDepth(200);
-        b.fillStyle(0xfffbe6, 1);
-        b.fillRoundedRect(-18, -16, 36, 18, 4);
-        b.lineStyle(1.5, 0xf5c842, 0.9);
-        b.strokeRoundedRect(-18, -16, 36, 18, 4);
-        b.fillStyle(0xfffbe6, 1);
-        b.fillTriangle(-3, 2, 3, 2, 0, 7);
-        b.lineStyle(1, 0xf5c842, 0.7);
-        b.lineBetween(-3, 2, 0, 7);
-        b.lineBetween(3, 2, 0, 7);
-        b.fillStyle(0x333333, 1);
-        b.fillCircle(-6, -7, 2);
-        b.fillCircle(0, -7, 2);
-        b.fillCircle(6, -7, 2);
-        // 머리 위 위치: 1인(CPO)은 container 중앙 위, 멀티는 캐릭 baseY 위
+        // Pokemon windowskin 말풍선 (3슬라이스 스프라이트: 좌테두리/중앙/우테두리)
+        // 프레임 0=left border, 1=center fill, 2=right border (각 32x48)
+        const container = this.add.container(0, 0).setDepth(200);
+        const BUBBLE_W = 44;
+        const BUBBLE_H = 22;
+        const BORDER = 4;
+        const leftBorder = this.add.image(-BUBBLE_W / 2, 0, "speech_bubble", 0)
+          .setOrigin(0, 0.5)
+          .setDisplaySize(BORDER, BUBBLE_H);
+        const center = this.add.image(-BUBBLE_W / 2 + BORDER, 0, "speech_bubble", 1)
+          .setOrigin(0, 0.5)
+          .setDisplaySize(BUBBLE_W - BORDER * 2, BUBBLE_H);
+        const rightBorder = this.add.image(BUBBLE_W / 2 - BORDER, 0, "speech_bubble", 2)
+          .setOrigin(0, 0.5)
+          .setDisplaySize(BORDER, BUBBLE_H);
+        [leftBorder, center, rightBorder].forEach(img => {
+          const tex = img.texture;
+          if (tex && tex.source[0]) tex.setFilter(Phaser.Textures.FilterMode.NEAREST);
+        });
+        container.add([leftBorder, center, rightBorder]);
+
+        // 말풍선 꼬리 (아래로)
+        const tail = this.add.graphics();
+        tail.fillStyle(0xffffff, 1);
+        tail.fillTriangle(-3, BUBBLE_H / 2 - 1, 3, BUBBLE_H / 2 - 1, 0, BUBBLE_H / 2 + 5);
+        tail.lineStyle(1, 0x303030, 0.6);
+        tail.lineBetween(-3, BUBBLE_H / 2 - 1, 0, BUBBLE_H / 2 + 5);
+        tail.lineBetween(3, BUBBLE_H / 2 - 1, 0, BUBBLE_H / 2 + 5);
+        container.add(tail);
+
+        // 3점(...) 작업 표시
+        const dots = this.add.graphics();
+        dots.fillStyle(0x333333, 1);
+        dots.fillCircle(-6, 0, 1.8);
+        dots.fillCircle(0, 0, 1.8);
+        dots.fillCircle(6, 0, 1.8);
+        container.add(dots);
+
+        // 머리 위 위치
         const isSolo = tg.config.chars.length === 1;
         const headX = tg.container.x + (isSolo ? 0 : m.baseX);
         const headY = tg.container.y + (isSolo ? -30 : m.baseY - 22);
-        b.setPosition(headX, headY);
-        m.bubble = b;
-        this.tweens.add({ targets: b, scaleX: 1.1, scaleY: 1.1, duration: 200, yoyo: true, ease: "Sine.easeOut" });
+        container.setPosition(headX, headY);
+        m.bubble = container;
+        this.tweens.add({ targets: container, scaleX: 1.1, scaleY: 1.1, duration: 200, yoyo: true, ease: "Sine.easeOut" });
       } else if (!working && m.bubble) {
         m.bubble.destroy();
         m.bubble = undefined;
@@ -1138,12 +1274,10 @@ export default class OfficeScene extends Phaser.Scene {
     const pos = this.findEmptyGrid(gridW, gridH);
     if (!pos) return; // 공간 없으면 무시
 
-    const charIndices = [
-      (teamId.charCodeAt(0) || 0) % 4,
-      ((teamId.charCodeAt(1) || 1) + 1) % 4,
-      ((teamId.charCodeAt(2) || 2) + 2) % 4,
-      ((teamId.charCodeAt(3) || 3) + 3) % 4,
-    ];
+    // Primary 2개를 고유하게 할당 (팀 간 중복 없음, teamId 시드 기반 결정적)
+    const pair = allocatePrimaryPair(teamId);
+    PRIMARY_CHARS[teamId] = pair;
+    const charIndices: (number | string)[] = buildTeamChars(teamId, pair);
 
     const config: TeamConfig = {
       id: teamId, name: teamName, emoji,
