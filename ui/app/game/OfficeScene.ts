@@ -59,9 +59,10 @@ const WALL_H = 3; // 벽(통창) 높이 — 3칸으로 확장 (96px)
 const DPR = typeof window !== "undefined" ? Math.min(window.devicePixelRatio || 1, 3) : 2;
 const TEXT_RES = 8; // 텍스트 전용 최고 해상도 (DPR 무관 고정 8x)
 const FONT = "'Pretendard Variable', Pretendard, -apple-system, sans-serif";
-// 게임 내 라벨/말풍선용 포켓몬 스타일 폰트 (globals.css에서 @font-face 로드)
-// 볼드 + 선명한 렌더링용 폰트 스택 (PokemonClearBold 우선)
-const POKEMON_FONT = "'PokemonClearBold', 'PokemonClear', 'Pretendard Variable', sans-serif";
+// 팀 라벨용 폰트 — Pretendard Variable 단일 기반
+// (PokemonClearBold는 @font-face 미정의 + PokemonClear는 400/700만 있어 600이 폴백 불안정 → weight 불규칙 문제)
+// Pretendard Variable은 100~900 전 weight 지원하므로 600 semibold 일관 적용됨
+const POKEMON_FONT = "'Pretendard Variable', Pretendard, -apple-system, sans-serif";
 
 interface TeamConfig {
   id: string; name: string; emoji: string;

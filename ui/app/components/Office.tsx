@@ -2217,12 +2217,8 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
               await Promise.all(criticalAssets.map(url =>
                 fetch(url, { cache: "reload" }).catch(() => {})
               ));
-              // 4) localStorage 에 캐시된 팀/위치 정보도 초기화 (에셋 외 상태 꼬임 방지)
-              //    인증 토큰은 유지
-              const keep = ["hq-token", "hq-owner"];
-              const preserved: Record<string, string> = {};
-              keep.forEach(k => { const v = localStorage.getItem(k); if (v) preserved[k] = v; });
-              Object.keys(localStorage).filter(k => k.startsWith("hq-positions-")).forEach(k => localStorage.removeItem(k));
+              // 4) localStorage 는 건드리지 않음 (팀 위치 hq-positions-* 보존)
+              //    토큰·팀 배치 같은 사용자 상태는 캐시 클리어 대상이 아님
             } catch (e) {
               console.error("cache clear failed", e);
             }
