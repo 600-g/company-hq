@@ -935,14 +935,11 @@ export default class OfficeScene extends Phaser.Scene {
       { charX:  gapX, charY: botY, facing: leftFrame,  deskX:  deskOffset, isTopRow: false },
     ];
 
-    // 노트북 A안: laptop_v 원본 통짜 1개를 줄마다 x=0(두 책상 사이 정중앙)에 배치
-    // y: 캐릭과 마주보는 face-level 높이 (origin 0.5,0.5 센터 기준 charY-18)
-    const drawLaptop = (rowY: number, depth: number) => {
-      container.add(this.add.image(0, rowY - 18, "laptop_v")
-        .setOrigin(0.5, 0.5).setDepth(depth));
+    // 노트북 A안: laptop_v 원본 통짜, 줄마다 x=0(두 책상 사이 정중앙), 캐릭 face-level
+    // ※ Phaser Container는 add 순서로 렌더 → 반드시 forEach(책상+캐릭) 뒤에 추가해야 위에 표시됨
+    const drawLaptop = (rowY: number) => {
+      container.add(this.add.image(0, rowY - 18, "laptop_v").setOrigin(0.5, 0.5));
     };
-    if (t.chars.length >= 2) drawLaptop(topY, 60);
-    if (t.chars.length >= 3) drawLaptop(botY, 65);
 
 
     t.chars.forEach((charIdx, i) => {
@@ -980,6 +977,10 @@ export default class OfficeScene extends Phaser.Scene {
 
       members.push({ char, charIdx, baseX: ws.charX, baseY: ws.charY });
     });
+
+    // 노트북 — forEach(책상+캐릭) 뒤에 추가해서 맨 위에 렌더 (책상이 덮지 않도록)
+    if (t.chars.length >= 2) drawLaptop(topY);
+    if (t.chars.length >= 3) drawLaptop(botY);
 
     // 화이트보드 명패
     const nameY = ph / 2 + 2;
