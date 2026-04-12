@@ -182,6 +182,8 @@ export default class OfficeScene extends Phaser.Scene {
   private floorLabel!: Phaser.GameObjects.Text;
   private envGroup!: Phaser.GameObjects.Group;
   private weatherCode = 0;
+  private apiBase = "";
+  private serverPositions: Record<string, { floor: number; gx: number; gy: number }> | null = null;
   private particleGraphics: Phaser.GameObjects.Graphics | null = null;
   private rainDrops: { x: number; y: number; speed: number; len: number }[] = [];
   private snowFlakes: { x: number; y: number; speed: number; size: number; dx: number }[] = [];
@@ -199,6 +201,20 @@ export default class OfficeScene extends Phaser.Scene {
 
     // 서버에서 층 배치 동적 로드 (실패 시 하드코딩 폴백 사용)
     const apiBase = data.apiBase || "";
+    this.apiBase = apiBase;
+    // 서버 저장 위치 먼저 로드 (웹/모바일 동기화)
+    if (apiBase) {
+      fetch(`${apiBase}/api/layout/positions`)
+        .then(r => r.json())
+        .then((resp: any) => {
+          if (resp.ok && resp.positions) {
+            this.serverPositions = resp.positions;
+            // 현재 층 다시 빌드해 저장 위치 반영
+            this.buildFloor(this.currentFloor);
+          }
+        })
+        .catch(() => {});
+    }
     if (apiBase) {
       fetch(`${apiBase}/api/layout/floors`)
         .then(r => r.json())
@@ -340,6 +356,23 @@ export default class OfficeScene extends Phaser.Scene {
 
     // ── 사무실 디테일 장식 ──
     this.drawOfficeDetails();
+
+    // ── 구조물/서버실 점유 영역 그리드에 표시 (팀 이동 차단) ──
+    // TILE=32, COLS=26, ROWS=18, WALL_H=3 가정
+    // 각 영역은 시각적 에셋 실제 위치에 맞춰 넉넉히 마진 포함
+    const STRUCTURE_ZONES: Array<{ x: number; y: number; w: number; h: number; label: string }> = [
+      // 좌벽: 책장 2개 + 좌상단 plant (x=0~2)
+      { x: 0, y: WALL_H, w: 2, h: 5, label: "좌벽_책장" },
+      // 좌하단 plant_large (x=0~1, y=12~14)
+      { x: 0, y: ROWS - 6, w: 2, h: 3, label: "좌하단_화분" },
+      // 우벽: 화이트보드 + 우상단 plant (x=20~22)
+      { x: 20, y: WALL_H, w: 2, h: 5, label: "우벽_화이트보드" },
+      // 우하단 plant_1 (x=22~24, y=12~14)
+      { x: 22, y: ROWS - 6, w: 2, h: 3, label: "우하단_화분" },
+      // 서버실 (우상단, 책상+모니터+패드)
+      { x: 21, y: WALL_H, w: 5, h: 3, label: "서버실" },
+    ];
+    STRUCTURE_ZONES.forEach(z => this.occupyGrid(z.x, z.y, z.w, z.h, true));
 
     // 팀 배치 (저장된 위치 있으면 사용)
     const teams = ALL_FLOORS[floor] || [];
@@ -1118,12 +1151,36 @@ export default class OfficeScene extends Phaser.Scene {
     this.teamGroups.forEach((tg, id) => {
       positions[id] = { gx: tg.gridX, gy: tg.gridY };
     });
+    // 1) localStorage (로컬 폴백/즉시반영)
     try {
       localStorage.setItem(`hq-positions-${this.currentFloor}`, JSON.stringify(positions));
     } catch {}
+    // 2) 서버 동기화 (웹/모바일 동기화) — 플로어 정보 포함
+    if (this.apiBase) {
+      const serverPayload: Record<string, { floor: number; gx: number; gy: number }> = {};
+      Object.entries(positions).forEach(([id, p]) => {
+        serverPayload[id] = { floor: this.currentFloor, gx: p.gx, gy: p.gy };
+      });
+      fetch(`${this.apiBase}/api/layout/positions`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ positions: serverPayload }),
+      }).catch(() => {}); // fire-and-forget
+    }
   }
 
   private loadPositions(): Record<string, { gx: number; gy: number }> | null {
+    // 서버 위치가 this.serverPositions에 있으면 우선 사용 (비동기 로드됨)
+    if (this.serverPositions) {
+      const filtered: Record<string, { gx: number; gy: number }> = {};
+      Object.entries(this.serverPositions).forEach(([id, p]) => {
+        if (p.floor === this.currentFloor) {
+          filtered[id] = { gx: p.gx, gy: p.gy };
+        }
+      });
+      if (Object.keys(filtered).length > 0) return filtered;
+    }
+    // 폴백: localStorage
     try {
       const data = localStorage.getItem(`hq-positions-${this.currentFloor}`);
       return data ? JSON.parse(data) : null;

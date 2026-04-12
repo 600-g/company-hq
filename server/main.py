@@ -158,6 +158,26 @@ def _save_layout(layout: dict[str, list[str]]):
     with open(_LAYOUT_FILE, "w", encoding="utf-8") as f:
         json.dump(layout, f, ensure_ascii=False, indent=2)
 
+
+# ── 팀 위치 (team_positions.json) — 웹/모바일 동기화용 ───────────────
+_POSITIONS_FILE = os.path.join(os.path.dirname(__file__), "team_positions.json")
+
+
+def _load_positions() -> dict[str, dict[str, int]]:
+    """teamId → {floor, gridX, gridY}"""
+    if os.path.isfile(_POSITIONS_FILE):
+        try:
+            with open(_POSITIONS_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+
+def _save_positions(positions: dict[str, dict[str, int]]) -> None:
+    with open(_POSITIONS_FILE, "w", encoding="utf-8") as f:
+        json.dump(positions, f, ensure_ascii=False, indent=2)
+
 def _sync_layout_with_teams(teams: list[dict], layout: dict[str, list[str]]) -> dict[str, list[str]]:
     """teams.json 변경 시 floor_layout.json에서 삭제된 팀 제거, 신규 팀 자동 배치
     pinned 팀(server-monitor, cpo-claude)은 게임에서 별도 렌더링 → layout 제외
@@ -627,6 +647,35 @@ async def get_floor_layout():
                 })
         floors.append({"floor": int(floor_str), "teams": teams_in_floor})
     return {"ok": True, "floors": floors}
+
+
+@app.get("/api/layout/positions")
+async def get_team_positions():
+    """팀별 그리드 위치 반환 — 웹/모바일 동기화용
+
+    응답: {"ok": true, "positions": {"team-id": {"floor": 1, "gx": 5, "gy": 8}}}
+    """
+    return {"ok": True, "positions": _load_positions()}
+
+
+@app.put("/api/layout/positions")
+async def update_team_positions(body: dict):
+    """팀 위치 저장 — 프론트 드래그 후 호출
+
+    body: {"positions": {"team-id": {"floor": 1, "gx": 5, "gy": 8}}}
+    """
+    incoming = body.get("positions") or {}
+    current = _load_positions()
+    # 병합 (incoming이 우선)
+    for tid, pos in incoming.items():
+        if isinstance(pos, dict) and "gx" in pos and "gy" in pos:
+            current[tid] = {
+                "floor": int(pos.get("floor", 1)),
+                "gx": int(pos["gx"]),
+                "gy": int(pos["gy"]),
+            }
+    _save_positions(current)
+    return {"ok": True, "positions": current}
 
 
 @app.put("/api/layout/floors")

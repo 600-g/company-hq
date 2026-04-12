@@ -1,14 +1,13 @@
 {
   "1": [
-    "trading-bot",
-    "date-map",
-    "ai900"
+    "frontend-team",
+    "backend-team",
+    "content-lab"
   ],
   "2": [
+    "trading-bot",
+    "ai900",
     "design-team",
-    "qa-agent",
-    "content-lab",
-    "backend-team",
-    "frontend-team"
+    "date-map"
   ]
 }
