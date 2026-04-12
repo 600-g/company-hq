@@ -935,15 +935,15 @@ export default class OfficeScene extends Phaser.Scene {
       { charX:  gapX, charY: botY, facing: leftFrame,  deskX:  deskOffset, isTopRow: false },
     ];
 
-    // 노트북(laptop_side_single, 28x24 trim본) — 줄마다 1개씩 책상 정중앙(x=0)에 배치
+    // 노트북(laptop_v, 28x24 trim본) — 줄마다 1개씩 책상 정중앙(x=0)에 배치
     // 책상 visible top = charY - 34. trim본이라 bottom-anchor 그대로 안착
     const topRowUsed = t.chars.length >= 2;
     const botRowUsed = t.chars.length >= 3;
     if (topRowUsed) {
-      container.add(this.add.image(0, topY - 34, "laptop_side_single").setOrigin(0.5, 1).setDepth(60));
+      container.add(this.add.image(0, topY - 30, "laptop_v").setOrigin(0.5, 1).setDepth(60));
     }
     if (botRowUsed) {
-      container.add(this.add.image(0, botY - 34, "laptop_side_single").setOrigin(0.5, 1).setDepth(65));
+      container.add(this.add.image(0, botY - 30, "laptop_v").setOrigin(0.5, 1).setDepth(65));
     }
 
     t.chars.forEach((charIdx, i) => {
