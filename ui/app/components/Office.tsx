@@ -2194,18 +2194,40 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
         <div
           className="px-2.5 py-1 border-t border-[#2a2a5a] text-[8px] text-gray-700 text-center select-none cursor-default"
           onDoubleClick={async () => {
-            // SW 캐시 삭제
-            if (typeof caches !== "undefined") {
-              const ks = await caches.keys();
-              await Promise.all(ks.map(k => caches.delete(k)));
+            try {
+              // 1) Cache Storage (SW 제어) 전체 삭제
+              if (typeof caches !== "undefined") {
+                const ks = await caches.keys();
+                await Promise.all(ks.map(k => caches.delete(k)));
+              }
+              // 2) Service Worker 해제 (완료 대기)
+              if (navigator.serviceWorker) {
+                const regs = await navigator.serviceWorker.getRegistrations();
+                await Promise.all(regs.map(r => r.unregister()));
+              }
+              // 3) 브라우저 HTTP 디스크 캐시 우회 — 주요 에셋을 cache:'reload'로 강제 재요청
+              //    이러면 브라우저 캐시에 새 버전이 덮어써짐 (F12 없이도)
+              const criticalAssets = [
+                "/assets/pokemon_furniture/laptop_v.png",
+                "/assets/pokemon_furniture/laptop_v_half_left.png",
+                "/assets/pokemon_furniture/laptop_v_half_right.png",
+                "/assets/pokemon_furniture/desk_side_wicker_short.png",
+                "/assets/pokemon_furniture/desk_side_wicker_long.png",
+              ];
+              await Promise.all(criticalAssets.map(url =>
+                fetch(url, { cache: "reload" }).catch(() => {})
+              ));
+              // 4) localStorage 에 캐시된 팀/위치 정보도 초기화 (에셋 외 상태 꼬임 방지)
+              //    인증 토큰은 유지
+              const keep = ["hq-token", "hq-owner"];
+              const preserved: Record<string, string> = {};
+              keep.forEach(k => { const v = localStorage.getItem(k); if (v) preserved[k] = v; });
+              Object.keys(localStorage).filter(k => k.startsWith("hq-positions-")).forEach(k => localStorage.removeItem(k));
+            } catch (e) {
+              console.error("cache clear failed", e);
             }
-            // SW 해제
-            if (navigator.serviceWorker) {
-              const regs = await navigator.serviceWorker.getRegistrations();
-              await Promise.all(regs.map(r => r.unregister()));
-            }
-            // 브라우저 HTTP 캐시 우회 강제 새로고침
-            window.location.href = window.location.pathname + "?v=" + Date.now();
+            // 5) 페이지 강제 리로드 (쿼리 변경 → 새 HTML + 새 에셋 매니페스트)
+            window.location.replace(window.location.pathname + "?v=" + Date.now());
           }}
           title="더블클릭: 새로고침 및 업데이트 반영"
         >
