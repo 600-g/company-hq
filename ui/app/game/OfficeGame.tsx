@@ -77,8 +77,6 @@ const OfficeGame = forwardRef<OfficeGameHandle, Props>(({ onTeamClick }, ref) =>
       sceneRef.current = scene;
 
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      // 모바일 대응: 화면 너비가 작으면 ENVELOP 모드로 가득 채움
-      const isMobile = window.innerWidth < 768;
       const game = new Phaser.Game({
         type: Phaser.AUTO,
         parent: containerRef.current,
@@ -90,9 +88,9 @@ const OfficeGame = forwardRef<OfficeGameHandle, Props>(({ onTeamClick }, ref) =>
         roundPixels: true,
         backgroundColor: "#1a1a2e",
         scale: {
-          // 모바일: ENVELOP (한쪽 끝 맞추고 넘침 허용) — 작게 보이는 문제 해결
-          // 데스크탑: FIT (전체 보이도록 축소)
-          mode: isMobile ? Phaser.Scale.ENVELOP : Phaser.Scale.FIT,
+          // FIT: 비율 유지하며 뷰포트 안에 전체 표시 (모바일 세로에서도 작게라도 전체 보임)
+          // 두손가락 팬/핀치줌은 씬 내부에서 카메라 이동으로 구현
+          mode: Phaser.Scale.FIT,
           autoCenter: Phaser.Scale.CENTER_BOTH,
           zoom: dpr,
         },
