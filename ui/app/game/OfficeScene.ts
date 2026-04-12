@@ -127,7 +127,7 @@ const TEAM_META: Record<string, Omit<TeamConfig, "id" | "gridX" | "gridY">> = {
   "content-lab":   { name: "콘텐츠랩",  emoji: "🔬", chars: buildTeamChars("content-lab",   PRIMARY_CHARS["content-lab"]!),   gridW: 4, gridH: 4 },
   "frontend-team": { name: "프론트엔드",emoji: "🖼",  chars: buildTeamChars("frontend-team", PRIMARY_CHARS["frontend-team"]!), gridW: 4, gridH: 4 },
   "backend-team":  { name: "백엔드",    emoji: "⚙️", chars: buildTeamChars("backend-team",  PRIMARY_CHARS["backend-team"]!),  gridW: 4, gridH: 4 },
-  "qa-agent":      { name: "QA에이전트",emoji: "🧪", chars: buildTeamChars("qa-agent",      PRIMARY_CHARS["qa-agent"]!),      gridW: 4, gridH: 4 },
+  "qa-agent":      { name: "QA",       emoji: "🔍", chars: buildTeamChars("qa-agent",      PRIMARY_CHARS["qa-agent"]!),      gridW: 4, gridH: 4 },
 };
 
 /** 서버에서 받은 팀 정보로 TEAM_META에 없는 팀 자동 등록 */

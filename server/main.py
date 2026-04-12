@@ -207,6 +207,12 @@ def _sync_layout_with_teams(teams: list[dict], layout: dict[str, list[str]]) -> 
     return new_layout
 
 FLOOR_LAYOUT = _load_layout()
+# 서버 시작 시 자동 동기화 — teams.json 의 모든 팀이 floor_layout.json에 포함되도록
+try:
+    FLOOR_LAYOUT = _sync_layout_with_teams(TEAMS, FLOOR_LAYOUT)
+    _save_layout(FLOOR_LAYOUT)
+except Exception:
+    pass
 
 app = FastAPI(title="AI Company HQ", version="1.0.0")
 
