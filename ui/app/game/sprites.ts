@@ -69,6 +69,8 @@ export function preloadAssets(scene: Phaser.Scene) {
   scene.load.image("desk_side_wicker_long", "/assets/pokemon_furniture/desk_side_wicker_long.png");
   scene.load.image("laptop_side_right", "/assets/pokemon_furniture/laptop_side_right.png");
   scene.load.image("laptop_side_left", "/assets/pokemon_furniture/laptop_side_left.png");
+  // 측면뷰 단일 노트북 (키보드+화면 모두 보이는 정상 형태, content-bbox trim: 28x24)
+  scene.load.image("laptop_side_single", "/assets/pokemon_furniture/laptop_side_single_trim.png");
   // 제대로 된 노트북 페어 (같은 크기 32x64)
   scene.load.image("laptop_left", "/assets/pokemon_furniture/laptop_left.png");
   scene.load.image("laptop_right", "/assets/pokemon_furniture/laptop_right.png");
