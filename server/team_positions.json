@@ -2,7 +2,7 @@
   "frontend-team": {
     "floor": 1,
     "gx": 12,
-    "gy": 8
+    "gy": 3
   },
   "backend-team": {
     "floor": 1,
@@ -11,8 +11,8 @@
   },
   "content-lab": {
     "floor": 1,
-    "gx": 7,
-    "gy": 8
+    "gx": 8,
+    "gy": 3
   },
   "cpo-claude": {
     "floor": 1,
@@ -22,7 +22,7 @@
   "trading-bot": {
     "floor": 2,
     "gx": 4,
-    "gy": 9
+    "gy": 4
   },
   "ai900": {
     "floor": 2,
@@ -32,7 +32,7 @@
   "design-team": {
     "floor": 2,
     "gx": 8,
-    "gy": 9
+    "gy": 4
   },
   "date-map": {
     "floor": 2,
@@ -41,8 +41,8 @@
   },
   "qa-agent": {
     "floor": 1,
-    "gx": 16,
-    "gy": 3
+    "gx": 17,
+    "gy": 11
   },
   "test-team": {
     "floor": 1,

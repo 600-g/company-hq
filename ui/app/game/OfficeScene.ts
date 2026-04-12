@@ -1167,15 +1167,19 @@ export default class OfficeScene extends Phaser.Scene {
     if (this.serverPositions) {
       const filtered: Record<string, { gx: number; gy: number }> = {};
       Object.entries(this.serverPositions).forEach(([id, p]) => {
-        if (p.floor === this.currentFloor) {
-          filtered[id] = { gx: p.gx, gy: p.gy };
+        if (Number(p.floor) === Number(this.currentFloor)) {
+          filtered[id] = { gx: Number(p.gx), gy: Number(p.gy) };
         }
       });
+      console.log("[loadPositions] server floor", this.currentFloor, "count", Object.keys(filtered).length, filtered);
       if (Object.keys(filtered).length > 0) return filtered;
+    } else {
+      console.log("[loadPositions] serverPositions=null, fallback localStorage");
     }
     // 폴백: localStorage
     try {
       const data = localStorage.getItem(`hq-positions-${this.currentFloor}`);
+      console.log("[loadPositions] localStorage floor", this.currentFloor, "data", data);
       return data ? JSON.parse(data) : null;
     } catch { return null; }
   }
