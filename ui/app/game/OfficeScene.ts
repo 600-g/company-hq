@@ -961,9 +961,11 @@ export default class OfficeScene extends Phaser.Scene {
         .setDepth(deskDepth);
       container.add(desk);
 
-      // 노트북 (좌/우 반쪽, 책상 상단 위)
-      // 책상 bottom=charY+20, 높이 56 → 상단 y=charY-36
-      const laptop = this.add.image(ws.deskX, ws.charY - 36, ws.laptopKey)
+      // 노트북 (좌/우 반쪽) — 책상 visible top 위에 앉히기
+      // 책상 실측: bbox y=2~56 → visible top at charY-34 (bottom=charY+20, 이미지 상단 2px 투명)
+      // 노트북 실측: bbox y=0~28 → 하단 4px 투명. bottom-anchor 기준 실제 바닥=anchor-4
+      // 따라서 laptop y = (책상 visible top) + (노트북 투명 하단 보정) = charY-34 + 4 = charY-30
+      const laptop = this.add.image(ws.deskX, ws.charY - 30, ws.laptopKey)
         .setOrigin(0.5, 1)
         .setDepth(laptopDepth);
       container.add(laptop);
