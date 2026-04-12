@@ -964,10 +964,10 @@ export default class OfficeScene extends Phaser.Scene {
         .setDepth(deskDepth);
       container.add(desk);
 
-      // 노트북 반쪽 — 왼쪽 캐릭=화면측, 오른쪽 캐릭=키보드측
-      const laptopKey = ws.deskX < 0 ? "laptop_v_screen" : "laptop_v_keys";
+      // 노트북 (온전한 1대 per 캐릭, laptop_side_single_trim 28x24)
+      // 책상 visible top = charY-34. trim본이라 bottom-anchor 그대로 안착, +4 아래로 내려 책상 면에 밀착
       const laptopDepth = isTopRow ? 60 : 65;
-      container.add(this.add.image(ws.deskX, ws.charY - 30, laptopKey)
+      container.add(this.add.image(ws.deskX, ws.charY - 30, "laptop_side_single")
         .setOrigin(0.5, 1).setDepth(laptopDepth));
 
       // Character facing toward desk (side-view idle frame)
