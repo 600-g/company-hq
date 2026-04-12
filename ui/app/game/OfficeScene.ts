@@ -1000,9 +1000,7 @@ export default class OfficeScene extends Phaser.Scene {
 
     const label = this.add.text(0, nameY, `${t.emoji} ${t.name}`, {
       fontSize: "14px", fontFamily: POKEMON_FONT,
-      fontStyle: "bold",
       color: "#111111", resolution: 16,
-      stroke: "#111111", strokeThickness: 0.5,
     }).setOrigin(0.5);
     container.add(label);
 
