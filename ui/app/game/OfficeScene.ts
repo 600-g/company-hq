@@ -935,17 +935,9 @@ export default class OfficeScene extends Phaser.Scene {
       { charX:  gapX, charY: botY, facing: leftFrame,  deskX:  deskOffset, isTopRow: false },
     ];
 
-    // 노트북 B안: laptop_v 좌반(V화면) + 우반(키보드)을 나란히 놓아 완전체 1대 형성
-    // 각 캐릭(좌/우)이 자기 반쪽 담당 → 1인팀 확장 시에도 반쪽만 표시 가능
+    // 노트북 B안: 각 캐릭 앞 책상(deskX=±14)에 각자 반쪽 배치 — 캐릭별 1 노트북 소유감
+    // 좌반(V화면) → 왼쪽 캐릭(deskX=-14), 우반(키보드) → 오른쪽 캐릭(deskX=+14)
     // 각 반쪽 16x32, bbox y=0~28(하단 4px 투명). bottom-anchor y=rowY-30
-    const drawLaptopPair = (rowY: number, depth: number) => {
-      container.add(this.add.image(-8, rowY - 30, "laptop_v_screen")
-        .setOrigin(0.5, 1).setDepth(depth));
-      container.add(this.add.image( 8, rowY - 30, "laptop_v_keys")
-        .setOrigin(0.5, 1).setDepth(depth));
-    };
-    if (t.chars.length >= 2) drawLaptopPair(topY, 60);
-    if (t.chars.length >= 3) drawLaptopPair(botY, 65);
 
     t.chars.forEach((charIdx, i) => {
       if (i >= 4) return;
@@ -966,11 +958,17 @@ export default class OfficeScene extends Phaser.Scene {
       const deskDepth = isTopRow ? 50 : 55;
       const charDepth = isTopRow ? 52 : 57;
 
-      // 책상 (32x56 short wicker, 캐릭별 개별) — 노트북은 위에서 줄 중앙에 1개로 따로 배치
+      // 책상 (32x56 short wicker, 캐릭별 개별)
       const desk = this.add.image(ws.deskX, ws.charY + 20, "desk_side_wicker")
         .setOrigin(0.5, 1)
         .setDepth(deskDepth);
       container.add(desk);
+
+      // 노트북 반쪽 — 왼쪽 캐릭=화면측, 오른쪽 캐릭=키보드측
+      const laptopKey = ws.deskX < 0 ? "laptop_v_screen" : "laptop_v_keys";
+      const laptopDepth = isTopRow ? 60 : 65;
+      container.add(this.add.image(ws.deskX, ws.charY - 30, laptopKey)
+        .setOrigin(0.5, 1).setDepth(laptopDepth));
 
       // Character facing toward desk (side-view idle frame)
       const char = this.add.sprite(ws.charX, ws.charY, `char_${charIdx}`, ws.facing)
