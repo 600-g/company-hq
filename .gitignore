@@ -7,3 +7,6 @@ __pycache__/
 .DS_Store
 .claude/worktrees/
 server/logs/
+server/auth_data/
+server/team_positions.json
+server/floor_layout.json
