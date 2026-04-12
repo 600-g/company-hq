@@ -25,18 +25,6 @@
     "pinned": true
   },
   {
-    "id": "qa-agent",
-    "name": "QA",
-    "emoji": "🔍",
-    "repo": "company-hq",
-    "localPath": "~/Developer/my-company/company-hq",
-    "status": "운영중",
-    "category": "dev",
-    "model": "opus",
-    "order": 6,
-    "layer": 2
-  },
-  {
     "id": "trading-bot",
     "name": "매매봇",
     "emoji": "🤖",
@@ -72,6 +60,18 @@
     "order": 5,
     "layer": 1,
     "siteUrl": "https://ai900.600g.net"
+  },
+  {
+    "id": "qa-agent",
+    "name": "QA",
+    "emoji": "🔍",
+    "repo": "company-hq",
+    "localPath": "~/Developer/my-company/company-hq",
+    "status": "운영중",
+    "category": "dev",
+    "model": "opus",
+    "order": 6,
+    "layer": 2
   },
   {
     "id": "design-team",
@@ -116,16 +116,5 @@
     "category": "dev",
     "order": 9,
     "layer": 2
-  },
-  {
-    "id": "포켓몬-ip-이용한-포트리스",
-    "name": "포켓몬 ip 이용한 포트리스",
-    "emoji": "🆕",
-    "repo": "포켓몬-ip-이용한-포트리스",
-    "localPath": "~/Developer/my-company/포켓몬-ip-이용한-포트리스",
-    "status": "운영중",
-    "category": "product",
-    "order": 10,
-    "layer": 1
   }
 ]

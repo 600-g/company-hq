@@ -925,15 +925,26 @@ export default class OfficeScene extends Phaser.Scene {
     const botY =  gapY / 2 + charYOffset;
 
     const workstations = [
-      // Top-left: 왼쪽 캐릭 → 오른쪽 바라봄 → 왼쪽 반쪽 노트북
-      { charX: -gapX, charY: topY, facing: rightFrame, deskX: -deskOffset, laptopKey: "laptop_v",  isTopRow: true  },
-      // Top-right: 오른쪽 캐릭 → 왼쪽 바라봄 → 오른쪽 반쪽 노트북
-      { charX:  gapX, charY: topY, facing: leftFrame,  deskX:  deskOffset, laptopKey: "laptop_v", isTopRow: true  },
+      // Top-left: 왼쪽 캐릭 → 오른쪽 바라봄
+      { charX: -gapX, charY: topY, facing: rightFrame, deskX: -deskOffset, isTopRow: true  },
+      // Top-right: 오른쪽 캐릭 → 왼쪽 바라봄
+      { charX:  gapX, charY: topY, facing: leftFrame,  deskX:  deskOffset, isTopRow: true  },
       // Bottom-left
-      { charX: -gapX, charY: botY, facing: rightFrame, deskX: -deskOffset, laptopKey: "laptop_v",  isTopRow: false },
+      { charX: -gapX, charY: botY, facing: rightFrame, deskX: -deskOffset, isTopRow: false },
       // Bottom-right
-      { charX:  gapX, charY: botY, facing: leftFrame,  deskX:  deskOffset, laptopKey: "laptop_v", isTopRow: false },
+      { charX:  gapX, charY: botY, facing: leftFrame,  deskX:  deskOffset, isTopRow: false },
     ];
+
+    // 노트북(laptop_v 통짜 32x32) — 줄마다 1개씩 책상 정중앙(x=0)에 배치
+    // 책상 visible top = charY - 34. laptop 하단 4px 투명 → y = charY - 30
+    const topRowUsed = t.chars.length >= 2;
+    const botRowUsed = t.chars.length >= 3;
+    if (topRowUsed) {
+      container.add(this.add.image(0, topY - 30, "laptop_v").setOrigin(0.5, 1).setDepth(60));
+    }
+    if (botRowUsed) {
+      container.add(this.add.image(0, botY - 30, "laptop_v").setOrigin(0.5, 1).setDepth(65));
+    }
 
     t.chars.forEach((charIdx, i) => {
       if (i >= 4) return;
@@ -950,23 +961,15 @@ export default class OfficeScene extends Phaser.Scene {
       const ws = workstations[i];
       const { isTopRow } = ws;
 
-      // Depth: 책상 < 캐릭 < 노트북
-      const deskDepth   = isTopRow ? 50 : 55;
-      const charDepth   = isTopRow ? 52 : 57;
-      const laptopDepth = isTopRow ? 60 : 65;
+      // Depth: 책상 < 캐릭
+      const deskDepth = isTopRow ? 50 : 55;
+      const charDepth = isTopRow ? 52 : 57;
 
-      // 책상 (32x56 short wicker, 캐릭별 개별)
+      // 책상 (32x56 short wicker, 캐릭별 개별) — 노트북은 위에서 줄 중앙에 1개로 따로 배치
       const desk = this.add.image(ws.deskX, ws.charY + 20, "desk_side_wicker")
         .setOrigin(0.5, 1)
         .setDepth(deskDepth);
       container.add(desk);
-
-      // 노트북 laptop_v (32x32, bbox y=0~28 → 하단 4px 투명)
-      // 책상 visible top = charY - 34. laptop bottom-anchor 기준 +4 보정 → y = charY - 30
-      const laptop = this.add.image(ws.deskX, ws.charY - 30, ws.laptopKey)
-        .setOrigin(0.5, 1)
-        .setDepth(laptopDepth);
-      container.add(laptop);
 
       // Character facing toward desk (side-view idle frame)
       const char = this.add.sprite(ws.charX, ws.charY, `char_${charIdx}`, ws.facing)

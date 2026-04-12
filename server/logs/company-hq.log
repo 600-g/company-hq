@@ -1605,3 +1605,7 @@ WebSocket 통합 채팅 서버 상태 확인 및 연결 정상 검증해줘
 2026-04-12 02:58:40,441 [INFO] [frontend-team] 프롬프트 수신: [유저 원래 요청: 캐릭들이 다시 깨졌는데 무슨일이지? 다시 이전으로 복구]
 
 게임 캐릭터들이 다시 깨졌다. 최근 수정사항 확인 후 이전 버전으로 롤백하고, 원인을 파악해줘. 백엔
+2026-04-12 23:20:14,307 [INFO] [DELETE] 로컬 폴더 삭제: /Users/600mac/Developer/my-company/포켓몬-ip-이용한-포트리스
+2026-04-12 23:20:14,582 [WARNING] [DELETE] GitHub 레포 삭제 실패: 404 {"message": "Not Found", "documentation_url": "https://docs.github.com/rest/repos/repos#get-a-repository", "status": "404"}
+2026-04-12 23:20:14,584 [INFO] [DELETE] 프롬프트 정리 완료: 포켓몬-ip-이용한-포트리스
+2026-04-12 23:20:14,585 [INFO] [DELETE] 세션 정리 완료: 포켓몬-ip-이용한-포트리스
