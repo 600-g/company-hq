@@ -1,18 +1,18 @@
 {
   "frontend-team": {
     "floor": 1,
-    "gx": 11,
-    "gy": 3
+    "gx": 12,
+    "gy": 8
   },
   "backend-team": {
     "floor": 1,
     "gx": 3,
-    "gy": 8
+    "gy": 3
   },
   "content-lab": {
     "floor": 1,
     "gx": 7,
-    "gy": 3
+    "gy": 8
   },
   "cpo-claude": {
     "floor": 1,
@@ -22,7 +22,7 @@
   "trading-bot": {
     "floor": 2,
     "gx": 4,
-    "gy": 4
+    "gy": 9
   },
   "ai900": {
     "floor": 2,
@@ -32,7 +32,7 @@
   "design-team": {
     "floor": 2,
     "gx": 8,
-    "gy": 4
+    "gy": 9
   },
   "date-map": {
     "floor": 2,
@@ -42,6 +42,11 @@
   "qa-agent": {
     "floor": 1,
     "gx": 16,
-    "gy": 4
+    "gy": 3
+  },
+  "test-team": {
+    "floor": 1,
+    "gx": 99,
+    "gy": 99
   }
 }

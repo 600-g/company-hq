@@ -202,15 +202,18 @@ export default class OfficeScene extends Phaser.Scene {
     // 서버에서 층 배치 동적 로드 (실패 시 하드코딩 폴백 사용)
     const apiBase = data.apiBase || "";
     this.apiBase = apiBase;
-    // 서버 저장 위치 먼저 로드 (웹/모바일 동기화)
+    // 서버 저장 위치 로드 — envGroup 준비된 뒤(create 이후)에 rebuild
     if (apiBase) {
       fetch(`${apiBase}/api/layout/positions`)
         .then(r => r.json())
         .then((resp: any) => {
           if (resp.ok && resp.positions) {
             this.serverPositions = resp.positions;
-            // 현재 층 다시 빌드해 저장 위치 반영
-            this.buildFloor(this.currentFloor);
+            // create()가 envGroup을 초기화한 뒤에만 rebuild (순서 보장)
+            if (this.envGroup) {
+              this.buildFloor(this.currentFloor);
+            }
+            // 아니면 create()에서 rebuild됨 (create에 처리 추가)
           }
         })
         .catch(() => {});
@@ -241,7 +244,7 @@ export default class OfficeScene extends Phaser.Scene {
             }
             if (Object.keys(serverFloors).length > 0) {
               ALL_FLOORS = serverFloors;
-              this.buildFloor(this.currentFloor);
+              if (this.envGroup) this.buildFloor(this.currentFloor);
             }
           }
         })
