@@ -926,13 +926,13 @@ export default class OfficeScene extends Phaser.Scene {
 
     const workstations = [
       // Top-left: 왼쪽 캐릭 → 오른쪽 바라봄 → 왼쪽 반쪽 노트북
-      { charX: -gapX, charY: topY, facing: rightFrame, deskX: -deskOffset, laptopKey: "laptop_pair_left",  isTopRow: true  },
+      { charX: -gapX, charY: topY, facing: rightFrame, deskX: -deskOffset, laptopKey: "laptop_v",  isTopRow: true  },
       // Top-right: 오른쪽 캐릭 → 왼쪽 바라봄 → 오른쪽 반쪽 노트북
-      { charX:  gapX, charY: topY, facing: leftFrame,  deskX:  deskOffset, laptopKey: "laptop_pair_right", isTopRow: true  },
+      { charX:  gapX, charY: topY, facing: leftFrame,  deskX:  deskOffset, laptopKey: "laptop_v", isTopRow: true  },
       // Bottom-left
-      { charX: -gapX, charY: botY, facing: rightFrame, deskX: -deskOffset, laptopKey: "laptop_pair_left",  isTopRow: false },
+      { charX: -gapX, charY: botY, facing: rightFrame, deskX: -deskOffset, laptopKey: "laptop_v",  isTopRow: false },
       // Bottom-right
-      { charX:  gapX, charY: botY, facing: leftFrame,  deskX:  deskOffset, laptopKey: "laptop_pair_right", isTopRow: false },
+      { charX:  gapX, charY: botY, facing: leftFrame,  deskX:  deskOffset, laptopKey: "laptop_v", isTopRow: false },
     ];
 
     t.chars.forEach((charIdx, i) => {
@@ -961,9 +961,9 @@ export default class OfficeScene extends Phaser.Scene {
         .setDepth(deskDepth);
       container.add(desk);
 
-      // 노트북 (좌/우 반쪽) — content-bbox로 trim됨. bottom-anchor로 책상 visible top에 안착
-      // 책상 visible top = charY + 20 (bottom) - 54 (visible height, bbox y=2~56) = charY - 34
-      const laptop = this.add.image(ws.deskX, ws.charY - 34, ws.laptopKey)
+      // 노트북 laptop_v (32x32, bbox y=0~28 → 하단 4px 투명)
+      // 책상 visible top = charY - 34. laptop bottom-anchor 기준 +4 보정 → y = charY - 30
+      const laptop = this.add.image(ws.deskX, ws.charY - 30, ws.laptopKey)
         .setOrigin(0.5, 1)
         .setDepth(laptopDepth);
       container.add(laptop);
