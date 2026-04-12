@@ -935,16 +935,17 @@ export default class OfficeScene extends Phaser.Scene {
       { charX:  gapX, charY: botY, facing: leftFrame,  deskX:  deskOffset, isTopRow: false },
     ];
 
-    // 노트북(laptop_v, 28x24 trim본) — 줄마다 1개씩 책상 정중앙(x=0)에 배치
-    // 책상 visible top = charY - 34. trim본이라 bottom-anchor 그대로 안착
-    const topRowUsed = t.chars.length >= 2;
-    const botRowUsed = t.chars.length >= 3;
-    if (topRowUsed) {
-      container.add(this.add.image(0, topY - 30, "laptop_v").setOrigin(0.5, 1).setDepth(60));
-    }
-    if (botRowUsed) {
-      container.add(this.add.image(0, botY - 30, "laptop_v").setOrigin(0.5, 1).setDepth(65));
-    }
+    // 노트북 B안: laptop_v 좌반(V화면) + 우반(키보드)을 나란히 놓아 완전체 1대 형성
+    // 각 캐릭(좌/우)이 자기 반쪽 담당 → 1인팀 확장 시에도 반쪽만 표시 가능
+    // 각 반쪽 16x32, bbox y=0~28(하단 4px 투명). bottom-anchor y=rowY-30
+    const drawLaptopPair = (rowY: number, depth: number) => {
+      container.add(this.add.image(-8, rowY - 30, "laptop_v_screen")
+        .setOrigin(0.5, 1).setDepth(depth));
+      container.add(this.add.image( 8, rowY - 30, "laptop_v_keys")
+        .setOrigin(0.5, 1).setDepth(depth));
+    };
+    if (t.chars.length >= 2) drawLaptopPair(topY, 60);
+    if (t.chars.length >= 3) drawLaptopPair(botY, 65);
 
     t.chars.forEach((charIdx, i) => {
       if (i >= 4) return;
