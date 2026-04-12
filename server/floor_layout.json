@@ -3,7 +3,9 @@
     "frontend-team",
     "backend-team",
     "content-lab",
-    "qa-agent"
+    "qa-agent",
+    "server-monitor",
+    "cpo-claude"
   ],
   "2": [
     "trading-bot",

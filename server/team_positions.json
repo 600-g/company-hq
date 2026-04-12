@@ -7,7 +7,7 @@
   "backend-team": {
     "floor": 1,
     "gx": 3,
-    "gy": 3
+    "gy": 8
   },
   "content-lab": {
     "floor": 1,
@@ -15,9 +15,9 @@
     "gy": 3
   },
   "cpo-claude": {
-    "floor": 2,
-    "gx": 23,
-    "gy": 10
+    "floor": 1,
+    "gx": 22,
+    "gy": 11
   },
   "trading-bot": {
     "floor": 2,
@@ -36,6 +36,11 @@
   },
   "date-map": {
     "floor": 2,
+    "gx": 16,
+    "gy": 4
+  },
+  "qa-agent": {
+    "floor": 1,
     "gx": 16,
     "gy": 4
   }

@@ -358,19 +358,17 @@ export default class OfficeScene extends Phaser.Scene {
     this.drawOfficeDetails();
 
     // ── 구조물/서버실 점유 영역 그리드에 표시 (팀 이동 차단) ──
-    // TILE=32, COLS=26, ROWS=18, WALL_H=3 가정
-    // 각 영역은 시각적 에셋 실제 위치에 맞춰 넉넉히 마진 포함
-    const STRUCTURE_ZONES: Array<{ x: number; y: number; w: number; h: number; label: string }> = [
-      // 좌벽: 책장 2개 + 좌상단 plant (x=0~2)
-      { x: 0, y: WALL_H, w: 2, h: 5, label: "좌벽_책장" },
-      // 좌하단 plant_large (x=0~1, y=12~14)
-      { x: 0, y: ROWS - 6, w: 2, h: 3, label: "좌하단_화분" },
-      // 우벽: 화이트보드 + 우상단 plant (x=20~22)
-      { x: 20, y: WALL_H, w: 2, h: 5, label: "우벽_화이트보드" },
-      // 우하단 plant_1 (x=22~24, y=12~14)
-      { x: 22, y: ROWS - 6, w: 2, h: 3, label: "우하단_화분" },
-      // 서버실 (우상단, 책상+모니터+패드)
-      { x: 21, y: WALL_H, w: 5, h: 3, label: "서버실" },
+    // ※ 팀 기본 위치 (1,4)(6,4)(11,4)(16,4)(1,9)(6,9) — gridW/H=4 — 와 겹치지 않아야 함
+    // 에셋 실제 픽셀 위치 → 그리드 환산 (TILE=32)
+    const STRUCTURE_ZONES: Array<{ x: number; y: number; w: number; h: number }> = [
+      // 좌벽 책장 (x=0 pixel col) — col 0 만 점유
+      { x: 0, y: WALL_H, w: 1, h: 5 },
+      // 서버실 (우상단 x=21~25, y=3~5) — 책상+모니터
+      { x: 21, y: WALL_H, w: 5, h: 3 },
+      // 좌하단 plant_large (col 0~1)
+      { x: 0, y: ROWS - 4, w: 2, h: 1 },
+      // 우하단 plant_1 (col 23)
+      { x: 23, y: ROWS - 4, w: 2, h: 1 },
     ];
     STRUCTURE_ZONES.forEach(z => this.occupyGrid(z.x, z.y, z.w, z.h, true));
 
