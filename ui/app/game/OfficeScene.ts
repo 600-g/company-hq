@@ -199,62 +199,48 @@ export default class OfficeScene extends Phaser.Scene {
     this.onTeamClick = data.onTeamClick;
     this.weatherCode = data.weatherCode ?? 0;
 
-    // 서버에서 층 배치 동적 로드 (실패 시 하드코딩 폴백 사용)
+    // apiBase만 저장. 실제 fetch는 create()에서 await로 처리 (경합 제거)
     const apiBase = data.apiBase || "";
     this.apiBase = apiBase;
-    // 서버 저장 위치 로드 — envGroup 준비된 뒤(create 이후)에 rebuild
-    if (apiBase) {
-      fetch(`${apiBase}/api/layout/positions`)
-        .then(r => r.json())
-        .then((resp: any) => {
-          if (resp.ok && resp.positions) {
-            this.serverPositions = resp.positions;
-            // create()가 envGroup을 초기화한 뒤에만 rebuild (순서 보장)
-            if (this.envGroup) {
-              this.buildFloor(this.currentFloor);
-            }
-            // 아니면 create()에서 rebuild됨 (create에 처리 추가)
-          }
-        })
-        .catch(() => {});
-    }
-    if (apiBase) {
-      fetch(`${apiBase}/api/layout/floors`)
-        .then(r => r.json())
-        .then((resp: any) => {
-          if (resp.ok && resp.floors) {
-            const serverFloors: Record<number, TeamConfig[]> = {};
-            const defaultPositions = [
-              { gridX: 1, gridY: 4 }, { gridX: 6, gridY: 4 },
-              { gridX: 11, gridY: 4 }, { gridX: 16, gridY: 4 },
-              { gridX: 1, gridY: 9 }, { gridX: 6, gridY: 9 },
-            ];
-            for (const f of resp.floors) {
-              const floorNum = f.floor;
-              serverFloors[floorNum] = f.teams
-                .map((t: any, i: number) => {
-                  ensureTeamMeta(t);
-                  return {
-                    id: t.id,
-                    gridX: defaultPositions[i]?.gridX ?? 1,
-                    gridY: defaultPositions[i]?.gridY ?? 4,
-                    ...TEAM_META[t.id]!,
-                  };
-                });
-            }
-            if (Object.keys(serverFloors).length > 0) {
-              ALL_FLOORS = serverFloors;
-              if (this.envGroup) this.buildFloor(this.currentFloor);
-            }
-          }
-        })
-        .catch(() => { /* 폴백 유지 */ });
-    }
   }
 
   preload() { preloadAssets(this); }
 
-  create() {
+  async create() {
+    // 서버 positions를 create 시작에 로드 (envGroup 초기화 전에 완료 → 경합 제거)
+    if (this.apiBase) {
+      try {
+        const resp = await fetch(`${this.apiBase}/api/layout/positions`).then(r => r.json());
+        if (resp.ok && resp.positions) {
+          this.serverPositions = resp.positions;
+        }
+      } catch {}
+      // 층 배치도 같이 로드
+      try {
+        const resp = await fetch(`${this.apiBase}/api/layout/floors`).then(r => r.json());
+        if (resp.ok && resp.floors) {
+          const serverFloors: Record<number, TeamConfig[]> = {};
+          const defaultPositions = [
+            { gridX: 1, gridY: 4 }, { gridX: 6, gridY: 4 },
+            { gridX: 11, gridY: 4 }, { gridX: 16, gridY: 4 },
+            { gridX: 1, gridY: 9 }, { gridX: 6, gridY: 9 },
+          ];
+          for (const f of resp.floors) {
+            serverFloors[f.floor] = f.teams.map((t: any, i: number) => {
+              ensureTeamMeta(t);
+              return {
+                id: t.id,
+                gridX: defaultPositions[i]?.gridX ?? 1,
+                gridY: defaultPositions[i]?.gridY ?? 4,
+                ...TEAM_META[t.id]!,
+              };
+            });
+          }
+          if (Object.keys(serverFloors).length > 0) ALL_FLOORS = serverFloors;
+        }
+      } catch {}
+    }
+
     registerCharAnims(this);
     createCustomFurniture(this);
     this.envGroup = this.add.group();
@@ -297,6 +283,25 @@ export default class OfficeScene extends Phaser.Scene {
 
     // 랜덤 움직임
     this.time.addEvent({ delay: 3500, loop: true, callback: () => this.randomMove() });
+
+    // 실시간 위치 동기화 — 5초마다 서버 positions 폴링, 변경 시 rebuild
+    if (this.apiBase) {
+      this.time.addEvent({ delay: 5000, loop: true, callback: () => this.pollPositions() });
+    }
+  }
+
+  private async pollPositions() {
+    // 드래그 중엔 폴링 스킵 (내가 움직이는 중에 덮어쓰지 않게)
+    if (this.dragTarget) return;
+    try {
+      const resp = await fetch(`${this.apiBase}/api/layout/positions`).then(r => r.json());
+      if (!resp.ok || !resp.positions) return;
+      const newSig = JSON.stringify(resp.positions);
+      const oldSig = JSON.stringify(this.serverPositions || {});
+      if (newSig === oldSig) return; // 변경 없음
+      this.serverPositions = resp.positions;
+      this.buildFloor(this.currentFloor);
+    } catch {}
   }
 
   // ═══════════════════════════════
@@ -1163,7 +1168,7 @@ export default class OfficeScene extends Phaser.Scene {
   }
 
   private loadPositions(): Record<string, { gx: number; gy: number }> | null {
-    // 서버 위치가 this.serverPositions에 있으면 우선 사용 (비동기 로드됨)
+    // 서버 위치 우선 (create에서 await로 로드됨)
     if (this.serverPositions) {
       const filtered: Record<string, { gx: number; gy: number }> = {};
       Object.entries(this.serverPositions).forEach(([id, p]) => {
@@ -1171,15 +1176,11 @@ export default class OfficeScene extends Phaser.Scene {
           filtered[id] = { gx: Number(p.gx), gy: Number(p.gy) };
         }
       });
-      console.log("[loadPositions] server floor", this.currentFloor, "count", Object.keys(filtered).length, filtered);
       if (Object.keys(filtered).length > 0) return filtered;
-    } else {
-      console.log("[loadPositions] serverPositions=null, fallback localStorage");
     }
     // 폴백: localStorage
     try {
       const data = localStorage.getItem(`hq-positions-${this.currentFloor}`);
-      console.log("[loadPositions] localStorage floor", this.currentFloor, "data", data);
       return data ? JSON.parse(data) : null;
     } catch { return null; }
   }
