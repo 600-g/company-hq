@@ -66,6 +66,7 @@ export function preloadAssets(scene: Phaser.Scene) {
   scene.load.image("monitor", "/assets/pokemon_furniture/monitor.png");
   scene.load.image("desk_side_drawers", "/assets/pokemon_furniture/desk_side_with_drawers.png");
   scene.load.image("desk_side_wicker", "/assets/pokemon_furniture/desk_side_wicker_short.png");
+  scene.load.image("desk_side_wicker_long", "/assets/pokemon_furniture/desk_side_wicker_long.png");
   scene.load.image("laptop_side_right", "/assets/pokemon_furniture/laptop_side_right.png");
   scene.load.image("laptop_side_left", "/assets/pokemon_furniture/laptop_side_left.png");
   // 제대로 된 노트북 페어 (같은 크기 32x64)

@@ -916,23 +916,39 @@ export default class OfficeScene extends Phaser.Scene {
     const rightFrame = cols * 2; // facing right (first col of row 2)
     const leftFrame  = cols * 1; // facing left  (first col of row 1)
 
-    // Side-view 2x2: left-column chars face RIGHT, right-column chars face LEFT
-    // 팀 압축: 캐릭-책상 가까이, 팀 내부 타이트하게
-    const gapX = 44;      // 캐릭 x 위치 (±44) — 팀 총 폭 88px
-    const deskOffset = 14; // 책상이 중앙에서 ±14 (캐릭 바로 옆)
-    const gapY = 40;      // 위아래 줄 간격
+    // Side-view 2x2: 각 줄마다 가운데 공유 긴 책상(96x56), 캐릭 2명이 양옆에서 마주봄
+    // 캐릭터는 책상에 딱 붙어 앉은 위치(charX 작게), 노트북은 각자 책상 위에 배치
+    const gapX = 22;       // 캐릭 x (±22) — 책상(96폭) 내부에 가까이 착석
+    const laptopOffX = 18; // 노트북 x (±18) — 각 캐릭 앞 책상 위
+    const gapY = 48;       // 위아래 줄 간격 (책상 높이 확보)
     const topY = -gapY / 2;
     const botY =  gapY / 2;
 
+    // 줄마다 어느 자리에 캐릭이 있는지 추적 (책상/의자 표시 여부 판단)
+    const topHasAny = t.chars.length >= 1 && t.chars.length >= 1;
+    const botHasAny = t.chars.length >= 3;
+
+    // 공유 책상 (윗줄/아랫줄) — 캐릭 있는 줄에만 그림
+    if (topHasAny) {
+      const topDesk = this.add.image(0, topY + 8, "desk_side_wicker_long")
+        .setOrigin(0.5, 1).setDepth(50);
+      container.add(topDesk);
+    }
+    if (botHasAny) {
+      const botDesk = this.add.image(0, botY + 8, "desk_side_wicker_long")
+        .setOrigin(0.5, 1).setDepth(55);
+      container.add(botDesk);
+    }
+
     const workstations = [
-      // Top-left: char faces right → desk to its right (inward)
-      { charX: -gapX, charY: topY, facing: rightFrame, deskX: -deskOffset, assetDir: "right" as const, isTopRow: true  },
-      // Top-right: char faces left → desk to its left (inward)
-      { charX:  gapX, charY: topY, facing: leftFrame,  deskX:  deskOffset, assetDir: "left"  as const, isTopRow: true  },
+      // Top-left: 왼쪽에서 오른쪽(책상 방향) 바라봄
+      { charX: -gapX, charY: topY, facing: rightFrame, laptopX: -laptopOffX, isTopRow: true  },
+      // Top-right
+      { charX:  gapX, charY: topY, facing: leftFrame,  laptopX:  laptopOffX, isTopRow: true  },
       // Bottom-left
-      { charX: -gapX, charY: botY, facing: rightFrame, deskX: -deskOffset, assetDir: "right" as const, isTopRow: false },
+      { charX: -gapX, charY: botY, facing: rightFrame, laptopX: -laptopOffX, isTopRow: false },
       // Bottom-right
-      { charX:  gapX, charY: botY, facing: leftFrame,  deskX:  deskOffset, assetDir: "left"  as const, isTopRow: false },
+      { charX:  gapX, charY: botY, facing: leftFrame,  laptopX:  laptopOffX, isTopRow: false },
     ];
 
     t.chars.forEach((charIdx, i) => {
@@ -950,19 +966,13 @@ export default class OfficeScene extends Phaser.Scene {
       const ws = workstations[i];
       const { isTopRow } = ws;
 
-      // Distinct base depths per row so bottom row naturally overlaps top row
-      const deskDepth   = isTopRow ? 50 : 55;
-      const charDepth   = isTopRow ? 52 : 57; // char just above desk so body visible
-      const laptopDepth = isTopRow ? 60 : 65; // laptop on top
+      // Depth: 책상(50/55) < 캐릭(52/57) < 노트북(60/65)
+      const charDepth   = isTopRow ? 52 : 57;
+      const laptopDepth = isTopRow ? 60 : 65;
 
-      // Desk (진짜 옆모습, 32x56 wicker desk — 다리 보이는 측면뷰)
-      const desk = this.add.image(ws.deskX, ws.charY + 8, "desk_side_wicker")
-        .setOrigin(0.5, 1)  // 바닥 정렬 (다리가 바닥에 닿음)
-        .setDepth(deskDepth);
-      container.add(desk);
-
-      // V자 오픈 노트북 (탑뷰, 32x32) — 양쪽 자리 공통
-      const laptop = this.add.image(ws.deskX, ws.charY - 40, "laptop_v")
+      // 노트북 (각 캐릭 앞 책상 위) — 책상 상단 y = charY + 8 - 56 = charY - 48
+      // 노트북 bottom-anchor를 책상 상단에 정렬
+      const laptop = this.add.image(ws.laptopX, ws.charY - 48, "laptop_v")
         .setOrigin(0.5, 1)
         .setDepth(laptopDepth);
       container.add(laptop);
