@@ -79,6 +79,9 @@ export function preloadAssets(scene: Phaser.Scene) {
   scene.load.image("laptop_right", "/assets/pokemon_furniture/laptop_right.png");
   // V자 오픈 노트북 (탑뷰, 32x32)
   scene.load.image("laptop_v", "/assets/pokemon_furniture/laptop_v.png?v=52x28");
+  // 52x28 완전체를 정중앙에서 반갈 → 각 반쪽 26x28 (독립 노트북으로 인식됨)
+  scene.load.image("laptop_half_left",  "/assets/pokemon_furniture/laptop_v_half_left.png?v=26x28");
+  scene.load.image("laptop_half_right", "/assets/pokemon_furniture/laptop_v_half_right.png?v=26x28");
   // laptop_pair_back_to_back 원본(56x44) 을 좌/우로 분리 + content bbox trim
   //   좌: 28x38 (화면+키보드, 왼쪽 캐릭용)
   //   우: 28x24 (키보드+화면, 오른쪽 캐릭용)

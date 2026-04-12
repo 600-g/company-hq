@@ -938,12 +938,17 @@ export default class OfficeScene extends Phaser.Scene {
     // 노트북 A안: laptop_v 원본 통짜, 줄마다 x=0(두 책상 사이 정중앙), 캐릭 face-level
     // ※ Phaser Container는 add 순서로 렌더. depth도 명시해 책상(50/55)·캐릭(52/57) 위에 표시
     const drawLaptop = (rowY: number, depth: number) => {
-      // laptop_v: 52x28 완전체 (좌/우 키보드 + 중앙 V화면)
-      // origin(0.5, 0.5)로 캐릭 face-level(rowY-18) 센터 배치
-      const img = this.add.image(0, rowY - 18, "laptop_v").setOrigin(0.5, 0.5).setDepth(depth);
-      const tex = this.textures.get("laptop_v");
-      if (tex && tex.source[0]) tex.setFilter(Phaser.Textures.FilterMode.NEAREST);
-      container.add(img);
+      // 52x28 완전체를 반갈 → 각 반쪽(26x28)을 각 캐릭 앞 책상(±13)에 배치
+      // 두 반쪽 붙이면 원본 노트북 재구성, 각자 독립 노트북으로도 인식됨
+      const yPos = rowY - 18;
+      const left  = this.add.image(-13, yPos, "laptop_half_left").setOrigin(0.5, 0.5).setDepth(depth);
+      const right = this.add.image( 13, yPos, "laptop_half_right").setOrigin(0.5, 0.5).setDepth(depth);
+      ["laptop_half_left", "laptop_half_right"].forEach(k => {
+        const tex = this.textures.get(k);
+        if (tex && tex.source[0]) tex.setFilter(Phaser.Textures.FilterMode.NEAREST);
+      });
+      container.add(left);
+      container.add(right);
     };
 
 
