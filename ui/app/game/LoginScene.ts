@@ -33,12 +33,12 @@ interface BuildingSlot {
 }
 
 const BUILDINGS: BuildingSlot[] = [
-  // 뒷줄 5채 — Bourg Palette FRLG 정식 3채 + HGSS HQ + 아파트
-  { x: 85, y: BACK_ROW_BOTTOM_Y, key: "palet_red" },       // FRLG 빨강지붕 (정식)
-  { x: 245, y: BACK_ROW_BOTTOM_Y, key: "palet_green" },    // FRLG 녹색지붕
-  { x: 480, y: BACK_ROW_BOTTOM_Y, key: "city_hq", isHQ: true },  // HGSS 초록 HQ
-  { x: 710, y: BACK_ROW_BOTTOM_Y, key: "palet_blue" },     // FRLG 파랑지붕
-  { x: 870, y: BACK_ROW_BOTTOM_Y, key: "city_purple" },    // HGSS 보라 2층 (variation)
+  // 뒷줄 5채 — 건물 128px wide 기준 겹침 없이 재배치
+  { x: 100, y: BACK_ROW_BOTTOM_Y, key: "palet_red" },
+  { x: 270, y: BACK_ROW_BOTTOM_Y, key: "palet_green" },
+  { x: 480, y: BACK_ROW_BOTTOM_Y, key: "city_hq", isHQ: true },
+  { x: 695, y: BACK_ROW_BOTTOM_Y, key: "palet_blue" },
+  { x: 865, y: BACK_ROW_BOTTOM_Y, key: "city_purple" },
   // 앞줄: 마트(좌) + 공원(중) + 카페(우)
   { x: 170, y: FRONT_ROW_BOTTOM_Y, key: "city_mart" },
   { x: 480, y: FRONT_ROW_BOTTOM_Y, key: "park", isPark: true },
@@ -289,15 +289,14 @@ export default class LoginScene extends Phaser.Scene {
       const key = i % 2 === 0 ? "obj_tree_1a" : "obj_tree_2a";
       this.add.image(tx, 38, key).setOrigin(0.5, 1).setScale(0.9).setDepth(1);
     });
-    // 건물 사이 틈새 — 중간 (scale 1.2 → 38×77)
-    // 건물 footprint (back row) 피해 간극만:
-    // palet_red 85 ±55 = 30-140, palet_green 245 ±67 = 178-312, HQ 480 ±108 = 372-588
-    // palet_blue 710 ±78 = 632-788, purple 870 ±79 = 791-949
-    // 간극: 140-178, 312-372, 588-632, 788-791(없음)
+    // 건물 사이 틈새 — 새 좌표 기준
+    // palet_red 100 ±83 = 17-183, palet_green 270 ±83 = 187-353, HQ 480 ±108 = 372-588
+    // palet_blue 695 ±83 = 612-778, purple 865 ±79 = 786-944
+    // 간극: 183-187 (너무 좁음), 353-372, 588-612, 778-786
     const betweenSpots: [number, number, string][] = [
-      [158, 230, "obj_tree_1a"],   // red-green 사이
-      [342, 230, "obj_tree_2a"],   // green-HQ 사이
-      [610, 230, "obj_tree_1b"],   // HQ-blue 사이
+      [362, 230, "obj_tree_2a"],   // green-HQ 사이
+      [600, 230, "obj_tree_1b"],   // HQ-blue 사이
+      [782, 230, "obj_tree_1a"],   // blue-purple 사이
     ];
     betweenSpots.forEach(([tx, ty, k]) => {
       this.add.image(tx, ty, k).setOrigin(0.5, 1).setScale(1.2).setDepth(8);
@@ -312,12 +311,16 @@ export default class LoginScene extends Phaser.Scene {
     // 주의: HQ 광장 y=238~270, HQ 건물 x=372~588, front row 건물/공원 y=340~500 피함
     // 안전 영역: 뒷줄 건물 사이 풀밭 y=210~230, 하단 인도-공원 사이 y=460~490
     const bushSpots: [number, number][] = [
-      // 뒷줄 건물 사이 틈 (간극 내부)
-      [185, 240], [280, 240],       // red-green 사이
-      [625, 240], [775, 240],       // HQ-blue, blue-purple 사이
-      // 하단: 공원 밖 영역 (공원 x=384~576, 피함)
-      [160, 475], [360, 475],       // 공원 좌측 영역
-      [600, 475], [780, 475],       // 공원 우측 영역
+      // 새 건물 좌표 기준 틈새 (간극 183-187 미사용, 353-372, 588-612, 778-786)
+      [360, 244],
+      [600, 244],
+      [782, 244],
+      // 하단: 공원 밖(x=384-576 피함), mart 밖(80-260 피함), cafe 밖(756-884 피함)
+      [300, 475],       // mart-공원 사이
+      [620, 475],       // 공원-cafe 사이
+      [700, 475],       // 공원-cafe 중간
+      [60, 455],        // 좌외곽
+      [920, 455],       // 우외곽
     ];
     bushSpots.forEach(([bx, by]) => {
       this.add.image(bx, by, "obj_bush_1").setOrigin(0.5, 1).setScale(1.2).setDepth(9);
@@ -446,9 +449,9 @@ export default class LoginScene extends Phaser.Scene {
       // 건물 기본 스케일: 키별로 조정 (너무 큰 것 방지)
       const baseScale: Record<string, number> = {
         // Bourg Palette FRLG 정식 (CLEAN)
-        palet_red: 1.4,        // 112×128 → 157×179
-        palet_green: 1.4,      // 96×144 → 134×202
-        palet_blue: 1.4,       // 112×128 → 157×179
+        palet_red: 1.3,        // 128×128 → 166×166 (half 83)
+        palet_green: 1.3,      // 128×144 → 166×187 (half 83)
+        palet_blue: 1.3,       // 128×128 → 166×166 (half 83)
         // HGSS
         city_hq: 1.5,          // 144×148 → 216×222
         city_purple: 1.1,      // 144×192 → 158×211
