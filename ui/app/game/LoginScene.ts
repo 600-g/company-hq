@@ -81,8 +81,9 @@ export default class LoginScene extends Phaser.Scene {
   preload() {
     const v = "v4";
     // Bourg Palette 정식 composites (CLAUDE.md 규칙 준수 - 직접 크롭 대신 composite 사용)
-    if (!this.textures.exists("palet_red")) this.load.image("palet_red", `/assets/extracted/house_red_palet.png?${v}`);
-    if (!this.textures.exists("palet_green")) this.load.image("palet_green", `/assets/extracted/house_green_palet.png?${v}`);
+    // composite 파생 (r029_c00_6x8 → left/right 반분 → 각 y-edge 정리)
+    if (!this.textures.exists("palet_red")) this.load.image("palet_red", `/assets/extracted/composite_red_house.png?${v}`);
+    if (!this.textures.exists("palet_green")) this.load.image("palet_green", `/assets/extracted/composite_green_house.png?${v}`);
     // Blue house: 공식 composite (obj_r034_c00_5x4)
     if (!this.textures.exists("palet_blue")) this.load.image("palet_blue", `/assets/extracted/composite_blue_house.png?${v}`);
     // HQ: Bourg Green Lab composite (obj_r020_c00_6x7, 224×192) - Oak's lab 스타일 포켓몬 센터급
@@ -453,8 +454,8 @@ export default class LoginScene extends Phaser.Scene {
       // 건물 기본 스케일: 키별로 조정 (너무 큰 것 방지)
       const baseScale: Record<string, number> = {
         // Bourg Palette FRLG 정식 (CLEAN)
-        palet_red: 1.3,        // 128×128 → 166×166 (half 83)
-        palet_green: 1.3,      // 128×144 → 166×187 (half 83)
+        palet_red: 1.2,        // composite 128×160 → 154×192 (half 77)
+        palet_green: 1.2,      // composite 128×160 → 154×192 (half 77)
         palet_blue: 1.1,       // 128×160 (composite) → 141×176 (half 70)
         // HQ: composite green lab 224×192 원본. scale 1.0 → 224×192 (half 112)
         city_hq: 1.0,
