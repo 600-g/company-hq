@@ -33,17 +33,16 @@ interface BuildingSlot {
 }
 
 const BUILDINGS: BuildingSlot[] = [
-  // 뒷줄 6채 — 빈 공간 없이 도심 블록 느낌 (좌→우)
-  { x: 70, y: BACK_ROW_BOTTOM_Y, key: "bld_shop_left" },
-  { x: 180, y: BACK_ROW_BOTTOM_Y, key: "bld_apartment" },
-  { x: 320, y: BACK_ROW_BOTTOM_Y, key: "bld_main_3f" },
-  { x: 480, y: BACK_ROW_BOTTOM_Y, key: "bld_main_hq", isHQ: true },
-  { x: 640, y: BACK_ROW_BOTTOM_Y, key: "bld_main_2f" },
-  { x: 810, y: BACK_ROW_BOTTOM_Y, key: "bld_shop_right" },
-  // 앞줄: 좌·우 집, 중앙은 공원
-  { x: 160, y: FRONT_ROW_BOTTOM_Y, key: "bld_cafe" },
+  // 뒷줄 — HGSS 컬러 빌딩 5채 (좌→우, 높이 variation)
+  { x: 85, y: BACK_ROW_BOTTOM_Y, key: "city_yellow" },
+  { x: 225, y: BACK_ROW_BOTTOM_Y, key: "city_blue" },
+  { x: 480, y: BACK_ROW_BOTTOM_Y, key: "city_hq", isHQ: true },
+  { x: 700, y: BACK_ROW_BOTTOM_Y, key: "city_red" },
+  { x: 870, y: BACK_ROW_BOTTOM_Y, key: "city_purple" },
+  // 앞줄: 마트(좌 대형) + 공원(중) + 카페(우)
+  { x: 170, y: FRONT_ROW_BOTTOM_Y, key: "city_mart" },
   { x: 480, y: FRONT_ROW_BOTTOM_Y, key: "park", isPark: true },
-  { x: 800, y: FRONT_ROW_BOTTOM_Y, key: "bld_main_1f" },
+  { x: 820, y: FRONT_ROW_BOTTOM_Y, key: "bld_main_1f" },
 ];
 
 interface Walker {
@@ -80,12 +79,23 @@ export default class LoginScene extends Phaser.Scene {
   }
 
   preload() {
-    const v = "v2";
-    // 건물
-    const bldgs = ["main_hq", "apartment", "cafe", "shop_left", "shop_right", "main_1f", "main_2f", "main_3f"];
-    bldgs.forEach(n => {
-      if (!this.textures.exists(`bld_${n}`)) this.load.image(`bld_${n}`, `/assets/original/buildings/${n}.png?${v}`);
+    const v = "v3";
+    // HGSS 컬러 건물 (buildings/) — 메인 에셋
+    const cityMap: Record<string, string> = {
+      city_yellow: "house_yellow",
+      city_blue: "house_blue",
+      city_red: "house_red",
+      city_purple: "house_purple",
+      city_mart: "house_mart",
+      city_hq: "hq",
+    };
+    Object.entries(cityMap).forEach(([k, f]) => {
+      if (!this.textures.exists(k)) this.load.image(k, `/assets/buildings/${f}.png?${v}`);
     });
+    // 보조 건물 (original/) — 앞줄 오른쪽
+    if (!this.textures.exists("bld_main_1f")) {
+      this.load.image("bld_main_1f", `/assets/original/buildings/main_1f.png?${v}`);
+    }
     // 타일 (그라운드 + fountain + HQ 광장 마감)
     ["road", "road_line", "sidewalk", "grass_green", "fountain", "floor_marble"].forEach(n => {
       if (!this.textures.exists(`tile_${n}`)) this.load.image(`tile_${n}`, `/assets/original/tiles/${n}.png?${v}`);
@@ -99,6 +109,22 @@ export default class LoginScene extends Phaser.Scene {
      "potplant_0", "potplant_1", "potplant_2", "mailbox"].forEach(n => {
       if (!this.textures.exists(`prop_${n}`)) this.load.image(`prop_${n}`, `/assets/original/props/${n}.png?${v}`);
     });
+    // 나무 3사이즈 (원근감) — /trees/
+    ["spring", "summer", "autumn", "winter", "evergreen"].forEach(s => {
+      ["sm", "md", "lg"].forEach(sz => {
+        const k = `tree2_${s}_${sz}`;
+        if (!this.textures.exists(k)) this.load.image(k, `/assets/trees/tree_${s}_${sz}.png?${v}`);
+      });
+    });
+    // 실제 담장 (scene edge)
+    if (!this.textures.exists("wall_0")) this.load.image("wall_0", `/assets/walls/wall_0.png?${v}`);
+    // NPC static 스프라이트 (첫 프레임만 사용, 장식용)
+    for (let i = 1; i <= 10; i++) {
+      const k = `npc_${String(i).padStart(2, "0")}`;
+      if (!this.textures.exists(k)) {
+        this.load.spritesheet(k, `/assets/npcs/${k}.png?${v}`, { frameWidth: 32, frameHeight: 48 });
+      }
+    }
     // 캐릭터 32×48 (OfficeScene과 동일 — /assets/chars/)
     CHAR_KEYS.forEach(n => {
       if (!this.textures.exists(`char_${n}`)) {
@@ -259,14 +285,35 @@ export default class LoginScene extends Phaser.Scene {
         .setOrigin(0.5, 1).setScale(TILE_SCALE * 1.1).setDepth(15);
     });
 
-    // 뒷줄 건물 사이 틈새에만 나무 (HQ 뒤 등 가려지는 자리는 배제)
+    // 원근감 나무: 뒷벽(상단, sm) + 건물 틈새(md) + 전경 코너(lg)
     const season = this.getSeason();
-    const treeKey = `prop_tree_${season}`;
-    const treeSpots: [number, number][] = [
-      [18, 210], [250, 210], [378, 210], [582, 210], [728, 210], [942, 210],
+    // 상단 먼 나무 라인 (sm) — HQ 간판(x~400~560) 피해 배치
+    [30, 80, 130, 180, 260, 310, 630, 680, 730, 830, 880, 930].forEach(tx => {
+      this.add.image(tx, 30, `tree2_${season}_sm`).setOrigin(0.5, 1).setScale(2).setDepth(1);
+    });
+    // evergreen 섞어 뉘앙스 (sm)
+    [55, 105, 855, 905].forEach(tx => {
+      this.add.image(tx, 35, `tree2_evergreen_sm`).setOrigin(0.5, 1).setScale(2).setDepth(1);
+    });
+    // 건물 사이 md 나무
+    const medSpots: [number, number][] = [[18, 220], [165, 220], [795, 220], [942, 220]];
+    medSpots.forEach(([tx, ty]) => {
+      this.add.image(tx, ty, `tree2_${season}_md`).setOrigin(0.5, 1).setScale(2).setDepth(8);
+    });
+    // 화면 하단 코너 — lg 나무 (전경)
+    [30, 940].forEach(tx => {
+      this.add.image(tx, H - 2, `tree2_${season}_lg`).setOrigin(0.5, 1).setScale(1.8).setDepth(25);
+    });
+
+    // 정적 NPC 3명 — 벤치·마트 앞·카페 앞 (frame 0 남향, 움직이지 않음)
+    const staticNpcs: { x: number; y: number; key: string; frame: number }[] = [
+      { x: 245, y: BOTTOM_SIDEWALK_Y - 2, key: "npc_03", frame: 0 },   // 벤치 근처
+      { x: 170, y: FRONT_ROW_BOTTOM_Y + 14, key: "npc_05", frame: 0 }, // 마트 앞
+      { x: 820, y: FRONT_ROW_BOTTOM_Y + 14, key: "npc_07", frame: 0 }, // 카페 앞
     ];
-    treeSpots.forEach(([tx, ty]) => {
-      this.add.image(tx, ty, treeKey).setOrigin(0.5, 1).setScale(TILE_SCALE).setDepth(8);
+    staticNpcs.forEach(n => {
+      this.add.sprite(n.x, n.y, n.key, n.frame)
+        .setOrigin(0.5, 1).setScale(0.75).setDepth(28);
     });
 
     // 우편함 2곳 (HQ 옆 + cafe 앞)
@@ -321,14 +368,15 @@ export default class LoginScene extends Phaser.Scene {
       if (slot.isPark) { this.drawPark(slot.x, slot.y); return; }
       // 건물 기본 스케일: 키별로 조정 (너무 큰 것 방지)
       const baseScale: Record<string, number> = {
-        bld_main_hq: 3.0,       // HQ 메인 랜드마크
+        // HGSS 컬러 건물 (원본 사이즈 활용)
+        city_hq: 1.5,          // HQ 랜드마크 (216×222)
+        city_blue: 1.0,        // 144×190
+        city_red: 1.0,         // 144×144
+        city_purple: 1.0,      // 144×192
+        city_yellow: 1.0,      // 112×145
+        city_mart: 0.7,        // 256×145 → 179×102 (앞줄용)
+        // 보조 건물
         bld_main_1f: 2.0,
-        bld_main_2f: 1.7,       // 중층 건물 (HQ 우측)
-        bld_main_3f: 1.5,       // 고층 건물 (HQ 좌측, 스카이라인)
-        bld_shop_left: 2.0,
-        bld_shop_right: 2.0,
-        bld_cafe: 2.0,
-        bld_apartment: 1.7,     // 아파트 (뒷줄 좌측, 고층감)
       };
       const scale = baseScale[slot.key] || BUILDING_SCALE;
       const img = this.add.image(slot.x, slot.y, slot.key)
@@ -341,10 +389,9 @@ export default class LoginScene extends Phaser.Scene {
       sh.fillEllipse(slot.x, slot.y + 2, img.displayWidth * 0.6, 8);
 
       // 상점류 어닝 + 간판 — 건물 하단 출입구 위에 굵은 줄무늬 + 이름
+      // HGSS 건물은 facade 가 이미 풍부해 어닝 생략, 보조 cafe 에만 간판
       const awnings: Record<string, { colors: [number, number]; label: string }> = {
-        bld_shop_left: { colors: [0xd94a4a, 0xffffff], label: "MART" },
-        bld_shop_right: { colors: [0x3a8ed8, 0xffffff], label: "SHOP" },
-        bld_cafe: { colors: [0xd68a40, 0xfff0c2], label: "CAFE" },
+        bld_main_1f: { colors: [0xd68a40, 0xfff0c2], label: "CAFE" },
       };
       const aw = awnings[slot.key];
       if (aw) {
@@ -464,17 +511,10 @@ export default class LoginScene extends Phaser.Scene {
       this.add.image(plazaX0 + c * TILE, plazaY, "tile_floor_marble")
         .setOrigin(0, 0).setScale(TILE_SCALE).setDepth(6);
     }
-    // 광장 테두리 (두껍게, 금색)
+    // 광장 테두리만 (HQ 에셋에 이미 노란 문 있어 graphics 문 표식 생략)
     const g = this.add.graphics().setDepth(7);
-    g.lineStyle(3, 0xd9a838, 0.95);
+    g.lineStyle(3, 0xd9a838, 0.8);
     g.strokeRect(plazaX0 + 1, plazaY + 1, cols * TILE - 2, TILE - 2);
-    // HQ 문 표식 — 방사형 빛
-    g.fillStyle(0xf5c842, 0.28);
-    g.fillCircle(480, plazaY + TILE / 2, 22);
-    g.fillStyle(0xffe87a, 0.55);
-    g.fillCircle(480, plazaY + TILE / 2, 12);
-    g.fillStyle(0xffffff, 0.9);
-    g.fillCircle(480, plazaY + TILE / 2, 4);
   }
 
 
