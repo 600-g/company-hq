@@ -785,30 +785,21 @@ export default class OfficeScene extends Phaser.Scene {
 
     // ── 우측 벽면 — (화이트보드 제거: 아케이드 존으로 대체됨) ──
 
-    // ── 아케이드 존 (서버실 옆에 붙임, 클릭 시 탱크 슈팅 미니게임) ──
+    // ── 아케이드 존 (1타일 서랍만, 클릭 시 탱크 슈팅 미니게임) ──
+    // 풋프린트 축소: 기존 ~150px → 32px (1타일). 팀 아이콘 침범 방지.
     // 서버실: WORLD_W - 52, 이 기준 왼쪽으로 ~96px 떨어뜨림
     const arcX = WORLD_W - 180;
     const arcY = wallY + 72;
 
-    // 주변 장식 게임기들 (비활성, 장식만) — 먼저 그려서 메인 캐비닛이 위에 오도록
-    const arcDecoDefs: Array<{ x: number; y: number; key: string; scale?: number }> = [
-      { x: arcX - 58,  y: wallY + 48,  key: "arcade_deco_a" }, // 2x2 좌측
-      { x: arcX - 30,  y: wallY + 96,  key: "arcade_deco_d" }, // 1x1 좌하단
-      { x: arcX + 42,  y: wallY + 62,  key: "arcade_deco_b" }, // 3x2 우측 (서버 방향)
-      { x: arcX + 14,  y: wallY + 104, key: "arcade_deco_d" }, // 1x1 앞쪽
-    ];
-    arcDecoDefs.forEach(d => {
-      const img = this.add.image(d.x, d.y, d.key).setOrigin(0.5, 1).setDepth(54);
-      if (d.scale) img.setScale(d.scale);
-      this.envGroup.add(img);
-    });
+    // 서랍/탁상 (1x1 게임 코너 오브젝트 단일 배치)
+    const DRAWER_W = 32;
+    const DRAWER_H = 32;
+    const drawer = this.add.image(arcX, arcY, "arcade_deco_d").setOrigin(0.5, 1).setDepth(55);
+    this.envGroup.add(drawer);
 
-    const arcade = this.add.image(arcX, arcY, "arcade_cabinet").setOrigin(0.5, 1).setDepth(55);
-    this.envGroup.add(arcade);
-
-    // 메인 캐비닛 bobbing tween (살짝 위아래)
+    // 살짝 bobbing
     this.tweens.add({
-      targets: arcade,
+      targets: drawer,
       y: arcY - 2,
       duration: 1400,
       yoyo: true,
@@ -816,9 +807,11 @@ export default class OfficeScene extends Phaser.Scene {
       ease: "Sine.easeInOut",
     });
 
-    // 더 크고 굵고 빛나는 라벨
-    const arcLabel = this.add.text(arcX, arcY - 68, "🎮 ARCADE", {
-      fontSize: "20px", fontFamily: FONT,
+    // 라벨: 서랍 top - 10
+    const drawerTop = arcY - DRAWER_H;
+    const labelY = drawerTop - 10;
+    const arcLabel = this.add.text(arcX, labelY, "🎮 ARCADE", {
+      fontSize: "14px", fontFamily: FONT,
       color: "#fbbf24", resolution: TEXT_RES,
       fontStyle: "bold",
       stroke: "#000000", strokeThickness: 3,
@@ -829,33 +822,18 @@ export default class OfficeScene extends Phaser.Scene {
     // 라벨 bobbing
     this.tweens.add({
       targets: arcLabel,
-      y: arcY - 72,
+      y: labelY - 4,
       duration: 900,
       yoyo: true,
       repeat: -1,
       ease: "Sine.easeInOut",
     });
 
-    // 반짝이 별 (라벨 양옆)
-    const sparkleL = this.add.text(arcX - 54, arcY - 66, "✨", {
-      fontSize: "12px", fontFamily: FONT, resolution: TEXT_RES,
-    }).setOrigin(0.5, 1).setDepth(56);
-    const sparkleR = this.add.text(arcX + 54, arcY - 66, "✨", {
-      fontSize: "12px", fontFamily: FONT, resolution: TEXT_RES,
-    }).setOrigin(0.5, 1).setDepth(56);
-    this.envGroup.add(sparkleL);
-    this.envGroup.add(sparkleR);
-    this.tweens.add({
-      targets: [sparkleL, sparkleR],
-      alpha: 0.3,
-      duration: 700,
-      yoyo: true,
-      repeat: -1,
-      ease: "Sine.easeInOut",
-    });
-
-    // 메인 캐비닛만 hitzone 활성
-    const arcHit = this.add.zone(arcX, arcY - 20, 48, 64).setInteractive({ useHandCursor: true }).setDepth(102);
+    // 서랍 자체를 hitzone (서랍 전체 영역과 일치)
+    const arcHit = this.add
+      .zone(arcX, arcY - DRAWER_H / 2, DRAWER_W, DRAWER_H)
+      .setInteractive({ useHandCursor: true })
+      .setDepth(102);
     arcHit.on("pointerdown", () => {
       this.scene.pause();
       this.scene.launch("TankShooterScene");
