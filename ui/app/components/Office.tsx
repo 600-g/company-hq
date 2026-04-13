@@ -517,27 +517,43 @@ const PROJECT_TYPE_OPTIONS = [
 ];
 
 function AddTeamModal({ onClose, onCreated }: { onClose: () => void; onCreated: (team: Team) => void }) {
-  const [name, setName] = useState("");
+  const [displayName, setDisplayName] = useState(""); // 화면 표시용 (한글 OK)
+  const [repoName, setRepoName] = useState(""); // GitHub 레포/ID (영문만)
   const [emoji, setEmoji] = useState("🆕");
   const [desc, setDesc] = useState("");
   const [projectType, setProjectType] = useState("general");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [step, setStep] = useState("");
+  const [repoTouched, setRepoTouched] = useState(false);
 
   const REPO_NAME_RE = /^[a-z0-9-]+$/;
-  const trimmed = name.trim();
-  const nameInvalid = trimmed.length > 0 && !REPO_NAME_RE.test(trimmed);
-  const hasKorean = /[\u3131-\uD79D]/u.test(name);
+  const displayTrimmed = displayName.trim();
+  const repoTrimmed = repoName.trim();
+  const repoInvalid = repoTrimmed.length > 0 && !REPO_NAME_RE.test(repoTrimmed);
+  const hasHyphenIssue = repoTrimmed.length > 0 && (repoTrimmed.startsWith("-") || repoTrimmed.endsWith("-") || repoTrimmed.includes("--"));
+
+  // 표시명이 바뀌면 레포 기본값 자동 제안 (사용자가 직접 수정한 적 없을 때)
+  useEffect(() => {
+    if (repoTouched) return;
+    const suggested = displayTrimmed
+      .toLowerCase()
+      .replace(/[\u3131-\uD79D]/gu, "") // 한글 제거
+      .replace(/[^a-z0-9-]+/g, "-") // 그 외 → 하이픈
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "");
+    setRepoName(suggested);
+  }, [displayTrimmed, repoTouched]);
 
   const submit = async () => {
-    if (!trimmed) { setError("팀 이름을 입력하세요"); return; }
-    if (!REPO_NAME_RE.test(trimmed)) {
-      setError("프로젝트 이름은 영문 소문자(a-z), 숫자(0-9), 하이픈(-)만 사용하세요. 예: web-crawler");
+    if (!displayTrimmed) { setError("표시 이름을 입력하세요"); return; }
+    if (!repoTrimmed) { setError("레포 이름을 입력하세요 (영문)"); return; }
+    if (!REPO_NAME_RE.test(repoTrimmed)) {
+      setError("레포 이름은 영문 소문자(a-z), 숫자(0-9), 하이픈(-)만 사용하세요. 예: web-crawler");
       return;
     }
-    if (trimmed.startsWith("-") || trimmed.endsWith("-") || trimmed.includes("--")) {
-      setError("하이픈으로 시작/종료하거나 연속 하이픈(--)은 사용할 수 없습니다.");
+    if (hasHyphenIssue) {
+      setError("레포 이름: 하이픈으로 시작/종료하거나 연속 하이픈(--)은 사용할 수 없습니다.");
       return;
     }
     setLoading(true);
@@ -554,8 +570,8 @@ function AddTeamModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: trimmed,
-          repo: trimmed,
+          name: displayTrimmed,
+          repo: repoTrimmed,
           emoji,
           description: desc.trim(),
           project_type: projectType,
@@ -590,7 +606,7 @@ function AddTeamModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
       <div className="bg-[#0f0f1f] border border-[#3a3a5a] rounded-lg p-5 w-[340px] shadow-2xl" onClick={e => e.stopPropagation()}>
         <h3 className="text-sm font-bold text-yellow-400 mb-3">+ 새 에이전트 추가</h3>
         <div className="space-y-2.5">
-          {/* 이름 + 이모지 */}
+          {/* 이모지 + 표시 이름 */}
           <div className="flex gap-2">
             <div className="w-16">
               <label className="text-[9px] text-gray-500 block mb-0.5">이모지</label>
@@ -598,21 +614,31 @@ function AddTeamModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
                 className="w-full bg-[#1a1a2e] border border-[#3a3a5a] text-white text-center px-1 py-1.5 text-lg rounded focus:outline-none focus:border-yellow-400/50" />
             </div>
             <div className="flex-1">
-              <label className="text-[9px] text-gray-500 block mb-0.5">프로젝트 이름 (영문 소문자/숫자/하이픈)</label>
-              <input autoFocus value={name} onChange={e => setName(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && !loading && submit()}
-                placeholder="예) web-crawler, news-bot"
-                className={`w-full bg-[#1a1a2e] border text-white px-2 py-1.5 text-xs rounded focus:outline-none ${
-                  nameInvalid ? "border-red-400 focus:border-red-400" : "border-[#3a3a5a] focus:border-yellow-400/50"
-                }`} />
-              {nameInvalid && (
-                <p className="text-[9px] text-red-400 mt-0.5">
-                  {hasKorean
-                    ? "한글은 사용할 수 없어요. 영문 소문자/숫자/하이픈만 (예: web-crawler)"
-                    : "영문 소문자(a-z), 숫자(0-9), 하이픈(-)만 사용하세요"}
-                </p>
-              )}
+              <label className="text-[9px] text-gray-500 block mb-0.5">표시 이름 (한글 OK)</label>
+              <input autoFocus value={displayName} onChange={e => setDisplayName(e.target.value)}
+                placeholder="예) 회고, 매매봇, 크롤러"
+                className="w-full bg-[#1a1a2e] border border-[#3a3a5a] text-white px-2 py-1.5 text-xs rounded focus:outline-none focus:border-yellow-400/50" />
             </div>
+          </div>
+
+          {/* 레포/ID (영문만) */}
+          <div>
+            <label className="text-[9px] text-gray-500 block mb-0.5">레포 이름 — GitHub용 (영문 소문자/숫자/하이픈)</label>
+            <input value={repoName}
+              onChange={e => { setRepoName(e.target.value); setRepoTouched(true); }}
+              onKeyDown={e => e.key === "Enter" && !loading && submit()}
+              placeholder="예) retrospect-agent, web-crawler"
+              className={`w-full bg-[#1a1a2e] border text-white px-2 py-1.5 text-xs rounded focus:outline-none font-mono ${
+                (repoInvalid || hasHyphenIssue) ? "border-red-400 focus:border-red-400" : "border-[#3a3a5a] focus:border-yellow-400/50"
+              }`} />
+            {(repoInvalid || hasHyphenIssue) && (
+              <p className="text-[9px] text-red-400 mt-0.5">
+                {repoInvalid ? "영문 소문자(a-z), 숫자(0-9), 하이픈(-)만 사용" : "하이픈 시작/종료/연속(--) 불가"}
+              </p>
+            )}
+            {!repoTouched && repoTrimmed && !repoInvalid && !hasHyphenIssue && (
+              <p className="text-[9px] text-gray-600 mt-0.5">표시명에서 자동 생성됨. 수정 가능</p>
+            )}
           </div>
 
           {/* 프로젝트 타입 선택 */}
@@ -650,7 +676,7 @@ function AddTeamModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
           <p className="text-[8px] text-gray-600">자동: GitHub 레포 + 로컬 클론 + CLAUDE.md + 시스템프롬프트</p>
         </div>
         <div className="flex gap-2 mt-3">
-          <button onClick={submit} disabled={loading || nameInvalid || !trimmed}
+          <button onClick={submit} disabled={loading || repoInvalid || hasHyphenIssue || !displayTrimmed || !repoTrimmed}
             className="flex-1 bg-yellow-500 text-black py-1.5 text-xs font-bold rounded hover:bg-yellow-400 disabled:opacity-50 disabled:cursor-not-allowed">
             {loading ? `🔄 ${step}` : "에이전트 생성"}
           </button>
