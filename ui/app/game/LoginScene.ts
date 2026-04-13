@@ -79,7 +79,7 @@ export default class LoginScene extends Phaser.Scene {
   }
 
   preload() {
-    const v = "v3";
+    const v = "v4";
     // Bourg Palette (FRLG 정식) 깨끗히 crop 된 집 3채
     ["red", "green", "blue"].forEach(c => {
       const k = `palet_${c}`;
