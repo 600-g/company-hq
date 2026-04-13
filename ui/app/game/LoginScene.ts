@@ -97,10 +97,14 @@ export default class LoginScene extends Phaser.Scene {
     ["tile_fence_h", "tile_signpost", "tile_bush_small", "tile_rock"].forEach(n => {
       if (!this.textures.exists(n)) this.load.image(n, `/assets/extracted/${n}.png?${v}`);
     });
-    // 타일 (그라운드 + fountain + HQ 광장 마감)
-    ["road", "road_line", "sidewalk", "grass_green", "fountain", "floor_marble"].forEach(n => {
+    // 타일 (그라운드 + HQ 광장 마감)
+    ["road", "sidewalk", "grass_green", "floor_marble"].forEach(n => {
       if (!this.textures.exists(`tile_${n}`)) this.load.image(`tile_${n}`, `/assets/original/tiles/${n}.png?${v}`);
     });
+    // 분수 — Celadopole composite (obj_r021_c00_5x5, 160×160 십자형)
+    if (!this.textures.exists("composite_fountain")) {
+      this.load.image("composite_fountain", `/assets/extracted/composite_fountain.png?${v}`);
+    }
     // 꽃 스캐터 + 라이트 그라스 (Pokemon Autotiles)
     ["flowers1", "flowers2", "light_grass"].forEach(n => {
       if (!this.textures.exists(`tile_${n}`)) this.load.image(`tile_${n}`, `/assets/extracted/${n}_tile.png?${v}`);
@@ -148,7 +152,7 @@ export default class LoginScene extends Phaser.Scene {
     this.drawHQPlaza();
     this.placeStreetFurniture();
     this.placeBuildings();
-    this.drawHQSign();
+    // drawHQSign() 제거 - HQ composite 에 이미 LAB 간판 포함
     this.spawnWalkers();
     this.applyTint();
     this.particleG = this.add.graphics().setDepth(200);
@@ -234,18 +238,8 @@ export default class LoginScene extends Phaser.Scene {
         this.add.image(x, y, "tile_road").setOrigin(0, 0).setScale(TILE_SCALE).setDepth(5);
       }
     }
-    // 중앙 점선 (road_line.png) — 간격 좁혀 차선감 강화
-    const midY = ROAD_Y + Math.floor(ROAD_HEIGHT / 2) - TILE / 2;
-    for (let x = 0; x < W; x += TILE) {
-      if ((x / TILE) % 2 === 0) {
-        this.add.image(x, midY, "tile_road_line").setOrigin(0, 0).setScale(TILE_SCALE).setDepth(6);
-      }
-    }
-    // 도로 가장자리 흰 실선 (인도와 구분)
-    const edgeG = this.add.graphics().setDepth(6);
-    edgeG.fillStyle(0xffffff, this.isNight ? 0.4 : 0.75);
-    edgeG.fillRect(0, ROAD_Y + 2, W, 2);
-    edgeG.fillRect(0, ROAD_Y + ROAD_HEIGHT - 4, W, 2);
+    // 노란 차선 tile_road_line 제거 (Pokemon 스타일과 이질감) — 깔끔한 도로만 유지
+    // 도로 가장자리 흰 실선 제거 (노란 점선 차선만 유지, 이질감 개선)
 
     // 인도 — 도로 위·아래
     const sidewalkTop = ROAD_Y - TILE;
@@ -277,19 +271,23 @@ export default class LoginScene extends Phaser.Scene {
   }
 
   private placeStreetFurniture() {
-    // 가로등 — 도로 위/아래/하단 3단으로 촘촘히 (~96px 간격)
-    const lampXs = [40, 140, 240, 340, 540, 640, 740, 840, 920];
+    // 가로등 — 건물 footprint 완전 회피하여 간극/도로변만
+    // 뒷줄 건물 x: red 17-183, green 187-353, HQ 368-592, blue 625-765, purple 786-944
+    // 간극: 184-187, 354-367, 593-624, 766-785
+    // 앞줄 건물 x: mart 80-260, park 384-576, cafe 756-884
+    // 간극: 0-80, 261-383, 577-755, 885-960
+    // 가로등 안전 x: 뒷줄 간극 + 앞줄 간극 교집합
+    const lampXs = [30, 185, 275, 360, 600, 700, 775, 900];
     lampXs.forEach(lx => {
+      // 뒷줄 인도 (도로 바로 위)
       this.add.image(lx, ROAD_Y - TILE, "prop_streetlight")
         .setOrigin(0.5, 1).setScale(TILE_SCALE).setDepth(15);
-      this.add.image(lx, BOTTOM_SIDEWALK_Y, "prop_streetlight")
-        .setOrigin(0.5, 1).setScale(TILE_SCALE).setDepth(15);
-    });
-
-    // 가로등 — HQ 앞 광장 양쪽 (강조)
-    [420, 540].forEach(lx => {
-      this.add.image(lx, ROAD_Y - TILE, "prop_streetlight")
-        .setOrigin(0.5, 1).setScale(TILE_SCALE * 1.1).setDepth(15);
+      // 하단 인도 (화면 최하단) — mart/cafe footprint 회피 필요
+      const safeBottom = lx < 80 || (lx > 260 && lx < 756) || lx > 884;
+      if (safeBottom) {
+        this.add.image(lx, BOTTOM_SIDEWALK_Y, "prop_streetlight")
+          .setOrigin(0.5, 1).setScale(TILE_SCALE).setDepth(15);
+      }
     });
 
     // Pokemon 오브젝트 나무 — 32×64 기본, 캐릭(24px) 대비 자연스러운 비율
@@ -375,7 +373,7 @@ export default class LoginScene extends Phaser.Scene {
       { x: 170, y: FRONT_ROW_BOTTOM_Y + 14, key: "npc_05", frame: 0 }, // 마트 앞
       { x: 820, y: FRONT_ROW_BOTTOM_Y + 14, key: "npc_07", frame: 0 }, // 카페 앞
       { x: 100, y: 248, key: "npc_02", frame: 0 },                     // red 집 앞
-      { x: 480, y: 248, key: "npc_06", frame: 0 },                     // HQ 앞 (광장 앞)
+      // HQ 앞 NPC 제거 - 문/클릭존 방해
       { x: 865, y: 248, key: "npc_08", frame: 0 },                     // purple 집 앞
       { x: 450, y: BOTTOM_SIDEWALK_Y - 2, key: "npc_09", frame: 0 },   // 공원 앞 인도
       { x: 540, y: BOTTOM_SIDEWALK_Y - 2, key: "npc_10", frame: 0 },   // 공원 앞 인도 (다른 방향)
@@ -508,10 +506,10 @@ export default class LoginScene extends Phaser.Scene {
         glow.fillStyle(0xfff0a0, 0.12);
         glow.fillCircle(slot.x, slot.y - img.displayHeight / 2, img.displayWidth * 0.8);
 
-        // 입구 클릭존 (하단 중앙, 문 영역)
-        const zoneW = img.displayWidth * 0.35;
-        const zoneH = 40;
-        const zoneY = slot.y - zoneH / 2 - 4;
+        // 입구 클릭존 — Bourg Lab composite 문 위치 (건물 하단 중앙, displayHeight의 아래 15%)
+        const zoneW = img.displayWidth * 0.18;        // 문 폭 정도로 좁게
+        const zoneH = Math.min(40, img.displayHeight * 0.18);
+        const zoneY = slot.y - zoneH / 2 - 2;         // baseline 바로 위 (문 중앙)
         const zone = this.add.zone(slot.x, zoneY, zoneW, zoneH)
           .setDepth(20).setInteractive({ useHandCursor: true });
         let hoverG: Phaser.GameObjects.Graphics | null = null;
@@ -574,15 +572,11 @@ export default class LoginScene extends Phaser.Scene {
     this.add.image(cx + TILE * 2, y0 + h / 2 + TILE / 2, "prop_bench")
       .setOrigin(0.5, 1).setScale(1.5).setDepth(11);
 
-    // 중앙 분수 — fountain.png 에셋 사용 (32x64 → 2x = 64x128)
-    const fTex = this.textures.get("tile_fountain");
+    // 중앙 분수 — Celadopole 정식 composite 160×160 (origin center)
+    const fTex = this.textures.get("composite_fountain");
     if (fTex) fTex.setFilter(Phaser.Textures.FilterMode.NEAREST);
-    this.add.image(cx, y0 + h / 2 + TILE / 2, "tile_fountain")
-      .setOrigin(0.5, 1).setScale(2).setDepth(12);
-    // 분수 주변 부드러운 하이라이트 (물 광채)
-    const fg = this.add.graphics().setDepth(11);
-    fg.fillStyle(0xbaeaff, 0.15);
-    fg.fillCircle(cx, y0 + h / 2, 28);
+    this.add.image(cx, y0 + h / 2, "composite_fountain")
+      .setOrigin(0.5, 0.5).setScale(0.9).setDepth(12);
   }
 
   private drawHQPlaza() {
