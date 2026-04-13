@@ -13,7 +13,7 @@ const DPR = typeof window !== "undefined" ? Math.min(window.devicePixelRatio || 
 const TILE = 32;           // 16px 타일을 2x 스케일로
 const TILE_SCALE = 2;
 const BUILDING_SCALE = 2.2;
-const CHAR_SCALE = 1.0;  // OfficeScene과 동일 (32×48 프레임 그대로)
+const CHAR_SCALE = 0.75;  // 도심 스케일 — 건물 대비 자연스러운 포켓몬 비율
 
 // 레이아웃 (픽셀)
 const SKY_H = 0;            // 잔디가 전체 커버
@@ -90,6 +90,10 @@ export default class LoginScene extends Phaser.Scene {
     ["road", "road_line", "sidewalk", "grass_green", "fountain", "floor_marble"].forEach(n => {
       if (!this.textures.exists(`tile_${n}`)) this.load.image(`tile_${n}`, `/assets/original/tiles/${n}.png?${v}`);
     });
+    // 꽃 스캐터 (Pokemon Autotiles 추출)
+    ["flowers1", "flowers2"].forEach(n => {
+      if (!this.textures.exists(`tile_${n}`)) this.load.image(`tile_${n}`, `/assets/extracted/${n}_tile.png?${v}`);
+    });
     // Props
     ["bench", "streetlight", "tree_spring", "tree_summer", "tree_autumn", "tree_winter",
      "potplant_0", "potplant_1", "potplant_2", "mailbox"].forEach(n => {
@@ -158,6 +162,33 @@ export default class LoginScene extends Phaser.Scene {
           .setOrigin(0, 0).setScale(TILE_SCALE).setDepth(0);
       }
     }
+    // 꽃 스캐터 — 도로/공원/건물 바닥과 겹치지 않는 영역에만 (상단 잔디 + 앞줄 공간 사이)
+    const f1 = this.textures.get("tile_flowers1");
+    const f2 = this.textures.get("tile_flowers2");
+    if (f1) f1.setFilter(Phaser.Textures.FilterMode.NEAREST);
+    if (f2) f2.setFilter(Phaser.Textures.FilterMode.NEAREST);
+    // 결정적 랜덤 (매번 같은 배치)
+    let seed = 7;
+    const rand = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
+    const safeZones: [number, number, number, number][] = [
+      // 상단 건물-화면상단 사이 얇은 풀밭 띠 (HQ 간판 피해 좌우로)
+      [0, 30, 380, 120],
+      [580, 30, 960, 120],
+      // 건물 사이 가장자리 풀밭 (건물 렌더링 뒤로 가므로 depth 조절됨)
+      [0, 180, 120, 250],
+      [840, 180, 960, 250],
+      // 앞줄 카페-공원 / 공원-main_1f 사이
+      [220, 340, 400, 430],
+      [560, 340, 740, 430],
+    ];
+    for (let i = 0; i < 45; i++) {
+      const zone = safeZones[Math.floor(rand() * safeZones.length)];
+      const fx = zone[0] + rand() * (zone[2] - zone[0]);
+      const fy = zone[1] + rand() * (zone[3] - zone[1]);
+      const key = rand() > 0.5 ? "tile_flowers1" : "tile_flowers2";
+      this.add.image(fx, fy, key)
+        .setOrigin(0, 0).setScale(1).setDepth(7);
+    }
   }
 
   // 세로 골목 x 좌표
@@ -170,11 +201,18 @@ export default class LoginScene extends Phaser.Scene {
         this.add.image(x, y, "tile_road").setOrigin(0, 0).setScale(TILE_SCALE).setDepth(5);
       }
     }
-    // 중앙 점선 (road_line.png)
+    // 중앙 점선 (road_line.png) — 간격 좁혀 차선감 강화
     const midY = ROAD_Y + Math.floor(ROAD_HEIGHT / 2) - TILE / 2;
-    for (let x = 0; x < W; x += TILE * 2) {
-      this.add.image(x, midY, "tile_road_line").setOrigin(0, 0).setScale(TILE_SCALE).setDepth(6);
+    for (let x = 0; x < W; x += TILE) {
+      if ((x / TILE) % 2 === 0) {
+        this.add.image(x, midY, "tile_road_line").setOrigin(0, 0).setScale(TILE_SCALE).setDepth(6);
+      }
     }
+    // 도로 가장자리 흰 실선 (인도와 구분)
+    const edgeG = this.add.graphics().setDepth(6);
+    edgeG.fillStyle(0xffffff, this.isNight ? 0.4 : 0.75);
+    edgeG.fillRect(0, ROAD_Y + 2, W, 2);
+    edgeG.fillRect(0, ROAD_Y + ROAD_HEIGHT - 4, W, 2);
 
     // 인도 — 도로 위·아래
     const sidewalkTop = ROAD_Y - TILE;
@@ -302,6 +340,35 @@ export default class LoginScene extends Phaser.Scene {
       sh.fillStyle(0x000000, 0.22);
       sh.fillEllipse(slot.x, slot.y + 2, img.displayWidth * 0.6, 8);
 
+      // 상점류 어닝 + 간판 — 건물 하단 출입구 위에 굵은 줄무늬 + 이름
+      const awnings: Record<string, { colors: [number, number]; label: string }> = {
+        bld_shop_left: { colors: [0xd94a4a, 0xffffff], label: "MART" },
+        bld_shop_right: { colors: [0x3a8ed8, 0xffffff], label: "SHOP" },
+        bld_cafe: { colors: [0xd68a40, 0xfff0c2], label: "CAFE" },
+      };
+      const aw = awnings[slot.key];
+      if (aw) {
+        const aY = slot.y - img.displayHeight * 0.28;
+        const aW = img.displayWidth * 0.78;
+        const aH = 11;
+        const ag = this.add.graphics().setDepth(11);
+        // 줄무늬 6줄 (굵게)
+        const stripeW = aW / 6;
+        for (let s = 0; s < 6; s++) {
+          ag.fillStyle(s % 2 === 0 ? aw.colors[0] : aw.colors[1], 1);
+          ag.fillRect(slot.x - aW / 2 + s * stripeW, aY, stripeW, aH);
+        }
+        // 어닝 하단 어두운 엣지
+        ag.fillStyle(0x000000, 0.35);
+        ag.fillRect(slot.x - aW / 2, aY + aH, aW, 2);
+        // 상점 간판 (어닝 위 텍스트)
+        this.add.text(slot.x, aY - 2, aw.label, {
+          fontSize: "8px", fontFamily: FONT, color: "#ffffff",
+          fontStyle: "700", resolution: DPR * 4,
+          stroke: "#000000", strokeThickness: 2,
+        }).setOrigin(0.5, 1).setDepth(12);
+      }
+
       if (slot.isHQ) {
         // HQ 부드러운 빛 배경 (건물 바로 뒤)
         const glow = this.add.graphics().setDepth(9);
@@ -355,14 +422,14 @@ export default class LoginScene extends Phaser.Scene {
       this.add.image(px, py, potKey).setOrigin(0.5, 1).setScale(1.6).setDepth(9);
     });
 
-    // 나무 — 계절 나무 4그루 (안쪽 4분면)
+    // 나무 — 계절 나무 4그루 (외곽 4코너, 분수 가리지 않게)
     const season = this.getSeason();
     const treeKey = `prop_tree_${season}`;
     const treeSpots: [number, number][] = [
-      [x0 + TILE * 1.5, y0 + TILE * 1.5],
-      [x0 + w - TILE * 1.5, y0 + TILE * 1.5],
-      [x0 + TILE * 1.5, y0 + h - TILE],
-      [x0 + w - TILE * 1.5, y0 + h - TILE],
+      [x0 + TILE * 0.5, y0 + TILE * 1.5],
+      [x0 + w - TILE * 0.5, y0 + TILE * 1.5],
+      [x0 + TILE * 0.5, y0 + h - TILE * 0.5],
+      [x0 + w - TILE * 0.5, y0 + h - TILE * 0.5],
     ];
     treeSpots.forEach(([tx, ty]) => {
       this.add.image(tx, ty, treeKey).setOrigin(0.5, 1).setScale(TILE_SCALE).setDepth(11);
@@ -397,6 +464,17 @@ export default class LoginScene extends Phaser.Scene {
       this.add.image(plazaX0 + c * TILE, plazaY, "tile_floor_marble")
         .setOrigin(0, 0).setScale(TILE_SCALE).setDepth(6);
     }
+    // 광장 테두리 (두껍게, 금색)
+    const g = this.add.graphics().setDepth(7);
+    g.lineStyle(3, 0xd9a838, 0.95);
+    g.strokeRect(plazaX0 + 1, plazaY + 1, cols * TILE - 2, TILE - 2);
+    // HQ 문 표식 — 방사형 빛
+    g.fillStyle(0xf5c842, 0.28);
+    g.fillCircle(480, plazaY + TILE / 2, 22);
+    g.fillStyle(0xffe87a, 0.55);
+    g.fillCircle(480, plazaY + TILE / 2, 12);
+    g.fillStyle(0xffffff, 0.9);
+    g.fillCircle(480, plazaY + TILE / 2, 4);
   }
 
 
@@ -427,22 +505,28 @@ export default class LoginScene extends Phaser.Scene {
   // 보행자 — 도로/인도/공원 주변만 이동 (건물 위 X)
   // ══════════════════════════════════════════════════════════
   private spawnWalkers() {
-    // 도로 위·아래 인도 가로 보행
-    for (let i = 0; i < 2; i++) this.spawnRoadWalker(ROAD_Y - 8, i);
-    for (let i = 0; i < 2; i++) this.spawnRoadWalker(ROAD_Y + ROAD_HEIGHT + 16, i + 2);
+    // 인도 위에서만 보행 (도로는 차선용)
+    // 상단 인도 (도로 바로 위 sidewalk 타일 중심)
+    for (let i = 0; i < 2; i++) this.spawnRoadWalker(ROAD_Y - 10, i);
+    // 하단 인도 (도로 바로 아래)
+    for (let i = 0; i < 2; i++) this.spawnRoadWalker(ROAD_Y + ROAD_HEIGHT + 26, i + 2);
+    // 최하단 인도
     for (let i = 0; i < 2; i++) this.spawnRoadWalker(BOTTOM_SIDEWALK_Y + 14, i + 4);
 
     // 세로 골목 위↔아래 보행
     this.ALLEY_XS.forEach((ax, idx) => {
       const charKey = CHAR_KEYS[(idx + 6) % CHAR_KEYS.length];
       const dir: 1 | -1 = Math.random() > 0.5 ? 1 : -1;
-      const startY = 80 + Math.random() * (H - 160);
+      // 도로+건물 영역 피하고 건물 아래 인도 사이만
+      const startY = ROAD_Y + ROAD_HEIGHT + 10 + Math.random() * (BOTTOM_SIDEWALK_Y - ROAD_Y - ROAD_HEIGHT - 30);
       const sp = this.add.sprite(ax, startY, `char_${charKey}`, 0)
         .setOrigin(0.5, 1).setScale(CHAR_SCALE).setDepth(30);
       sp.play(dir > 0 ? `char_${charKey}_walk_down` : `char_${charKey}_walk_up`);
       this.walkers.push({
         sprite: sp, charKey, speed: 0.5 + Math.random() * 0.3,
-        mode: "alley", dir, minY: 60, maxY: H - 30,
+        mode: "alley", dir,
+        minY: ROAD_Y + ROAD_HEIGHT + 10,
+        maxY: BOTTOM_SIDEWALK_Y + 20,
       });
     });
   }
