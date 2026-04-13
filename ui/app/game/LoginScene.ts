@@ -33,13 +33,13 @@ interface BuildingSlot {
 }
 
 const BUILDINGS: BuildingSlot[] = [
-  // 뒷줄 — 깨끗한 HGSS 에셋 + 폴백 원본 (red/blue 는 오염돼 제외)
-  { x: 85, y: BACK_ROW_BOTTOM_Y, key: "bld_shop_left" },  // 원본 monochrome
-  { x: 215, y: BACK_ROW_BOTTOM_Y, key: "city_yellow" },   // HGSS 노란 돌집 (cleaned)
-  { x: 480, y: BACK_ROW_BOTTOM_Y, key: "city_hq", isHQ: true },  // HGSS 초록지붕 HQ
-  { x: 700, y: BACK_ROW_BOTTOM_Y, key: "city_purple" },   // HGSS 보라지붕 2층
-  { x: 870, y: BACK_ROW_BOTTOM_Y, key: "bld_apartment" }, // 원본 아파트
-  // 앞줄: 마트(좌 대형) + 공원(중) + 카페(우)
+  // 뒷줄 5채 — Bourg Palette FRLG 정식 3채 + HGSS HQ + 아파트
+  { x: 85, y: BACK_ROW_BOTTOM_Y, key: "palet_red" },       // FRLG 빨강지붕 (정식)
+  { x: 245, y: BACK_ROW_BOTTOM_Y, key: "palet_green" },    // FRLG 녹색지붕
+  { x: 480, y: BACK_ROW_BOTTOM_Y, key: "city_hq", isHQ: true },  // HGSS 초록 HQ
+  { x: 710, y: BACK_ROW_BOTTOM_Y, key: "palet_blue" },     // FRLG 파랑지붕
+  { x: 870, y: BACK_ROW_BOTTOM_Y, key: "city_purple" },    // HGSS 보라 2층 (variation)
+  // 앞줄: 마트(좌) + 공원(중) + 카페(우)
   { x: 170, y: FRONT_ROW_BOTTOM_Y, key: "city_mart" },
   { x: 480, y: FRONT_ROW_BOTTOM_Y, key: "park", isPark: true },
   { x: 820, y: FRONT_ROW_BOTTOM_Y, key: "bld_main_1f" },
@@ -80,17 +80,20 @@ export default class LoginScene extends Phaser.Scene {
 
   preload() {
     const v = "v3";
-    // 깨끗한 HGSS 에셋만 (buildings/) — house_red/blue 는 타일셋 파편이 섞여 제외
-    if (!this.textures.exists("city_yellow")) {
-      this.load.image("city_yellow", `/assets/extracted/house_yellow_clean.png?${v}`);  // 알파 클린
-    }
+    // Bourg Palette (FRLG 정식) 깨끗히 crop 된 집 3채
+    ["red", "green", "blue"].forEach(c => {
+      const k = `palet_${c}`;
+      if (!this.textures.exists(k)) this.load.image(k, `/assets/extracted/house_${c}_palet.png?${v}`);
+    });
+    // HGSS 에셋 (HQ + purple variation + mart)
     if (!this.textures.exists("city_purple")) this.load.image("city_purple", `/assets/buildings/house_purple.png?${v}`);
     if (!this.textures.exists("city_mart")) this.load.image("city_mart", `/assets/extracted/house_mart_clean.png?${v}`);
     if (!this.textures.exists("city_hq")) this.load.image("city_hq", `/assets/buildings/hq.png?${v}`);
-    // 폴백 원본 monochrome 건물 (파편 섞이지 않은 깔끔한 단일 슬라브)
-    ["shop_left", "apartment", "main_1f"].forEach(n => {
-      const k = `bld_${n}`;
-      if (!this.textures.exists(k)) this.load.image(k, `/assets/original/buildings/${n}.png?${v}`);
+    // 폴백 원본 (main_1f 만 사용)
+    if (!this.textures.exists("bld_main_1f")) this.load.image("bld_main_1f", `/assets/original/buildings/main_1f.png?${v}`);
+    // Bourg Palette 소품 타일
+    ["tile_fence_h", "tile_signpost", "tile_bush_small", "tile_rock"].forEach(n => {
+      if (!this.textures.exists(n)) this.load.image(n, `/assets/extracted/${n}.png?${v}`);
     });
     // 타일 (그라운드 + fountain + HQ 광장 마감)
     ["road", "road_line", "sidewalk", "grass_green", "fountain", "floor_marble"].forEach(n => {
@@ -110,12 +113,9 @@ export default class LoginScene extends Phaser.Scene {
      "potplant_0", "potplant_1", "potplant_2", "mailbox"].forEach(n => {
       if (!this.textures.exists(`prop_${n}`)) this.load.image(`prop_${n}`, `/assets/original/props/${n}.png?${v}`);
     });
-    // 나무 3사이즈 (원근감) — /trees/
-    ["spring", "summer", "autumn", "winter", "evergreen"].forEach(s => {
-      ["sm", "md", "lg"].forEach(sz => {
-        const k = `tree2_${s}_${sz}`;
-        if (!this.textures.exists(k)) this.load.image(k, `/assets/trees/tree_${s}_${sz}.png?${v}`);
-      });
+    // Pokemon 오브젝트 나무 (Object tree 1/2 에서 frame 추출, 32×64)
+    ["obj_tree_1a", "obj_tree_1b", "obj_tree_2a", "obj_tree_2b", "obj_bush_1", "obj_flower_1"].forEach(n => {
+      if (!this.textures.exists(n)) this.load.image(n, `/assets/extracted/${n}.png?${v}`);
     });
     // 실제 담장 (scene edge)
     if (!this.textures.exists("wall_0")) this.load.image("wall_0", `/assets/walls/wall_0.png?${v}`);
@@ -286,24 +286,35 @@ export default class LoginScene extends Phaser.Scene {
         .setOrigin(0.5, 1).setScale(TILE_SCALE * 1.1).setDepth(15);
     });
 
-    // 원근감 나무: 뒷벽(상단, sm) + 건물 틈새(md) + 전경 코너(lg)
-    const season = this.getSeason();
-    // 상단 먼 나무 라인 (sm) — HQ 간판(x~400~560) 피해 배치
-    [30, 80, 130, 180, 260, 310, 630, 680, 730, 830, 880, 930].forEach(tx => {
-      this.add.image(tx, 30, `tree2_${season}_sm`).setOrigin(0.5, 1).setScale(2).setDepth(1);
+    // Pokemon 오브젝트 나무 — 상단 멀리, 중간, 전경 3단계 원근감
+    // 상단 먼 나무 (작은 스케일, HQ 간판 x~400~560 피함)
+    [20, 80, 140, 200, 260, 320, 640, 700, 760, 820, 880, 940].forEach((tx, i) => {
+      const key = i % 2 === 0 ? "obj_tree_1a" : "obj_tree_2a";
+      this.add.image(tx, 36, key).setOrigin(0.5, 1).setScale(1.2).setDepth(1);
     });
-    // evergreen 섞어 뉘앙스 (sm)
-    [55, 105, 855, 905].forEach(tx => {
-      this.add.image(tx, 35, `tree2_evergreen_sm`).setOrigin(0.5, 1).setScale(2).setDepth(1);
+    // 건물 틈새 — 중간 크기 Pokemon 나무
+    const medSpots: [[number, number, string]][] = [];
+    const betweenSpots = [
+      [170, 220, "obj_tree_1a"],
+      [360, 220, "obj_tree_2a"],
+      [600, 220, "obj_tree_1b"],
+      [790, 220, "obj_tree_2b"],
+    ] as const;
+    betweenSpots.forEach(([tx, ty, k]) => {
+      this.add.image(tx, ty, k).setOrigin(0.5, 1).setScale(1.8).setDepth(8);
     });
-    // 건물 사이 md 나무
-    const medSpots: [number, number][] = [[18, 220], [165, 220], [795, 220], [942, 220]];
-    medSpots.forEach(([tx, ty]) => {
-      this.add.image(tx, ty, `tree2_${season}_md`).setOrigin(0.5, 1).setScale(2).setDepth(8);
+    // 전경 lg 코너 나무
+    [30, 930].forEach(tx => {
+      this.add.image(tx, H - 8, "obj_tree_1a").setOrigin(0.5, 1).setScale(2.5).setDepth(25);
     });
-    // 화면 하단 코너 — lg 나무 (전경)
-    [30, 940].forEach(tx => {
-      this.add.image(tx, H - 2, `tree2_${season}_lg`).setOrigin(0.5, 1).setScale(1.8).setDepth(25);
+    // 부쉬 (공원 둘레 + 건물 앞)
+    const bushSpots: [number, number][] = [
+      [395, 465], [565, 465],                     // 공원 좌우
+      [400, 270], [560, 270],                     // HQ 광장 옆
+      [740, 500], [720, 470], [220, 500], [240, 470], // 하단 분산
+    ];
+    bushSpots.forEach(([bx, by]) => {
+      this.add.image(bx, by, "obj_bush_1").setOrigin(0.5, 1).setScale(1.4).setDepth(9);
     });
 
     // 화단 (flower bed) — 여러 지점에 Flowers1/2 타일 빽빽히 클러스터
@@ -386,6 +397,27 @@ export default class LoginScene extends Phaser.Scene {
         cg.fillRect(ax - 20, ROAD_Y + 8 + i * 10, 40, 4);
       }
     });
+
+    // 목재 울타리 — 화면 상단 경계 (먼 풀밭 끝)
+    const fenceTex = this.textures.get("tile_fence_h");
+    if (fenceTex) fenceTex.setFilter(Phaser.Textures.FilterMode.NEAREST);
+    for (let fx = 0; fx < W; fx += 96) {
+      this.add.image(fx, 18, "tile_fence_h")
+        .setOrigin(0, 0).setScale(1).setDepth(0);
+    }
+
+    // 바위 (전경 코너 장식)
+    const rockTex = this.textures.get("tile_rock");
+    if (rockTex) rockTex.setFilter(Phaser.Textures.FilterMode.NEAREST);
+    [[90, 470], [870, 470]].forEach(([rx, ry]) => {
+      this.add.image(rx, ry, "tile_rock").setOrigin(0.5, 1).setScale(1.2).setDepth(14);
+    });
+
+    // 표지판 — HQ 광장 앞 (두근 컴퍼니 안내)
+    const signTex = this.textures.get("tile_signpost");
+    if (signTex) signTex.setFilter(Phaser.Textures.FilterMode.NEAREST);
+    this.add.image(400, 230, "tile_signpost")
+      .setOrigin(0.5, 1).setScale(1.2).setDepth(14);
   }
 
   private getSeason(): "spring" | "summer" | "autumn" | "winter" {
@@ -404,14 +436,15 @@ export default class LoginScene extends Phaser.Scene {
       if (slot.isPark) { this.drawPark(slot.x, slot.y); return; }
       // 건물 기본 스케일: 키별로 조정 (너무 큰 것 방지)
       const baseScale: Record<string, number> = {
-        // HGSS 컬러 (깨끗한 것만)
+        // Bourg Palette FRLG 정식 (CLEAN)
+        palet_red: 1.4,        // 112×128 → 157×179
+        palet_green: 1.4,      // 96×144 → 134×202
+        palet_blue: 1.4,       // 112×128 → 157×179
+        // HGSS
         city_hq: 1.5,          // 144×148 → 216×222
         city_purple: 1.1,      // 144×192 → 158×211
-        city_yellow: 1.3,      // 112×145 → 146×189 (작은 에셋 키움)
         city_mart: 0.7,        // 256×145 → 179×102 (앞줄용)
-        // 원본 폴백
-        bld_shop_left: 2.2,    // 48×96 → 106×211
-        bld_apartment: 1.7,    // 56×128 → 95×218
+        // 폴백
         bld_main_1f: 2.0,      // 64×80 → 128×160
       };
       const scale = baseScale[slot.key] || BUILDING_SCALE;
