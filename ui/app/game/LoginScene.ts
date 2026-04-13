@@ -91,8 +91,8 @@ export default class LoginScene extends Phaser.Scene {
     // 유지
     if (!this.textures.exists("city_purple")) this.load.image("city_purple", `/assets/buildings/house_purple.png?${v}`);
     if (!this.textures.exists("city_mart")) this.load.image("city_mart", `/assets/extracted/house_mart_clean.png?${v}`);
-    // 폴백 원본 (main_1f 만 사용)
-    if (!this.textures.exists("bld_main_1f")) this.load.image("bld_main_1f", `/assets/original/buildings/main_1f.png?${v}`);
+    // 앞줄 cafe — Azuria composite obj_r023_c04_5x4 (128×160 청록 shop)
+    if (!this.textures.exists("bld_main_1f")) this.load.image("bld_main_1f", `/assets/extracted/composite_cafe.png?${v}`);
     // Bourg Palette 소품 타일
     ["tile_fence_h", "tile_signpost", "tile_bush_small", "tile_rock"].forEach(n => {
       if (!this.textures.exists(n)) this.load.image(n, `/assets/extracted/${n}.png?${v}`);
@@ -160,7 +160,7 @@ export default class LoginScene extends Phaser.Scene {
 
     if (this.showReturnBtn) {
       this.cameras.main.fadeIn(300, 0, 0, 0);
-      this.createReturnButton();
+      // createReturnButton() 제거 - 사무실 문 클릭존으로 재진입
     }
     this.time.addEvent({ delay: 80, loop: true, callback: () => this.moveWalkers() });
     this.cameras.main.roundPixels = true;
@@ -271,23 +271,20 @@ export default class LoginScene extends Phaser.Scene {
   }
 
   private placeStreetFurniture() {
-    // 가로등 — 건물 footprint 완전 회피하여 간극/도로변만
-    // 뒷줄 건물 x: red 17-183, green 187-353, HQ 368-592, blue 625-765, purple 786-944
-    // 간극: 184-187, 354-367, 593-624, 766-785
-    // 앞줄 건물 x: mart 80-260, park 384-576, cafe 756-884
-    // 간극: 0-80, 261-383, 577-755, 885-960
-    // 가로등 안전 x: 뒷줄 간극 + 앞줄 간극 교집합
-    const lampXs = [30, 185, 275, 360, 600, 700, 775, 900];
-    lampXs.forEach(lx => {
-      // 뒷줄 인도 (도로 바로 위)
+    // 가로등 — 모든 건물 footprint 엄격 회피
+    // 뒷줄 safe gap: 0-23, 347-368, 592-624, 765-786, 944-960
+    // 앞줄 safe gap: 0-80, 260-384, 576-756, 884-960
+    // 교집합 (양쪽 모두 안전): x < 23, 347-368, 592-624, 765-786, 944-960
+    // 실용 lamp x (충분한 간격)
+    const lampTopXs = [12, 357, 608, 775];        // 뒷줄 가능
+    const lampBotXs = [45, 310, 660, 720, 910];   // 앞줄 인도 가능
+    lampTopXs.forEach(lx => {
       this.add.image(lx, ROAD_Y - TILE, "prop_streetlight")
         .setOrigin(0.5, 1).setScale(TILE_SCALE).setDepth(15);
-      // 하단 인도 (화면 최하단) — mart/cafe footprint 회피 필요
-      const safeBottom = lx < 80 || (lx > 260 && lx < 756) || lx > 884;
-      if (safeBottom) {
-        this.add.image(lx, BOTTOM_SIDEWALK_Y, "prop_streetlight")
-          .setOrigin(0.5, 1).setScale(TILE_SCALE).setDepth(15);
-      }
+    });
+    lampBotXs.forEach(lx => {
+      this.add.image(lx, BOTTOM_SIDEWALK_Y, "prop_streetlight")
+        .setOrigin(0.5, 1).setScale(TILE_SCALE).setDepth(15);
     });
 
     // Pokemon 오브젝트 나무 — 32×64 기본, 캐릭(24px) 대비 자연스러운 비율
@@ -460,7 +457,7 @@ export default class LoginScene extends Phaser.Scene {
         city_purple: 1.1,      // 144×192 → 158×211
         city_mart: 0.7,        // 256×145 → 179×102 (앞줄용)
         // 폴백
-        bld_main_1f: 2.0,      // 64×80 → 128×160
+        bld_main_1f: 1.0,      // composite 128×160 그대로
       };
       const scale = baseScale[slot.key] || BUILDING_SCALE;
       const img = this.add.image(slot.x, slot.y, slot.key)
@@ -473,10 +470,8 @@ export default class LoginScene extends Phaser.Scene {
       sh.fillEllipse(slot.x, slot.y + 2, img.displayWidth * 0.6, 8);
 
       // 상점류 어닝 + 간판 — 건물 하단 출입구 위에 굵은 줄무늬 + 이름
-      // HGSS 건물은 facade 가 이미 풍부해 어닝 생략, 보조 cafe 에만 간판
-      const awnings: Record<string, { colors: [number, number]; label: string }> = {
-        bld_main_1f: { colors: [0xd68a40, 0xfff0c2], label: "CAFE" },
-      };
+      // 모든 composite 건물이 자체 facade 보유 - 어닝 오버레이 생략
+      const awnings: Record<string, { colors: [number, number]; label: string }> = {};
       const aw = awnings[slot.key];
       if (aw) {
         const aY = slot.y - img.displayHeight * 0.28;
@@ -506,10 +501,12 @@ export default class LoginScene extends Phaser.Scene {
         glow.fillStyle(0xfff0a0, 0.12);
         glow.fillCircle(slot.x, slot.y - img.displayHeight / 2, img.displayWidth * 0.8);
 
-        // 입구 클릭존 — Bourg Lab composite 문 위치 (건물 하단 중앙, displayHeight의 아래 15%)
-        const zoneW = img.displayWidth * 0.18;        // 문 폭 정도로 좁게
-        const zoneH = Math.min(40, img.displayHeight * 0.18);
-        const zoneY = slot.y - zoneH / 2 - 2;         // baseline 바로 위 (문 중앙)
+        // 입구 클릭존 — Bourg Lab composite 의 glass door (중앙 하단 32×32 타일)
+        // composite 224×192 에서 door 는 x=96-128, y=160-192 (tile grid 좌표)
+        // scale 고려: 실제 display 에서 door 중앙 (slot.x, slot.y - 16)
+        const zoneW = 32 * scale;  // 1타일 (32px) × 현재 scale
+        const zoneH = 32 * scale;
+        const zoneY = slot.y - zoneH / 2;
         const zone = this.add.zone(slot.x, zoneY, zoneW, zoneH)
           .setDepth(20).setInteractive({ useHandCursor: true });
         let hoverG: Phaser.GameObjects.Graphics | null = null;
@@ -572,11 +569,11 @@ export default class LoginScene extends Phaser.Scene {
     this.add.image(cx + TILE * 2, y0 + h / 2 + TILE / 2, "prop_bench")
       .setOrigin(0.5, 1).setScale(1.5).setDepth(11);
 
-    // 중앙 분수 — Celadopole 정식 composite 160×160 (origin center)
+    // 중앙 분수 — Celadopole composite 축소 (다른 요소와 비례 맞춤)
     const fTex = this.textures.get("composite_fountain");
     if (fTex) fTex.setFilter(Phaser.Textures.FilterMode.NEAREST);
     this.add.image(cx, y0 + h / 2, "composite_fountain")
-      .setOrigin(0.5, 0.5).setScale(0.9).setDepth(12);
+      .setOrigin(0.5, 0.5).setScale(0.6).setDepth(12);
   }
 
   private drawHQPlaza() {

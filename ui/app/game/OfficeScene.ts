@@ -786,6 +786,23 @@ export default class OfficeScene extends Phaser.Scene {
     // ── 우측 벽면 — 화이트보드 (Pokemon 에셋) ──
     this.envGroup.add(this.add.image(WORLD_W - 130, wallY + 20, "whiteboard").setDepth(5));
 
+    // ── 아케이드 기계 (우측 상단 구석, 클릭 시 탱크 슈팅 미니게임) ──
+    const arcX = WORLD_W - 180;
+    const arcY = wallY + 72;
+    const arcade = this.add.image(arcX, arcY, "arcade_cabinet").setOrigin(0.5, 1).setDepth(55);
+    this.envGroup.add(arcade);
+    const arcLabel = this.add.text(arcX, arcY - 64, "🎮 ARCADE", {
+      fontSize: "9px", fontFamily: FONT,
+      color: "#f5c842", resolution: TEXT_RES,
+    }).setOrigin(0.5, 1).setDepth(56);
+    this.envGroup.add(arcLabel);
+    const arcHit = this.add.zone(arcX, arcY - 20, 48, 64).setInteractive({ useHandCursor: true }).setDepth(102);
+    arcHit.on("pointerdown", () => {
+      this.scene.pause();
+      this.scene.launch("TankShooterScene");
+    });
+    this.envGroup.add(arcHit);
+
     // ── 사무실 네 구석 — 화분만 ──
     // 좌하단 구석 (큰 화분)
     this.envGroup.add(

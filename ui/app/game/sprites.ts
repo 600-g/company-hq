@@ -115,6 +115,14 @@ export function preloadAssets(scene: Phaser.Scene) {
   scene.load.image("bench", "/assets/pokemon_furniture/bench.png");
   scene.load.image("streetlight", "/assets/pokemon_furniture/streetlight.png");
 
+  // 아케이드 / 탱크 슈팅 미니게임 에셋
+  scene.load.image("arcade_cabinet", "/assets/pokemon_assets/composites/Game Corner interior/obj_r014_c04_2x1.png");
+  scene.load.image("tank_body", "/assets/pokemon_assets/Items/IRONBALL.png");
+  scene.load.image("bullet", "/assets/pokemon_assets/Items/BEASTBALL.png");
+  scene.load.image("block_base", "/assets/pokemon_assets/composites/Factory interior/obj_r025_c00_2x1.png");
+  scene.load.image("block_a", "/assets/pokemon_assets/composites/Factory interior/obj_r010_c01_1x1.png");
+  scene.load.image("block_b", "/assets/pokemon_assets/composites/Factory interior/obj_r010_c06_1x1.png");
+
   // 오리지널 사무실 에셋 (Pixel Forge)
   scene.load.image("o_laptop", "/assets/original/office/laptop_open.png");
   scene.load.image("o_laptop_closed", "/assets/original/office/laptop_closed.png");
