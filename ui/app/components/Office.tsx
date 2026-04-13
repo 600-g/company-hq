@@ -525,8 +525,21 @@ function AddTeamModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
   const [error, setError] = useState("");
   const [step, setStep] = useState("");
 
+  const REPO_NAME_RE = /^[a-z0-9-]+$/;
+  const trimmed = name.trim();
+  const nameInvalid = trimmed.length > 0 && !REPO_NAME_RE.test(trimmed);
+  const hasKorean = /[\u3131-\uD79D]/u.test(name);
+
   const submit = async () => {
-    if (!name.trim()) { setError("팀 이름을 입력하세요"); return; }
+    if (!trimmed) { setError("팀 이름을 입력하세요"); return; }
+    if (!REPO_NAME_RE.test(trimmed)) {
+      setError("프로젝트 이름은 영문 소문자(a-z), 숫자(0-9), 하이픈(-)만 사용하세요. 예: web-crawler");
+      return;
+    }
+    if (trimmed.startsWith("-") || trimmed.endsWith("-") || trimmed.includes("--")) {
+      setError("하이픈으로 시작/종료하거나 연속 하이픈(--)은 사용할 수 없습니다.");
+      return;
+    }
     setLoading(true);
     setError("");
 
@@ -541,8 +554,8 @@ function AddTeamModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: name.trim(),
-          repo: name.trim().toLowerCase().replace(/\s+/g, "-"),
+          name: trimmed,
+          repo: trimmed,
           emoji,
           description: desc.trim(),
           project_type: projectType,
@@ -585,11 +598,20 @@ function AddTeamModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
                 className="w-full bg-[#1a1a2e] border border-[#3a3a5a] text-white text-center px-1 py-1.5 text-lg rounded focus:outline-none focus:border-yellow-400/50" />
             </div>
             <div className="flex-1">
-              <label className="text-[9px] text-gray-500 block mb-0.5">프로젝트 이름</label>
+              <label className="text-[9px] text-gray-500 block mb-0.5">프로젝트 이름 (영문 소문자/숫자/하이픈)</label>
               <input autoFocus value={name} onChange={e => setName(e.target.value)}
                 onKeyDown={e => e.key === "Enter" && !loading && submit()}
-                placeholder="예) 웹크롤러"
-                className="w-full bg-[#1a1a2e] border border-[#3a3a5a] text-white px-2 py-1.5 text-xs rounded focus:outline-none focus:border-yellow-400/50" />
+                placeholder="예) web-crawler, news-bot"
+                className={`w-full bg-[#1a1a2e] border text-white px-2 py-1.5 text-xs rounded focus:outline-none ${
+                  nameInvalid ? "border-red-400 focus:border-red-400" : "border-[#3a3a5a] focus:border-yellow-400/50"
+                }`} />
+              {nameInvalid && (
+                <p className="text-[9px] text-red-400 mt-0.5">
+                  {hasKorean
+                    ? "한글은 사용할 수 없어요. 영문 소문자/숫자/하이픈만 (예: web-crawler)"
+                    : "영문 소문자(a-z), 숫자(0-9), 하이픈(-)만 사용하세요"}
+                </p>
+              )}
             </div>
           </div>
 
@@ -628,8 +650,8 @@ function AddTeamModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
           <p className="text-[8px] text-gray-600">자동: GitHub 레포 + 로컬 클론 + CLAUDE.md + 시스템프롬프트</p>
         </div>
         <div className="flex gap-2 mt-3">
-          <button onClick={submit} disabled={loading}
-            className="flex-1 bg-yellow-500 text-black py-1.5 text-xs font-bold rounded hover:bg-yellow-400 disabled:opacity-50">
+          <button onClick={submit} disabled={loading || nameInvalid || !trimmed}
+            className="flex-1 bg-yellow-500 text-black py-1.5 text-xs font-bold rounded hover:bg-yellow-400 disabled:opacity-50 disabled:cursor-not-allowed">
             {loading ? `🔄 ${step}` : "에이전트 생성"}
           </button>
           <button onClick={onClose} className="flex-1 bg-[#2a2a3a] text-gray-400 py-1.5 text-xs rounded hover:bg-[#3a3a4a]">취소</button>

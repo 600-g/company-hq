@@ -282,18 +282,23 @@ def create_repo(
     # GitHub API는 latin-1 인코딩 → 이모지/비ASCII 제거
     safe_desc = description.encode("ascii", "ignore").decode("ascii").strip() or name
 
-    # GitHub 레포 이름은 영문/숫자/하이픈만 허용 → 한글이면 로마자 변환
+    # GitHub 레포 이름은 영문 소문자/숫자/하이픈만 허용 → 검증 실패 시 즉시 에러 반환
+    # (타임스탬프 폴백 제거: 사용자가 의도한 이름이 아닌 레포가 생기는 사고 방지)
     import re as _re
-    if not _re.match(r'^[a-zA-Z0-9._-]+$', name):
-        # 한글 이름을 영문 kebab-case로 변환 시도
-        ascii_name = name.encode("ascii", "ignore").decode("ascii").strip()
-        if not ascii_name or len(ascii_name) < 2:
-            # ASCII 변환 불가 → 타임스탬프 기반 이름 생성
-            from datetime import datetime as _dt
-            ascii_name = f"project-{_dt.now().strftime('%Y%m%d-%H%M%S')}"
-        name = _re.sub(r'[^a-zA-Z0-9-]', '-', ascii_name).strip('-').lower()
-        if not name:
-            name = f"project-{_dt.now().strftime('%Y%m%d-%H%M%S')}"
+    if not name or not _re.match(r'^[a-z0-9-]+$', name):
+        return {
+            "ok": False,
+            "error": (
+                f"레포 이름 '{name}'은(는) 사용할 수 없습니다. "
+                "영문 소문자(a-z), 숫자(0-9), 하이픈(-)만 사용 가능합니다. "
+                "예: 'web-crawler', 'news-bot'"
+            ),
+        }
+    if name.startswith("-") or name.endswith("-") or "--" in name:
+        return {
+            "ok": False,
+            "error": f"레포 이름 '{name}'은(는) 하이픈으로 시작/종료하거나 연속 하이픈(--)을 쓸 수 없습니다.",
+        }
 
     try:
         repo = user.create_repo(
@@ -303,12 +308,35 @@ def create_repo(
             auto_init=True,
         )
     except GithubException as e:
-        if e.status == 422:
-            # 이미 존재하면 기존 레포를 사용
+        # GitHub 422의 실제 원인을 파싱해서 분기
+        err_data = getattr(e, "data", {}) or {}
+        err_msg_raw = (err_data.get("message") or "") if isinstance(err_data, dict) else ""
+        errors_list = err_data.get("errors", []) if isinstance(err_data, dict) else []
+        detail_msgs = []
+        if isinstance(errors_list, list):
+            for err in errors_list:
+                if isinstance(err, dict):
+                    m = err.get("message") or err.get("code") or ""
+                    if m:
+                        detail_msgs.append(str(m))
+        detail_text = "; ".join(detail_msgs).lower()
+
+        if e.status == 422 and ("already exists" in detail_text or "name already exists" in detail_text):
+            # 진짜 중복 → 기존 레포 재사용
             try:
                 repo = user.get_repo(name)
             except Exception:
-                return {"ok": False, "error": f"레포 '{name}'이 이미 존재하지만 접근할 수 없습니다."}
+                return {
+                    "ok": False,
+                    "error": f"레포 '{name}'이 이미 존재하지만 접근할 수 없습니다. GitHub 토큰 권한을 확인하세요.",
+                }
+        elif e.status == 422:
+            # validation 실패 등 다른 422 → GitHub 원본 메시지 노출
+            user_msg = "; ".join(detail_msgs) if detail_msgs else err_msg_raw or str(e)
+            return {
+                "ok": False,
+                "error": f"GitHub 레포 생성 실패 (422): {user_msg}",
+            }
         else:
             raise
 
