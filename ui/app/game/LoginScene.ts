@@ -301,10 +301,9 @@ export default class LoginScene extends Phaser.Scene {
     betweenSpots.forEach(([tx, ty, k]) => {
       this.add.image(tx, ty, k).setOrigin(0.5, 1).setScale(1.2).setDepth(8);
     });
-    // 전경 코너 나무 (scale 1.6 → 51×102, 크긴 하나 프레임 효과)
-    // x=15 (화면 밖 살짝), x=945 (화면 밖 살짝) — 메인 씬과 겹치지 않음
-    [15, 945].forEach(tx => {
-      this.add.image(tx, H - 10, "obj_tree_1a").setOrigin(0.5, 1).setScale(1.6).setDepth(24);
+    // 전경 코너 나무 (scale 1.3 → 42×83, 얌전한 프레임)
+    [12, 948].forEach(tx => {
+      this.add.image(tx, H - 10, "obj_tree_1a").setOrigin(0.5, 1).setScale(1.3).setDepth(24);
     });
 
     // 부쉬 (scale 1.2 → 38×38)
@@ -416,13 +415,12 @@ export default class LoginScene extends Phaser.Scene {
         .setOrigin(0, 0).setScale(1).setDepth(0);
     }
 
-    // 바위 — 건물 footprint 밖 풀밭
-    // 하단 밖(화면 끝)과 공원 밖 잔디 영역만
+    // 바위 — mart-park 간극 / park-cafe 간극 (건물 footprint 완전 회피)
+    // mart 우측 260, park 좌측 384 → 중앙 322. park 우측 576, cafe 좌측 756 → 중앙 666
     const rockTex = this.textures.get("tile_rock");
     if (rockTex) rockTex.setFilter(Phaser.Textures.FilterMode.NEAREST);
-    // y=475: 하단 인도 아님, 풀밭 구간 (공원 x=384-576 피함)
-    [[75, 475], [905, 475]].forEach(([rx, ry]) => {
-      this.add.image(rx, ry, "tile_rock").setOrigin(0.5, 1).setScale(1.1).setDepth(13);
+    [[322, 500], [666, 500]].forEach(([rx, ry]) => {
+      this.add.image(rx, ry, "tile_rock").setOrigin(0.5, 1).setScale(0.9).setDepth(13);
     });
 
     // 표지판 — 하단 인도 벤치 근처 (HQ 영역 피함)
