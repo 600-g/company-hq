@@ -80,15 +80,16 @@ export default class LoginScene extends Phaser.Scene {
 
   preload() {
     const v = "v4";
-    // Bourg Palette (FRLG 정식) 깨끗히 crop 된 집 3채
-    ["red", "green", "blue"].forEach(c => {
-      const k = `palet_${c}`;
-      if (!this.textures.exists(k)) this.load.image(k, `/assets/extracted/house_${c}_palet.png?${v}`);
-    });
-    // HGSS 에셋 (HQ + purple variation + mart)
+    // Bourg Palette 정식 composites (CLAUDE.md 규칙 준수 - 직접 크롭 대신 composite 사용)
+    if (!this.textures.exists("palet_red")) this.load.image("palet_red", `/assets/extracted/house_red_palet.png?${v}`);
+    if (!this.textures.exists("palet_green")) this.load.image("palet_green", `/assets/extracted/house_green_palet.png?${v}`);
+    // Blue house: 공식 composite (obj_r034_c00_5x4)
+    if (!this.textures.exists("palet_blue")) this.load.image("palet_blue", `/assets/extracted/composite_blue_house.png?${v}`);
+    // HQ: Bourg Green Lab composite (obj_r020_c00_6x7, 224×192) - Oak's lab 스타일 포켓몬 센터급
+    if (!this.textures.exists("city_hq")) this.load.image("city_hq", `/assets/extracted/composite_hq_lab.png?${v}`);
+    // 유지
     if (!this.textures.exists("city_purple")) this.load.image("city_purple", `/assets/buildings/house_purple.png?${v}`);
     if (!this.textures.exists("city_mart")) this.load.image("city_mart", `/assets/extracted/house_mart_clean.png?${v}`);
-    if (!this.textures.exists("city_hq")) this.load.image("city_hq", `/assets/buildings/hq.png?${v}`);
     // 폴백 원본 (main_1f 만 사용)
     if (!this.textures.exists("bld_main_1f")) this.load.image("bld_main_1f", `/assets/original/buildings/main_1f.png?${v}`);
     // Bourg Palette 소품 타일
@@ -367,11 +368,16 @@ export default class LoginScene extends Phaser.Scene {
         .setOrigin(0.5, 1).setScale(1.2).setDepth(9);
     });
 
-    // 정적 NPC 3명 — 벤치·마트 앞·카페 앞 (frame 0 남향, 움직이지 않음)
+    // 정적 NPC — 건물 앞, 벤치 옆, 공원 주변 다양하게 (frame 0 남향)
     const staticNpcs: { x: number; y: number; key: string; frame: number }[] = [
       { x: 245, y: BOTTOM_SIDEWALK_Y - 2, key: "npc_03", frame: 0 },   // 벤치 근처
       { x: 170, y: FRONT_ROW_BOTTOM_Y + 14, key: "npc_05", frame: 0 }, // 마트 앞
       { x: 820, y: FRONT_ROW_BOTTOM_Y + 14, key: "npc_07", frame: 0 }, // 카페 앞
+      { x: 100, y: 248, key: "npc_02", frame: 0 },                     // red 집 앞
+      { x: 480, y: 248, key: "npc_06", frame: 0 },                     // HQ 앞 (광장 앞)
+      { x: 865, y: 248, key: "npc_08", frame: 0 },                     // purple 집 앞
+      { x: 450, y: BOTTOM_SIDEWALK_Y - 2, key: "npc_09", frame: 0 },   // 공원 앞 인도
+      { x: 540, y: BOTTOM_SIDEWALK_Y - 2, key: "npc_10", frame: 0 },   // 공원 앞 인도 (다른 방향)
     ];
     staticNpcs.forEach(n => {
       this.add.sprite(n.x, n.y, n.key, n.frame)
@@ -449,9 +455,9 @@ export default class LoginScene extends Phaser.Scene {
         // Bourg Palette FRLG 정식 (CLEAN)
         palet_red: 1.3,        // 128×128 → 166×166 (half 83)
         palet_green: 1.3,      // 128×144 → 166×187 (half 83)
-        palet_blue: 1.3,       // 128×128 → 166×166 (half 83)
-        // HGSS
-        city_hq: 1.5,          // 144×148 → 216×222
+        palet_blue: 1.1,       // 128×160 (composite) → 141×176 (half 70)
+        // HQ: composite green lab 224×192 원본. scale 1.0 → 224×192 (half 112)
+        city_hq: 1.0,
         city_purple: 1.1,      // 144×192 → 158×211
         city_mart: 0.7,        // 256×145 → 179×102 (앞줄용)
         // 폴백
