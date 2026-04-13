@@ -396,7 +396,7 @@ export default class LoginScene extends Phaser.Scene {
     ];
     staticNpcs.forEach(n => {
       this.add.sprite(n.x, n.y, n.key, n.frame)
-        .setOrigin(0.5, 1).setScale(0.75).setDepth(28);
+        .setOrigin(0.5, 1).setScale(0.75).setDepth(n.y);   // y-sort
       this.recordDecor("npc", n.x, n.y - 18, 24, 36);
     });
 
@@ -475,7 +475,7 @@ export default class LoginScene extends Phaser.Scene {
       };
       const scale = baseScale[slot.key] || BUILDING_SCALE;
       const img = this.add.image(slot.x, slot.y, slot.key)
-        .setOrigin(0.5, 1).setScale(scale).setDepth(10);
+        .setOrigin(0.5, 1).setScale(scale).setDepth(slot.y);  // y-sort: 건물 baseline
       const tex = this.textures.get(slot.key);
       if (tex) tex.setFilter(Phaser.Textures.FilterMode.NEAREST);
       // 그림자
@@ -586,8 +586,9 @@ export default class LoginScene extends Phaser.Scene {
     // 공원 중앙 — 바위 (3/4각 Pokemon 스타일, 탑뷰 분수보다 자연스러움)
     const rTex = this.textures.get("composite_park_rock");
     if (rTex) rTex.setFilter(Phaser.Textures.FilterMode.NEAREST);
-    this.add.image(cx, y0 + h / 2 + 8, "composite_park_rock")
-      .setOrigin(0.5, 1).setScale(1.3).setDepth(12);
+    const rockBaselineY = y0 + h / 2 + 8;
+    this.add.image(cx, rockBaselineY, "composite_park_rock")
+      .setOrigin(0.5, 1).setScale(1.3).setDepth(rockBaselineY);  // y-sort
   }
 
   private drawHQPlaza() {
@@ -651,7 +652,7 @@ export default class LoginScene extends Phaser.Scene {
       // 도로+건물 영역 피하고 건물 아래 인도 사이만
       const startY = ROAD_Y + ROAD_HEIGHT + 10 + Math.random() * (BOTTOM_SIDEWALK_Y - ROAD_Y - ROAD_HEIGHT - 30);
       const sp = this.add.sprite(ax, startY, `char_${charKey}`, 0)
-        .setOrigin(0.5, 1).setScale(CHAR_SCALE).setDepth(30);
+        .setOrigin(0.5, 1).setScale(CHAR_SCALE).setDepth(startY);
       sp.play(dir > 0 ? `char_${charKey}_walk_down` : `char_${charKey}_walk_up`);
       this.walkers.push({
         sprite: sp, charKey, speed: 0.5 + Math.random() * 0.3,
@@ -669,7 +670,7 @@ export default class LoginScene extends Phaser.Scene {
     let startX = 40 + Math.random() * (W - 80);
     if (startX > 420 && startX < 540) startX += 160 * (startX < 480 ? -1 : 1);
     const sp = this.add.sprite(startX, laneY, `char_${charKey}`, 0)
-      .setOrigin(0.5, 1).setScale(CHAR_SCALE).setDepth(30);
+      .setOrigin(0.5, 1).setScale(CHAR_SCALE).setDepth(laneY);
     sp.play(dir > 0 ? `char_${charKey}_walk_right` : `char_${charKey}_walk_left`);
     this.walkers.push({
       sprite: sp, charKey, speed: 0.6 + Math.random() * 0.5,
@@ -702,6 +703,8 @@ export default class LoginScene extends Phaser.Scene {
           w.dir = 1; w.sprite.play(`char_${w.charKey}_walk_right`);
         }
       }
+      // y-sort: 매 프레임 depth = baseline y (건물/바위와 자동 정렬)
+      w.sprite.setDepth(w.sprite.y);
     });
   }
 

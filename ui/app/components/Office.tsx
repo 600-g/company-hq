@@ -907,7 +907,6 @@ function SideMenu({ user, open, onClose, onLogout, pushEnabled, onTogglePush }: 
             className="w-full px-3 py-2 text-[11px] text-red-400/70 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors text-left">
             로그아웃
           </button>
-          <BuildStampInline appVersion="3.0.0" />
         </div>
       </div>
     </>
@@ -2210,7 +2209,7 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
           }}
           title="더블클릭: 새로고침 및 업데이트 반영"
         >
-          Claude Code CLI · $0 · <span className="text-gray-500">v2.0</span>
+          Claude Code CLI · $0 · <BuildStampInline appVersion="3.0.0" />
         </div>
       </aside>
     </div>

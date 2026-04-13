@@ -3,9 +3,10 @@ import { useEffect, useState } from "react";
 
 interface Props {
   appVersion: string;
+  showBrand?: boolean;
 }
 
-export default function BuildStampInline({ appVersion }: Props) {
+export default function BuildStampInline({ appVersion, showBrand = false }: Props) {
   const [build, setBuild] = useState<string | null>(null);
   const [clearing, setClearing] = useState(false);
 
@@ -57,21 +58,23 @@ export default function BuildStampInline({ appVersion }: Props) {
   };
 
   return (
-    <div className="mt-2 flex items-center justify-center gap-1.5 text-[8px] text-gray-700 font-mono">
-      <span>v{appVersion}</span>
+    <span className="inline-flex items-center gap-1 font-mono">
+      <span className="text-gray-500">v{appVersion}</span>
       <span className="opacity-50">·</span>
       <span className={tone} title={build ?? "loading"}>{buildLabel}</span>
       <button
         type="button"
         onClick={clearAllCaches}
         disabled={clearing}
-        className="ml-1 opacity-60 hover:opacity-100 active:opacity-100 disabled:opacity-30 transition-opacity"
+        className="opacity-60 hover:opacity-100 active:opacity-100 disabled:opacity-30 transition-opacity"
         title="캐시 초기화 + 강제 새로고침"
       >
         {clearing ? "…" : "🔄"}
       </button>
-      <span className="opacity-50">·</span>
-      <span>(주)두근 컴퍼니</span>
-    </div>
+      {showBrand && (<>
+        <span className="opacity-50">·</span>
+        <span>(주)두근 컴퍼니</span>
+      </>)}
+    </span>
   );
 }
