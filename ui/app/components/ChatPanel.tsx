@@ -17,6 +17,7 @@ interface Props {
   inline?: boolean;
   messages: Message[];
   onMessages: (msgs: Message[]) => void;
+  onOpenTradingDash?: () => void;
 }
 
 // ── 마크다운 렌더러 ────────────────────────────────────
@@ -105,7 +106,7 @@ export function getWsStorageKey() { return "hq-ws-base-url"; }
 
 // ─────────────────────────────────────────────────────
 
-export default function ChatPanel({ team, onClose, onWorkingChange, inline, messages: initMessages, onMessages }: Props) {
+export default function ChatPanel({ team, onClose, onWorkingChange, inline, messages: initMessages, onMessages, onOpenTradingDash }: Props) {
   const [messages, setMessagesInternal] = useState<Message[]>(initMessages);
   const setMessages = useCallback((updater: Message[] | ((prev: Message[]) => Message[])) => {
     setMessagesInternal(prev => {
@@ -401,9 +402,16 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
         <div className="flex items-center gap-2 mb-2">
           <div className={`w-1.5 h-1.5 rounded-full ${connected ? "bg-green-400" : "bg-red-500 animate-pulse"}`} />
           <span className={`text-[9px] ${connected ? "text-gray-500" : "text-red-400"}`}>{connected ? "연결됨" : "재연결중..."}</span>
+          {team.id === "trading-bot" && onOpenTradingDash && (
+            <button
+              onClick={onOpenTradingDash}
+              className="ml-auto text-[10px] font-semibold px-2 py-0.5 rounded bg-yellow-500/15 text-yellow-300 border border-yellow-500/40 hover:bg-yellow-500/25 transition-colors"
+              title="매매 분석 대시보드 열기"
+            >📊 매매 분석</button>
+          )}
           <button
             onClick={() => { setMessages([]); onMessages([]); wsRef.current?.send(JSON.stringify({ action: "clear_history" })); }}
-            className="ml-auto text-[9px] text-gray-500 hover:text-gray-300"
+            className={`text-[9px] text-gray-500 hover:text-gray-300 ${team.id === "trading-bot" && onOpenTradingDash ? "" : "ml-auto"}`}
           >🗑 대화 지우기</button>
         </div>
 

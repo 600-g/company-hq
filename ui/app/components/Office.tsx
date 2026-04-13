@@ -1665,6 +1665,7 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
                           inline={true}
                           messages={chatHistory[team.id] || []}
                           onMessages={(msgs) => setChatHistory(prev => ({ ...prev, [team.id]: msgs }))}
+                          onOpenTradingDash={() => setMobileChat("trading-dashboard")}
                         />
                     }
                   </div>
@@ -1724,22 +1725,7 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
                         </button>
                       );
                     })()}
-                    {/* 매매 분석 */}
-                    <button
-                      onClick={() => { setMobileChat("trading-dashboard"); setMobileSide(true); }}
-                      className={`w-full text-left px-2.5 py-1.5 rounded text-[12px] transition-all min-h-[36px] ${
-                        mobileChat === "trading-dashboard"
-                          ? "bg-green-500/10 text-green-400 border border-green-500/20"
-                          : "text-gray-400 border border-transparent active:bg-[#1a1a3a]"
-                      }`}
-                    >
-                      <div className="flex items-center gap-1.5">
-                        <span>📊</span>
-                        <span>매매 분석</span>
-                        <span className="text-[7px] text-gray-600 ml-auto">트레이딩</span>
-                        <span className="text-[7px] bg-gray-700 text-gray-500 px-1 rounded">고정</span>
-                      </div>
-                    </button>
+                    {/* 매매 분석: 매매봇 채팅 패널 내부 버튼으로 이전됨 */}
                   </div>
                   <div className="p-2 flex flex-col gap-0">
                     {(() => {
@@ -1984,22 +1970,7 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
                 </button>
               );
             })()}
-            {/* 매매 분석 */}
-            <button
-              onClick={() => setOpenTradingDash(true)}
-              className={`w-full text-left px-2.5 py-1.5 rounded text-[12px] transition-all min-h-[36px] ${
-                openTradingDash
-                  ? "bg-green-500/10 text-green-400 border border-green-500/20"
-                  : "text-gray-400 border border-transparent hover:bg-[#1a1a3a]"
-              }`}
-            >
-              <div className="flex items-center gap-1.5">
-                <span>📊</span>
-                <span>매매 분석</span>
-                <span className="text-[7px] text-gray-600 ml-auto">트레이딩</span>
-                <span className="text-[7px] bg-gray-700 text-gray-500 px-1 rounded">고정</span>
-              </div>
-            </button>
+            {/* 매매 분석: 매매봇 채팅 패널 내부 버튼으로 이전됨 */}
           </div>
 
           <div className="flex flex-col gap-0">

@@ -117,6 +117,11 @@ export function preloadAssets(scene: Phaser.Scene) {
 
   // 아케이드 / 탱크 슈팅 미니게임 에셋
   scene.load.image("arcade_cabinet", "/assets/pokemon_assets/composites/Game Corner interior/obj_r014_c04_2x1.png");
+  // 아케이드 주변 장식용 게임기들
+  scene.load.image("arcade_deco_a", "/assets/pokemon_assets/composites/Game Corner interior/obj_r012_c02_2x2.png");
+  scene.load.image("arcade_deco_b", "/assets/pokemon_assets/composites/Game Corner interior/obj_r013_c00_3x2.png");
+  scene.load.image("arcade_deco_c", "/assets/pokemon_assets/composites/Game Corner interior/obj_r017_c05_2x3.png");
+  scene.load.image("arcade_deco_d", "/assets/pokemon_assets/composites/Game Corner interior/obj_r018_c04_1x1.png");
   scene.load.image("tank_body", "/assets/pokemon_assets/Items/IRONBALL.png");
   scene.load.image("tank_turret", "/assets/pokemon_assets/Items/BEASTBALL.png");
   scene.load.image("bullet", "/assets/pokemon_assets/Items/BIGNUGGET.png");
