@@ -99,8 +99,8 @@ export default class LoginScene extends Phaser.Scene {
     ["road", "road_line", "sidewalk", "grass_green", "fountain", "floor_marble"].forEach(n => {
       if (!this.textures.exists(`tile_${n}`)) this.load.image(`tile_${n}`, `/assets/original/tiles/${n}.png?${v}`);
     });
-    // 꽃 스캐터 (Pokemon Autotiles 추출)
-    ["flowers1", "flowers2"].forEach(n => {
+    // 꽃 스캐터 + 라이트 그라스 (Pokemon Autotiles)
+    ["flowers1", "flowers2", "light_grass"].forEach(n => {
       if (!this.textures.exists(`tile_${n}`)) this.load.image(`tile_${n}`, `/assets/extracted/${n}_tile.png?${v}`);
     });
     // 베리나무 (Pokemon Characters 에서 성숙 단계 crop)
@@ -180,12 +180,18 @@ export default class LoginScene extends Phaser.Scene {
   // 배경
   // ══════════════════════════════════════════════════════════
   private drawGrassBackground() {
-    // 잔디 타일 반복 (16×16, 2x 스케일 = 32×32 화면)
+    // 잔디 타일 반복 + 라이트 그라스 패치 섞어 텍스처 다양화
     const tex = this.textures.get("tile_grass_green");
+    const lgTex = this.textures.get("tile_light_grass");
     if (tex) tex.setFilter(Phaser.Textures.FilterMode.NEAREST);
+    if (lgTex) lgTex.setFilter(Phaser.Textures.FilterMode.NEAREST);
+    // 결정적 노이즈 (매번 같은 패턴) — 변수명 gseed/grand (아래 꽃 스캐터와 구분)
+    let gseed = 13;
+    const grand = () => { gseed = (gseed * 9301 + 49297) % 233280; return gseed / 233280; };
     for (let x = 0; x < W; x += TILE) {
       for (let y = 0; y < H; y += TILE) {
-        this.add.image(x, y, "tile_grass_green")
+        const key = grand() < 0.18 ? "tile_light_grass" : "tile_grass_green";
+        this.add.image(x, y, key)
           .setOrigin(0, 0).setScale(TILE_SCALE).setDepth(0);
       }
     }
