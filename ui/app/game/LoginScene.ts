@@ -83,8 +83,8 @@ export default class LoginScene extends Phaser.Scene {
     bldgs.forEach(n => {
       if (!this.textures.exists(`bld_${n}`)) this.load.image(`bld_${n}`, `/assets/original/buildings/${n}.png?${v}`);
     });
-    // 타일 (그라운드)
-    ["road", "road_line", "sidewalk", "grass_green"].forEach(n => {
+    // 타일 (그라운드 + fountain)
+    ["road", "road_line", "sidewalk", "grass_green", "fountain"].forEach(n => {
       if (!this.textures.exists(`tile_${n}`)) this.load.image(`tile_${n}`, `/assets/original/tiles/${n}.png?${v}`);
     });
     // Props
@@ -265,13 +265,10 @@ export default class LoginScene extends Phaser.Scene {
       sh.fillEllipse(slot.x, slot.y + 2, img.displayWidth * 0.6, 8);
 
       if (slot.isHQ) {
-        // HQ 골드 테두리 효과
+        // HQ 부드러운 빛 배경 (건물 바로 뒤)
         const glow = this.add.graphics().setDepth(9);
-        glow.lineStyle(3, 0xf5c842, 0.5);
-        glow.strokeRoundedRect(
-          slot.x - img.displayWidth / 2 - 4,
-          slot.y - img.displayHeight - 4,
-          img.displayWidth + 8, img.displayHeight + 8, 4);
+        glow.fillStyle(0xfff0a0, 0.12);
+        glow.fillCircle(slot.x, slot.y - img.displayHeight / 2, img.displayWidth * 0.8);
 
         // 입구 클릭존 (하단 중앙, 문 영역)
         const zoneW = img.displayWidth * 0.35;
@@ -339,11 +336,12 @@ export default class LoginScene extends Phaser.Scene {
     this.add.image(cx + TILE * 2, y0 + h / 2 + TILE / 2, "prop_bench")
       .setOrigin(0.5, 1).setScale(1.5).setDepth(11);
 
-    // 중앙 분수 — 간단한 원 (대체 에셋 없음)
+    // 중앙 분수 (심플 원형 — autotile 애니 포맷 호환 불가)
     const g = this.add.graphics().setDepth(12);
-    g.fillStyle(0x6a7888, 1); g.fillCircle(cx, y0 + h / 2, 18);
-    g.fillStyle(0x4aa0d8, 1); g.fillCircle(cx, y0 + h / 2, 14);
-    g.fillStyle(0xbadef8, 0.8); g.fillCircle(cx - 4, y0 + h / 2 - 4, 6);
+    g.fillStyle(0x6a7888, 1); g.fillCircle(cx, y0 + h / 2, 22);
+    g.fillStyle(0x4aa0d8, 1); g.fillCircle(cx, y0 + h / 2, 18);
+    g.fillStyle(0x98d4f4, 0.9); g.fillCircle(cx, y0 + h / 2, 12);
+    g.fillStyle(0xffffff, 0.7); g.fillCircle(cx - 4, y0 + h / 2 - 4, 4);
   }
 
   private drawHQSign() {
@@ -466,16 +464,20 @@ export default class LoginScene extends Phaser.Scene {
   }
 
   private createReturnButton() {
-    const bw = 140, bh = 34;
     const bx = 16, by = 16;
-    const bg = this.add.graphics().setDepth(250);
-    bg.fillStyle(0x1a1a2e, 0.92); bg.fillRoundedRect(bx, by, bw, bh, 6);
-    bg.lineStyle(1.5, 0xf5c842, 0.9); bg.strokeRoundedRect(bx, by, bw, bh, 6);
-    const btn = this.add.text(bx + bw / 2, by + bh / 2, "사무실로", {
-      fontSize: "14px", fontFamily: FONT, color: "#f5c842",
+    // HGSS town sign 를 버튼 배경으로 재활용 (통일성)
+    const sign = this.add.image(bx, by, "sign_town")
+      .setOrigin(0, 0).setScale(1.5, 0.8).setDepth(250);
+    const cx = bx + sign.displayWidth / 2;
+    const cy = by + sign.displayHeight / 2;
+    const btn = this.add.text(cx, cy, "사무실로", {
+      fontSize: "14px", fontFamily: FONT, color: "#2a1a08",
       fontStyle: "700", resolution: DPR * 3,
     }).setOrigin(0.5).setDepth(251).setInteractive({ useHandCursor: true });
     btn.on("pointerdown", () => this.enterOffice());
+    // 클릭존을 sign 전체로 확장
+    sign.setInteractive({ useHandCursor: true });
+    sign.on("pointerdown", () => this.enterOffice());
   }
 
   private enterOffice() {
