@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import VersionCheck from "./components/VersionCheck";
-import BuildStamp from "./components/BuildStamp";
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -23,7 +22,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ko">
-      <body><VersionCheck /><BuildStamp />{children}</body>
+      <body><VersionCheck />{children}</body>
     </html>
   );
 }

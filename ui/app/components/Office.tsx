@@ -9,6 +9,7 @@ import TradingDashboard from "./TradingDashboard";
 import WeatherBoard from "./WeatherBoard";
 import type { OfficeGameHandle } from "../game/OfficeGame";
 import DevTerminal from "./DevTerminal";
+import BuildStampInline from "./BuildStampInline";
 
 // ── CPO 주도 스마트 디스패치 ────────────────────────────
 type DispatchStatus = "pending" | "sending" | "working" | "done" | "skipped" | "error";
@@ -906,7 +907,7 @@ function SideMenu({ user, open, onClose, onLogout, pushEnabled, onTogglePush }: 
             className="w-full px-3 py-2 text-[11px] text-red-400/70 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors text-left">
             로그아웃
           </button>
-          <p className="text-[7px] text-gray-700 mt-2 text-center">v2.0 · (주)두근 컴퍼니</p>
+          <BuildStampInline appVersion="3.0.0" />
         </div>
       </div>
     </>

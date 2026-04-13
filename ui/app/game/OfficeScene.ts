@@ -176,6 +176,21 @@ export default class OfficeScene extends Phaser.Scene {
   private dragTarget: TeamGroup | null = null;
   private dragOffX = 0; private dragOffY = 0;
   private dragStartX = 0; private dragStartY = 0;
+  // 오브젝트(아케이드/서버실) 드래그 상태
+  private objectDrag: {
+    id: "arcade" | "server";
+    storageKey: string;
+    targets: Phaser.GameObjects.GameObject[];
+    offX: number; offY: number;
+    startX: number; startY: number;
+    startTime: number;
+    moved: boolean;
+    minX: number; maxX: number; minY: number; maxY: number;
+    baseX: number; baseY: number;
+    onClick: () => void;
+    setPos: (x: number, y: number) => void;
+    onDragEnd?: () => void;
+  } | null = null;
   private overlapRect: Phaser.GameObjects.Rectangle | null = null;
   private grid: boolean[][] = [];
   private currentFloor = 1;
@@ -657,19 +672,18 @@ export default class OfficeScene extends Phaser.Scene {
 
   private drawServerRoom() {
     // 서버실 컴퓨터 워크스테이션 (우상단 구석) — 시각적 요소 + 클릭 영역
-    const monX = WORLD_W - 52;
-    const monY = WALL_H * TILE + 16;
+    const defaultX = WORLD_W - 52;
+    const defaultY = WALL_H * TILE + 16;
+    const saved = this.loadObjectPos("hq-server-pos");
+    const monX = saved ? saved.x : defaultX;
+    const monY = saved ? saved.y : defaultY;
 
     // 데스크 (팀 책상과 동일: desk_front = 64x32, center origin)
-    const deskCX = monX;
-    const deskCY = monY + 32;
-    this.envGroup.add(
-      this.add.image(deskCX, deskCY, "desk_front").setOrigin(0.5, 0.5).setDepth(50)
-    );
+    const desk = this.add.image(monX, monY + 32, "desk_front").setOrigin(0.5, 0.5).setDepth(50);
+    this.envGroup.add(desk);
     // 모니터 (책상 위 — 팀과 동일 앵커링, bottom-origin at desk top edge)
-    this.envGroup.add(
-      this.add.image(deskCX, deskCY - 16, "monitor").setOrigin(0.5, 1).setDepth(60)
-    );
+    const monitor = this.add.image(monX, monY + 16, "monitor").setOrigin(0.5, 1).setDepth(60);
+    this.envGroup.add(monitor);
     // 서버실 라벨
     const label = this.add.text(monX, monY - 6, "SERVER", {
       fontSize: "9px", fontFamily: FONT,
@@ -677,16 +691,34 @@ export default class OfficeScene extends Phaser.Scene {
     }).setOrigin(0.5, 1).setDepth(7);
     this.envGroup.add(label);
 
-    // 클릭 영역 (대시보드 트리거)
+    // 클릭 영역 (대시보드 트리거 / 드래그 핸들)
     const monHit = this.add.zone(monX, monY + 24, 100, 60).setInteractive({ useHandCursor: true }).setDepth(102);
-    monHit.on("pointerdown", () => {
+    this.envGroup.add(monHit);
+
+    const setPos = (x: number, y: number) => {
+      desk.setPosition(x, y + 32);
+      monitor.setPosition(x, y + 16);
+      label.setPosition(x, y - 6);
+      monHit.setPosition(x, y + 24);
+    };
+
+    const onClick = () => {
       const cam = this.cameras.main;
       const rect = this.game.canvas.getBoundingClientRect();
       const sx = rect.left + (monX - cam.scrollX) * (rect.width / cam.width);
       const sy = rect.top + (monY - cam.scrollY) * (rect.height / cam.height);
       this.onTeamClick?.("server-monitor", Math.round(sx), Math.round(sy));
+    };
+
+    this.attachObjectDrag({
+      id: "server",
+      storageKey: "hq-server-pos",
+      hit: monHit,
+      targets: [desk, monitor, label, monHit],
+      getAnchor: () => ({ x: desk.x, y: desk.y - 32 }),
+      setPos,
+      onClick,
     });
-    this.envGroup.add(monHit);
   }
 
   private drawCorridor() {
@@ -788,24 +820,17 @@ export default class OfficeScene extends Phaser.Scene {
     // ── 아케이드 존 (1타일 서랍만, 클릭 시 탱크 슈팅 미니게임) ──
     // 풋프린트 축소: 기존 ~150px → 32px (1타일). 팀 아이콘 침범 방지.
     // 서버실: WORLD_W - 52, 이 기준 왼쪽으로 ~96px 떨어뜨림
-    const arcX = WORLD_W - 180;
-    const arcY = wallY + 72;
+    const defaultArcX = WORLD_W - 180;
+    const defaultArcY = wallY + 72;
+    const savedArc = this.loadObjectPos("hq-arcade-pos");
+    const arcX = savedArc ? savedArc.x : defaultArcX;
+    const arcY = savedArc ? savedArc.y : defaultArcY;
 
-    // 서랍/탁상 (1x1 게임 코너 오브젝트 단일 배치)
+    // 아케이드 캐비닛 (1×2 게임 코너 오브젝트, 진짜 게임기 모양)
     const DRAWER_W = 32;
-    const DRAWER_H = 32;
-    const drawer = this.add.image(arcX, arcY, "arcade_deco_d").setOrigin(0.5, 1).setDepth(55);
+    const DRAWER_H = 64;
+    const drawer = this.add.image(arcX, arcY, "arcade_cabinet").setOrigin(0.5, 1).setDepth(55);
     this.envGroup.add(drawer);
-
-    // 살짝 bobbing
-    this.tweens.add({
-      targets: drawer,
-      y: arcY - 2,
-      duration: 1400,
-      yoyo: true,
-      repeat: -1,
-      ease: "Sine.easeInOut",
-    });
 
     // 라벨: 서랍 top - 10
     const drawerTop = arcY - DRAWER_H;
@@ -819,26 +844,55 @@ export default class OfficeScene extends Phaser.Scene {
     }).setOrigin(0.5, 1).setDepth(56);
     this.envGroup.add(arcLabel);
 
-    // 라벨 bobbing
-    this.tweens.add({
-      targets: arcLabel,
-      y: labelY - 4,
-      duration: 900,
-      yoyo: true,
-      repeat: -1,
-      ease: "Sine.easeInOut",
-    });
-
     // 서랍 자체를 hitzone (서랍 전체 영역과 일치)
     const arcHit = this.add
       .zone(arcX, arcY - DRAWER_H / 2, DRAWER_W, DRAWER_H)
       .setInteractive({ useHandCursor: true })
       .setDepth(102);
-    arcHit.on("pointerdown", () => {
+    this.envGroup.add(arcHit);
+
+    // bobbing 트윈 (드래그 시 kill → 드래그 종료 후 재생성)
+    const startBob = () => {
+      this.tweens.add({
+        targets: drawer, y: drawer.y - 2,
+        duration: 1400, yoyo: true, repeat: -1, ease: "Sine.easeInOut",
+      });
+      this.tweens.add({
+        targets: arcLabel, y: arcLabel.y - 4,
+        duration: 900, yoyo: true, repeat: -1, ease: "Sine.easeInOut",
+      });
+    };
+    startBob();
+
+    const setArcPos = (x: number, y: number) => {
+      drawer.setPosition(x, y);
+      arcLabel.setPosition(x, y - DRAWER_H - 10);
+      arcHit.setPosition(x, y - DRAWER_H / 2);
+    };
+
+    const onArcClick = () => {
       this.scene.pause();
       this.scene.launch("TankShooterScene");
+    };
+
+    this.attachObjectDrag({
+      id: "arcade",
+      storageKey: "hq-arcade-pos",
+      hit: arcHit,
+      targets: [drawer, arcLabel, arcHit],
+      getAnchor: () => ({ x: drawer.x, y: drawer.y }),
+      setPos: setArcPos,
+      onClick: onArcClick,
+      onDragStart: () => {
+        this.tweens.killTweensOf(drawer);
+        this.tweens.killTweensOf(arcLabel);
+      },
+      onDragEnd: () => {
+        // 위치 기준으로 arcLabel 정렬 후 bobbing 재시작
+        arcLabel.setPosition(drawer.x, drawer.y - DRAWER_H - 10);
+        startBob();
+      },
     });
-    this.envGroup.add(arcHit);
 
     // ── 사무실 네 구석 — 화분만 ──
     // 좌하단 구석 (큰 화분)
@@ -1113,6 +1167,8 @@ export default class OfficeScene extends Phaser.Scene {
   // ═══════════════════════════════
 
   private onDown(ptr: Phaser.Input.Pointer) {
+    // 오브젝트 드래그 진행 중이면 팀 드래그 무시
+    if (this.objectDrag) return;
     this.dragStartX = ptr.worldX; this.dragStartY = ptr.worldY;
     for (const [, tg] of this.teamGroups) {
       if (tg.container.getBounds().contains(ptr.worldX, ptr.worldY)) {
@@ -1129,6 +1185,16 @@ export default class OfficeScene extends Phaser.Scene {
   }
 
   private onMove(ptr: Phaser.Input.Pointer) {
+    if (this.objectDrag && ptr.isDown) {
+      const od = this.objectDrag;
+      const dist = Phaser.Math.Distance.Between(od.startX, od.startY, ptr.worldX, ptr.worldY);
+      if (!od.moved && dist < 6) return;
+      od.moved = true;
+      const nx = Phaser.Math.Clamp(ptr.worldX - od.offX, od.minX, od.maxX);
+      const ny = Phaser.Math.Clamp(ptr.worldY - od.offY, od.minY, od.maxY);
+      od.setPos(nx, ny);
+      return;
+    }
     if (!this.dragTarget || !ptr.isDown) return;
     if (Phaser.Math.Distance.Between(this.dragStartX, this.dragStartY, ptr.worldX, ptr.worldY) < 8) return;
 
@@ -1151,6 +1217,30 @@ export default class OfficeScene extends Phaser.Scene {
   }
 
   private onUp() {
+    if (this.objectDrag) {
+      const od = this.objectDrag;
+      const elapsed = performance.now() - od.startTime;
+      // 투명도 원복
+      od.targets.forEach(t => {
+        const anyT = t as unknown as { setAlpha?: (a: number) => void };
+        anyT.setAlpha?.(1);
+      });
+      if (!od.moved && elapsed < 200) {
+        // 쇼트 클릭 → 위치 원복 + 원래 액션
+        od.setPos(od.baseX, od.baseY);
+        od.onClick();
+      } else {
+        // 드래그 종료 → localStorage 저장
+        const finalX = od.targets[0] ? (od.targets[0] as unknown as { x: number }).x : od.baseX;
+        const finalY = od.targets[0] ? (od.targets[0] as unknown as { y: number }).y : od.baseY;
+        try {
+          localStorage.setItem(od.storageKey, JSON.stringify({ x: Math.round(finalX), y: Math.round(finalY) }));
+        } catch {}
+        od.onDragEnd?.();
+      }
+      this.objectDrag = null;
+      return;
+    }
     if (!this.dragTarget) return;
     const t = this.dragTarget;
 
@@ -1237,6 +1327,66 @@ export default class OfficeScene extends Phaser.Scene {
       const data = localStorage.getItem(`hq-positions-${this.currentFloor}`);
       return data ? JSON.parse(data) : null;
     } catch { return null; }
+  }
+
+  // ═══════════════════════════════
+  // 오브젝트 드래그 (아케이드 / 서버실)
+  // ═══════════════════════════════
+
+  private loadObjectPos(key: string): { x: number; y: number } | null {
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (typeof parsed?.x === "number" && typeof parsed?.y === "number") {
+        return { x: parsed.x, y: parsed.y };
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  private attachObjectDrag(opts: {
+    id: "arcade" | "server";
+    storageKey: string;
+    hit: Phaser.GameObjects.Zone;
+    targets: Phaser.GameObjects.GameObject[];
+    getAnchor: () => { x: number; y: number };
+    setPos: (x: number, y: number) => void;
+    onClick: () => void;
+    onDragStart?: () => void;
+    onDragEnd?: () => void;
+  }) {
+    opts.hit.on("pointerdown", (ptr: Phaser.Input.Pointer) => {
+      if (this.objectDrag || this.dragTarget) return;
+      const anchor = opts.getAnchor();
+      opts.onDragStart?.();
+      opts.targets.forEach(t => {
+        const anyT = t as unknown as { setAlpha?: (a: number) => void };
+        anyT.setAlpha?.(0.7);
+      });
+      this.objectDrag = {
+        id: opts.id,
+        storageKey: opts.storageKey,
+        targets: opts.targets,
+        offX: ptr.worldX - anchor.x,
+        offY: ptr.worldY - anchor.y,
+        startX: ptr.worldX,
+        startY: ptr.worldY,
+        startTime: performance.now(),
+        moved: false,
+        minX: 0,
+        maxX: WORLD_W,
+        minY: WALL_H * TILE,
+        maxY: WORLD_H - 32,
+        baseX: anchor.x,
+        baseY: anchor.y,
+        onClick: opts.onClick,
+        setPos: opts.setPos,
+        onDragEnd: opts.onDragEnd,
+      };
+    });
   }
 
   // ═══════════════════════════════
