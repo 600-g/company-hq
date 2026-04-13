@@ -33,12 +33,12 @@ interface BuildingSlot {
 }
 
 const BUILDINGS: BuildingSlot[] = [
-  // 뒷줄 — HGSS 컬러 빌딩 5채 (좌→우, 높이 variation)
-  { x: 85, y: BACK_ROW_BOTTOM_Y, key: "city_yellow" },
-  { x: 225, y: BACK_ROW_BOTTOM_Y, key: "city_blue" },
-  { x: 480, y: BACK_ROW_BOTTOM_Y, key: "city_hq", isHQ: true },
-  { x: 700, y: BACK_ROW_BOTTOM_Y, key: "city_red" },
-  { x: 870, y: BACK_ROW_BOTTOM_Y, key: "city_purple" },
+  // 뒷줄 — 깨끗한 HGSS 에셋 + 폴백 원본 (red/blue 는 오염돼 제외)
+  { x: 85, y: BACK_ROW_BOTTOM_Y, key: "bld_shop_left" },  // 원본 monochrome
+  { x: 215, y: BACK_ROW_BOTTOM_Y, key: "city_yellow" },   // HGSS 노란 돌집 (cleaned)
+  { x: 480, y: BACK_ROW_BOTTOM_Y, key: "city_hq", isHQ: true },  // HGSS 초록지붕 HQ
+  { x: 700, y: BACK_ROW_BOTTOM_Y, key: "city_purple" },   // HGSS 보라지붕 2층
+  { x: 870, y: BACK_ROW_BOTTOM_Y, key: "bld_apartment" }, // 원본 아파트
   // 앞줄: 마트(좌 대형) + 공원(중) + 카페(우)
   { x: 170, y: FRONT_ROW_BOTTOM_Y, key: "city_mart" },
   { x: 480, y: FRONT_ROW_BOTTOM_Y, key: "park", isPark: true },
@@ -80,22 +80,18 @@ export default class LoginScene extends Phaser.Scene {
 
   preload() {
     const v = "v3";
-    // HGSS 컬러 건물 (buildings/) — 메인 에셋
-    const cityMap: Record<string, string> = {
-      city_yellow: "house_yellow",
-      city_blue: "house_blue",
-      city_red: "house_red",
-      city_purple: "house_purple",
-      city_mart: "house_mart",
-      city_hq: "hq",
-    };
-    Object.entries(cityMap).forEach(([k, f]) => {
-      if (!this.textures.exists(k)) this.load.image(k, `/assets/buildings/${f}.png?${v}`);
-    });
-    // 보조 건물 (original/) — 앞줄 오른쪽
-    if (!this.textures.exists("bld_main_1f")) {
-      this.load.image("bld_main_1f", `/assets/original/buildings/main_1f.png?${v}`);
+    // 깨끗한 HGSS 에셋만 (buildings/) — house_red/blue 는 타일셋 파편이 섞여 제외
+    if (!this.textures.exists("city_yellow")) {
+      this.load.image("city_yellow", `/assets/extracted/house_yellow_clean.png?${v}`);  // 알파 클린
     }
+    if (!this.textures.exists("city_purple")) this.load.image("city_purple", `/assets/buildings/house_purple.png?${v}`);
+    if (!this.textures.exists("city_mart")) this.load.image("city_mart", `/assets/extracted/house_mart_clean.png?${v}`);
+    if (!this.textures.exists("city_hq")) this.load.image("city_hq", `/assets/buildings/hq.png?${v}`);
+    // 폴백 원본 monochrome 건물 (파편 섞이지 않은 깔끔한 단일 슬라브)
+    ["shop_left", "apartment", "main_1f"].forEach(n => {
+      const k = `bld_${n}`;
+      if (!this.textures.exists(k)) this.load.image(k, `/assets/original/buildings/${n}.png?${v}`);
+    });
     // 타일 (그라운드 + fountain + HQ 광장 마감)
     ["road", "road_line", "sidewalk", "grass_green", "fountain", "floor_marble"].forEach(n => {
       if (!this.textures.exists(`tile_${n}`)) this.load.image(`tile_${n}`, `/assets/original/tiles/${n}.png?${v}`);
@@ -103,6 +99,11 @@ export default class LoginScene extends Phaser.Scene {
     // 꽃 스캐터 (Pokemon Autotiles 추출)
     ["flowers1", "flowers2"].forEach(n => {
       if (!this.textures.exists(`tile_${n}`)) this.load.image(`tile_${n}`, `/assets/extracted/${n}_tile.png?${v}`);
+    });
+    // 베리나무 (Pokemon Characters 에서 성숙 단계 crop)
+    ["cheri", "bluk"].forEach(n => {
+      const k = `berry_${n}`;
+      if (!this.textures.exists(k)) this.load.image(k, `/assets/extracted/berrytree_${n}.png?${v}`);
     });
     // Props
     ["bench", "streetlight", "tree_spring", "tree_summer", "tree_autumn", "tree_winter",
@@ -305,6 +306,41 @@ export default class LoginScene extends Phaser.Scene {
       this.add.image(tx, H - 2, `tree2_${season}_lg`).setOrigin(0.5, 1).setScale(1.8).setDepth(25);
     });
 
+    // 화단 (flower bed) — 여러 지점에 Flowers1/2 타일 빽빽히 클러스터
+    const flowerBeds: [number, number, number, number][] = [
+      // [cx, cy, colsX2 widthTiles, rowsHeightTiles]
+      [485, 220, 3, 1],       // HQ 광장 좌측 옆
+      [475, 220, -3, 1],      // HQ 광장 우측 옆
+      [60, 460, 2, 2],        // 좌하단 코너
+      [900, 460, 2, 2],       // 우하단 코너
+      [300, 460, 3, 1],       // 하단 좌측
+      [660, 460, 3, 1],       // 하단 우측
+    ];
+    flowerBeds.forEach(([cx, cy, cols, rows]) => {
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < Math.abs(cols); c++) {
+          const sign = Math.sign(cols || 1);
+          const fx = cx + sign * c * 16;
+          const fy = cy + r * 16;
+          const key = (r + c) % 2 === 0 ? "tile_flowers1" : "tile_flowers2";
+          this.add.image(fx, fy, key)
+            .setOrigin(0, 0).setScale(1).setDepth(7);
+        }
+      }
+    });
+
+    // 베리나무 장식 — 공원 주변, 건물 옆 등 (32×64)
+    const berrySpots: [number, number, string][] = [
+      [350, 470, "berry_cheri"],  // 공원 좌측
+      [610, 470, "berry_bluk"],   // 공원 우측
+      [150, 220, "berry_cheri"],  // 뒷줄 yellow/shop 사이
+      [790, 220, "berry_bluk"],   // 뒷줄 purple/apt 사이
+    ];
+    berrySpots.forEach(([bx, by, key]) => {
+      this.add.image(bx, by, key)
+        .setOrigin(0.5, 1).setScale(1.2).setDepth(9);
+    });
+
     // 정적 NPC 3명 — 벤치·마트 앞·카페 앞 (frame 0 남향, 움직이지 않음)
     const staticNpcs: { x: number; y: number; key: string; frame: number }[] = [
       { x: 245, y: BOTTOM_SIDEWALK_Y - 2, key: "npc_03", frame: 0 },   // 벤치 근처
@@ -368,15 +404,15 @@ export default class LoginScene extends Phaser.Scene {
       if (slot.isPark) { this.drawPark(slot.x, slot.y); return; }
       // 건물 기본 스케일: 키별로 조정 (너무 큰 것 방지)
       const baseScale: Record<string, number> = {
-        // HGSS 컬러 건물 (원본 사이즈 활용)
-        city_hq: 1.5,          // HQ 랜드마크 (216×222)
-        city_blue: 1.0,        // 144×190
-        city_red: 1.0,         // 144×144
-        city_purple: 1.0,      // 144×192
-        city_yellow: 1.0,      // 112×145
+        // HGSS 컬러 (깨끗한 것만)
+        city_hq: 1.5,          // 144×148 → 216×222
+        city_purple: 1.1,      // 144×192 → 158×211
+        city_yellow: 1.3,      // 112×145 → 146×189 (작은 에셋 키움)
         city_mart: 0.7,        // 256×145 → 179×102 (앞줄용)
-        // 보조 건물
-        bld_main_1f: 2.0,
+        // 원본 폴백
+        bld_shop_left: 2.2,    // 48×96 → 106×211
+        bld_apartment: 1.7,    // 56×128 → 95×218
+        bld_main_1f: 2.0,      // 64×80 → 128×160
       };
       const scale = baseScale[slot.key] || BUILDING_SCALE;
       const img = this.add.image(slot.x, slot.y, slot.key)
