@@ -351,10 +351,9 @@ export default class LoginScene extends Phaser.Scene {
 
     // 베리나무 장식 — 공원 주변, 건물 옆 등 (32×64)
     const berrySpots: [number, number, string][] = [
-      [350, 470, "berry_cheri"],  // 공원 좌측
-      [610, 470, "berry_bluk"],   // 공원 우측
-      [150, 220, "berry_cheri"],  // 뒷줄 yellow/shop 사이
-      [790, 220, "berry_bluk"],   // 뒷줄 purple/apt 사이
+      [350, 470, "berry_cheri"],  // mart-park 간극 상단
+      [610, 470, "berry_bluk"],   // park-cafe 간극 상단
+      // 뒷줄 (y=220) 베리는 건물 footprint 겹쳐 제거
     ];
     berrySpots.forEach(([bx, by, key]) => {
       this.add.image(bx, by, key)
