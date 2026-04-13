@@ -90,7 +90,8 @@ export default class LoginScene extends Phaser.Scene {
     if (!this.textures.exists("city_hq")) this.load.image("city_hq", `/assets/extracted/composite_hq_lab.png?${v}`);
     // 유지
     if (!this.textures.exists("city_purple")) this.load.image("city_purple", `/assets/buildings/house_purple.png?${v}`);
-    if (!this.textures.exists("city_mart")) this.load.image("city_mart", `/assets/extracted/house_mart_clean.png?${v}`);
+    // Mart: Azuria obj_r038_c03_6x5 (160×192 정식 composite) — 이전 HGSS 잘린 문제 해결
+    if (!this.textures.exists("city_mart")) this.load.image("city_mart", `/assets/extracted/composite_mart.png?${v}`);
     // 앞줄 cafe — Azuria composite obj_r023_c04_5x4 (128×160 청록 shop)
     if (!this.textures.exists("bld_main_1f")) this.load.image("bld_main_1f", `/assets/extracted/composite_cafe.png?${v}`);
     // Bourg Palette 소품 타일
@@ -101,9 +102,9 @@ export default class LoginScene extends Phaser.Scene {
     ["road", "sidewalk", "grass_green", "floor_marble"].forEach(n => {
       if (!this.textures.exists(`tile_${n}`)) this.load.image(`tile_${n}`, `/assets/original/tiles/${n}.png?${v}`);
     });
-    // 분수 — Celadopole composite (obj_r021_c00_5x5, 160×160 십자형)
-    if (!this.textures.exists("composite_fountain")) {
-      this.load.image("composite_fountain", `/assets/extracted/composite_fountain.png?${v}`);
+    // 공원 중앙 바위 — Bourg 3/4각 rock composite (탑뷰 분수 대신)
+    if (!this.textures.exists("composite_park_rock")) {
+      this.load.image("composite_park_rock", `/assets/extracted/composite_park_rock.png?${v}`);
     }
     // 꽃 스캐터 + 라이트 그라스 (Pokemon Autotiles)
     ["flowers1", "flowers2", "light_grass"].forEach(n => {
@@ -287,9 +288,9 @@ export default class LoginScene extends Phaser.Scene {
         .setOrigin(0.5, 1).setScale(TILE_SCALE).setDepth(15);
     });
 
-    // Pokemon 오브젝트 나무 — 32×64 기본, 캐릭(24px) 대비 자연스러운 비율
-    // 상단 먼 나무 라인 (scale 0.9 → 29×58, HQ 간판 x=400~560 회피)
-    [20, 70, 120, 170, 220, 270, 320, 640, 690, 740, 790, 840, 890, 940].forEach((tx, i) => {
+    // 상단 나무 라인 — 간격 넓혀 겹침 제거 (이전 50px → 96px)
+    const season = this.getSeason();
+    [30, 130, 230, 330, 630, 730, 830, 930].forEach((tx, i) => {
       const key = i % 2 === 0 ? "obj_tree_1a" : "obj_tree_2a";
       this.add.image(tx, 38, key).setOrigin(0.5, 1).setScale(0.9).setDepth(1);
     });
@@ -364,16 +365,13 @@ export default class LoginScene extends Phaser.Scene {
         .setOrigin(0.5, 1).setScale(1.2).setDepth(9);
     });
 
-    // 정적 NPC — 건물 앞, 벤치 옆, 공원 주변 다양하게 (frame 0 남향)
+    // 정적 NPC — 건물 문 앞 모두 제거 (사용자 피드백: 입구 방해)
+    // 공원/벤치 옆만 유지
     const staticNpcs: { x: number; y: number; key: string; frame: number }[] = [
-      { x: 245, y: BOTTOM_SIDEWALK_Y - 2, key: "npc_03", frame: 0 },   // 벤치 근처
-      { x: 170, y: FRONT_ROW_BOTTOM_Y + 14, key: "npc_05", frame: 0 }, // 마트 앞
-      { x: 820, y: FRONT_ROW_BOTTOM_Y + 14, key: "npc_07", frame: 0 }, // 카페 앞
-      { x: 100, y: 248, key: "npc_02", frame: 0 },                     // red 집 앞
-      // HQ 앞 NPC 제거 - 문/클릭존 방해
-      { x: 865, y: 248, key: "npc_08", frame: 0 },                     // purple 집 앞
+      { x: 290, y: BOTTOM_SIDEWALK_Y - 2, key: "npc_03", frame: 0 },   // 벤치 근처 (mart 밖)
       { x: 450, y: BOTTOM_SIDEWALK_Y - 2, key: "npc_09", frame: 0 },   // 공원 앞 인도
-      { x: 540, y: BOTTOM_SIDEWALK_Y - 2, key: "npc_10", frame: 0 },   // 공원 앞 인도 (다른 방향)
+      { x: 540, y: BOTTOM_SIDEWALK_Y - 2, key: "npc_10", frame: 0 },   // 공원 앞 인도
+      { x: 680, y: BOTTOM_SIDEWALK_Y - 2, key: "npc_05", frame: 0 },   // 공원-cafe 사이
     ];
     staticNpcs.forEach(n => {
       this.add.sprite(n.x, n.y, n.key, n.frame)
@@ -415,13 +413,7 @@ export default class LoginScene extends Phaser.Scene {
       }
     });
 
-    // 목재 울타리 — 화면 상단 경계 (먼 풀밭 끝)
-    const fenceTex = this.textures.get("tile_fence_h");
-    if (fenceTex) fenceTex.setFilter(Phaser.Textures.FilterMode.NEAREST);
-    for (let fx = 0; fx < W; fx += 96) {
-      this.add.image(fx, 18, "tile_fence_h")
-        .setOrigin(0, 0).setScale(1).setDepth(0);
-    }
+    // 상단 울타리 제거 — 나무 라인과 겹쳐 시각적 혼란 유발
 
     // 바위 생략 — 베리나무·꽃밭과 z-depth 충돌 발생하여 제거 (decor 단순화)
 
@@ -455,7 +447,7 @@ export default class LoginScene extends Phaser.Scene {
         // HQ: composite green lab 224×192 원본. scale 1.0 → 224×192 (half 112)
         city_hq: 1.0,
         city_purple: 1.1,      // 144×192 → 158×211
-        city_mart: 0.7,        // 256×145 → 179×102 (앞줄용)
+        city_mart: 1.0,        // Azuria composite 160×192 원본 크기 유지
         // 폴백
         bld_main_1f: 1.0,      // composite 128×160 그대로
       };
@@ -569,11 +561,11 @@ export default class LoginScene extends Phaser.Scene {
     this.add.image(cx + TILE * 2, y0 + h / 2 + TILE / 2, "prop_bench")
       .setOrigin(0.5, 1).setScale(1.5).setDepth(11);
 
-    // 중앙 분수 — Celadopole composite 축소 (다른 요소와 비례 맞춤)
-    const fTex = this.textures.get("composite_fountain");
-    if (fTex) fTex.setFilter(Phaser.Textures.FilterMode.NEAREST);
-    this.add.image(cx, y0 + h / 2, "composite_fountain")
-      .setOrigin(0.5, 0.5).setScale(0.6).setDepth(12);
+    // 공원 중앙 — 바위 (3/4각 Pokemon 스타일, 탑뷰 분수보다 자연스러움)
+    const rTex = this.textures.get("composite_park_rock");
+    if (rTex) rTex.setFilter(Phaser.Textures.FilterMode.NEAREST);
+    this.add.image(cx, y0 + h / 2 + 8, "composite_park_rock")
+      .setOrigin(0.5, 1).setScale(1.3).setDepth(12);
   }
 
   private drawHQPlaza() {
