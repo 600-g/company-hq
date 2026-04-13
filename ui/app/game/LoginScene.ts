@@ -190,7 +190,8 @@ export default class LoginScene extends Phaser.Scene {
     const grand = () => { gseed = (gseed * 9301 + 49297) % 233280; return gseed / 233280; };
     for (let x = 0; x < W; x += TILE) {
       for (let y = 0; y < H; y += TILE) {
-        const key = grand() < 0.18 ? "tile_light_grass" : "tile_grass_green";
+        // 5% 만 라이트 그라스 패치 (과도하면 시각적 산만)
+        const key = grand() < 0.05 ? "tile_light_grass" : "tile_grass_green";
         this.add.image(x, y, key)
           .setOrigin(0, 0).setScale(TILE_SCALE).setDepth(0);
       }
