@@ -414,13 +414,7 @@ export default class LoginScene extends Phaser.Scene {
         .setOrigin(0, 0).setScale(1).setDepth(0);
     }
 
-    // 바위 — mart-park 간극 / park-cafe 간극 (건물 footprint 완전 회피)
-    // mart 우측 260, park 좌측 384 → 중앙 322. park 우측 576, cafe 좌측 756 → 중앙 666
-    const rockTex = this.textures.get("tile_rock");
-    if (rockTex) rockTex.setFilter(Phaser.Textures.FilterMode.NEAREST);
-    [[322, 500], [666, 500]].forEach(([rx, ry]) => {
-      this.add.image(rx, ry, "tile_rock").setOrigin(0.5, 1).setScale(0.9).setDepth(13);
-    });
+    // 바위 생략 — 베리나무·꽃밭과 z-depth 충돌 발생하여 제거 (decor 단순화)
 
     // 표지판 — 하단 인도 벤치 근처 (HQ 영역 피함)
     const signTex = this.textures.get("tile_signpost");
