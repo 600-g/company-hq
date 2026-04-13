@@ -5,6 +5,7 @@
  * 사이드패널: 이 씬 활성화 시 window event `hq-outdoor` 로 Office.tsx에 알림 → 패널 숨김
  */
 import * as Phaser from "phaser";
+import { BUILDING_SPECS, validateLayout, safeXGaps, type DecorSpec } from "./sceneLayout";
 
 const W = 960;
 const H = 540;
@@ -67,6 +68,7 @@ export default class LoginScene extends Phaser.Scene {
   private particleG!: Phaser.GameObjects.Graphics;
   private isNight = false;
   private isEvening = false;
+  private decorAudit: DecorSpec[] = [];  // 런타임 배치 감사용
 
   constructor() { super({ key: "LoginScene" }); }
 
@@ -169,6 +171,20 @@ export default class LoginScene extends Phaser.Scene {
     // 외부 씬 진입 알림 (사이드패널 숨김용)
     this.notifyOutdoor(true);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.notifyOutdoor(false));
+
+    // 레이아웃 자동 검증: 모든 decor 위치가 건물 몸통 밖인지 검사
+    if (typeof window !== "undefined") {
+      const errors = validateLayout(this.decorAudit);
+      if (errors.length > 0) {
+        console.warn("[sceneLayout] collision detected:\n" + errors.join("\n"));
+      } else {
+        console.log(`[sceneLayout] ✅ ${this.decorAudit.length} decors validated, no collisions`);
+      }
+    }
+  }
+
+  private recordDecor(kind: DecorSpec["kind"], x: number, y: number, w: number, h: number) {
+    this.decorAudit.push({ kind, x, y, w, h });
   }
 
   private notifyOutdoor(active: boolean) {
@@ -277,16 +293,25 @@ export default class LoginScene extends Phaser.Scene {
     // 앞줄 safe gap: 0-80, 260-384, 576-756, 884-960
     // 교집합 (양쪽 모두 안전): x < 23, 347-368, 592-624, 765-786, 944-960
     // 실용 lamp x (충분한 간격)
-    const lampTopXs = [12, 357, 608, 775];        // 뒷줄 가능
-    const lampBotXs = [45, 310, 660, 720, 910];   // 앞줄 인도 가능
-    lampTopXs.forEach(lx => {
-      this.add.image(lx, ROAD_Y - TILE, "prop_streetlight")
-        .setOrigin(0.5, 1).setScale(TILE_SCALE).setDepth(15);
-    });
-    lampBotXs.forEach(lx => {
-      this.add.image(lx, BOTTOM_SIDEWALK_Y, "prop_streetlight")
-        .setOrigin(0.5, 1).setScale(TILE_SCALE).setDepth(15);
-    });
+    // 가로등: safeXGaps 로 자동 계산 (건물 몸통과 안 겹치는 구간)
+    // streetlight 16×48 scale 2 = 32×96 화면상
+    const LAMP_W = 32, LAMP_H = 96;
+    const topGaps = safeXGaps(ROAD_Y - TILE - 8, LAMP_W).filter(([a, b]) => b - a >= 60);
+    const botGaps = safeXGaps(BOTTOM_SIDEWALK_Y - 8, LAMP_W).filter(([a, b]) => b - a >= 60);
+    // 각 간극에서 최대 2개 균등 배치
+    const placeInGaps = (gaps: [number, number][], y: number) => {
+      for (const [a, b] of gaps) {
+        const count = Math.min(2, Math.floor((b - a) / 100));
+        for (let i = 1; i <= count; i++) {
+          const lx = a + (b - a) * (i / (count + 1));
+          this.add.image(lx, y, "prop_streetlight")
+            .setOrigin(0.5, 1).setScale(TILE_SCALE).setDepth(15);
+          this.recordDecor("lamp", lx, y - LAMP_H / 2, LAMP_W, LAMP_H);
+        }
+      }
+    };
+    placeInGaps(topGaps, ROAD_Y - TILE);
+    placeInGaps(botGaps, BOTTOM_SIDEWALK_Y);
 
     // 상단 나무 라인 — 간격 넓혀 겹침 제거 (이전 50px → 96px)
     const season = this.getSeason();
@@ -314,20 +339,16 @@ export default class LoginScene extends Phaser.Scene {
     // 부쉬 (scale 1.2 → 38×38)
     // 주의: HQ 광장 y=238~270, HQ 건물 x=372~588, front row 건물/공원 y=340~500 피함
     // 안전 영역: 뒷줄 건물 사이 풀밭 y=210~230, 하단 인도-공원 사이 y=460~490
+    // 부쉬 — validator 통과 좌표만 (뒷줄 건물 사이는 gap<38 이라 전부 제거)
     const bushSpots: [number, number][] = [
-      // 새 건물 좌표 기준 틈새 (간극 183-187 미사용, 353-372, 588-612, 778-786)
-      [360, 244],
-      [600, 244],
-      [782, 244],
-      // 하단: 공원 밖(x=384-576 피함), mart 밖(80-260 피함), cafe 밖(756-884 피함)
-      [300, 475],       // mart-공원 사이
-      [620, 475],       // 공원-cafe 사이
-      [700, 475],       // 공원-cafe 중간
-      [60, 455],        // 좌외곽
-      [920, 455],       // 우외곽
+      [50, 475],        // mart 좌측 외곽 (0-90)
+      [320, 475],       // mart-park 간극 (250-384)
+      [660, 475],       // park-cafe 간극 (576-756)
+      [920, 475],       // cafe 우측 외곽 (884-960)
     ];
     bushSpots.forEach(([bx, by]) => {
       this.add.image(bx, by, "obj_bush_1").setOrigin(0.5, 1).setScale(1.2).setDepth(9);
+      this.recordDecor("bush", bx, by - 20, 38, 38);
     });
 
     // 화단 — 공원/건물 footprint 피해 풀밭에만 클러스터
@@ -376,6 +397,7 @@ export default class LoginScene extends Phaser.Scene {
     staticNpcs.forEach(n => {
       this.add.sprite(n.x, n.y, n.key, n.frame)
         .setOrigin(0.5, 1).setScale(0.75).setDepth(28);
+      this.recordDecor("npc", n.x, n.y - 18, 24, 36);
     });
 
     // 우편함 2곳 (HQ 옆 + cafe 앞)

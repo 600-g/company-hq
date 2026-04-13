@@ -2,6 +2,8 @@
 set -e
 cd "$(dirname "$0")/ui"
 BUILD_ID="$(git log --oneline -1 --format='%h' 2>/dev/null || date +%s)-$(date +%s)"
+echo "🧪 Validating scene layout..."
+node scripts/validate-scene.mjs
 echo "🔨 Building... (build=$BUILD_ID)"
 npx next build
 # version.json에 빌드 ID 주입 (자동 리로드용)
