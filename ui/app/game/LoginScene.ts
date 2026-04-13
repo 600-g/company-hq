@@ -13,7 +13,7 @@ const DPR = typeof window !== "undefined" ? Math.min(window.devicePixelRatio || 
 const TILE = 32;           // 16px 타일을 2x 스케일로
 const TILE_SCALE = 2;
 const BUILDING_SCALE = 2.2;
-const CHAR_SCALE = 1.7;
+const CHAR_SCALE = 1.0;  // OfficeScene과 동일 (32×48 프레임 그대로)
 
 // 레이아웃 (픽셀)
 const SKY_H = 0;            // 잔디가 전체 커버
@@ -91,10 +91,10 @@ export default class LoginScene extends Phaser.Scene {
      "potplant_0", "potplant_1", "potplant_2", "mailbox"].forEach(n => {
       if (!this.textures.exists(`prop_${n}`)) this.load.image(`prop_${n}`, `/assets/original/props/${n}.png?${v}`);
     });
-    // 캐릭터 16×16 (사무실과 동일)
+    // 캐릭터 32×48 (OfficeScene과 동일 — /assets/chars/)
     CHAR_KEYS.forEach(n => {
       if (!this.textures.exists(`char_${n}`)) {
-        this.load.spritesheet(`char_${n}`, `/assets/char_${n}.png`, { frameWidth: 16, frameHeight: 16 });
+        this.load.spritesheet(`char_${n}`, `/assets/chars/char_${n}.png`, { frameWidth: 32, frameHeight: 48 });
       }
     });
     // Autotile 잔디
@@ -164,6 +164,9 @@ export default class LoginScene extends Phaser.Scene {
     g.fillRect(0, 0, W, 40);
   }
 
+  // 세로 골목 x 좌표
+  private readonly ALLEY_XS = [310, 650];
+
   private drawRoadAndSidewalk() {
     // 도로 (가로 관통) — road.png 타일 반복
     for (let x = 0; x < W; x += TILE) {
@@ -193,6 +196,20 @@ export default class LoginScene extends Phaser.Scene {
     for (let i = 0; i < 7; i++) {
       g.fillRect(480 - 40, ROAD_Y + 6 + i * 8, 80, 4);
     }
+
+    // 세로 골목 — 건물 사이 통로 (sidewalk 타일 반복)
+    this.ALLEY_XS.forEach(ax => {
+      for (let y = 0; y < H; y += TILE) {
+        // 도로 구간 제외 (차도는 유지)
+        if (y >= ROAD_Y - TILE && y < ROAD_Y + ROAD_HEIGHT + TILE) continue;
+        this.add.image(ax - TILE / 2, y, "tile_sidewalk")
+          .setOrigin(0, 0).setScale(TILE_SCALE).setDepth(4);
+      }
+      // 골목-도로 교차점에 횡단보도
+      for (let i = 0; i < 7; i++) {
+        g.fillRect(ax - 14, ROAD_Y + 6 + i * 8, 28, 4);
+      }
+    });
   }
 
   private placeStreetFurniture() {
@@ -346,18 +363,24 @@ export default class LoginScene extends Phaser.Scene {
   // 보행자 — 도로/인도/공원 주변만 이동 (건물 위 X)
   // ══════════════════════════════════════════════════════════
   private spawnWalkers() {
-    // 도로 위쪽 인도 3명 (가로)
-    for (let i = 0; i < 3; i++) {
-      this.spawnRoadWalker(ROAD_Y - TILE + 8, i);
-    }
-    // 도로 아래쪽 인도 3명
-    for (let i = 0; i < 3; i++) {
-      this.spawnRoadWalker(ROAD_Y + ROAD_HEIGHT + 10, i + 3);
-    }
-    // 하단 인도 3명
-    for (let i = 0; i < 3; i++) {
-      this.spawnRoadWalker(BOTTOM_SIDEWALK_Y + 12, i + 6);
-    }
+    // 도로 위·아래 인도 가로 보행
+    for (let i = 0; i < 2; i++) this.spawnRoadWalker(ROAD_Y - 8, i);
+    for (let i = 0; i < 2; i++) this.spawnRoadWalker(ROAD_Y + ROAD_HEIGHT + 16, i + 2);
+    for (let i = 0; i < 2; i++) this.spawnRoadWalker(BOTTOM_SIDEWALK_Y + 14, i + 4);
+
+    // 세로 골목 위↔아래 보행
+    this.ALLEY_XS.forEach((ax, idx) => {
+      const charKey = CHAR_KEYS[(idx + 6) % CHAR_KEYS.length];
+      const dir: 1 | -1 = Math.random() > 0.5 ? 1 : -1;
+      const startY = 80 + Math.random() * (H - 160);
+      const sp = this.add.sprite(ax, startY, `char_${charKey}`, 0)
+        .setOrigin(0.5, 1).setScale(CHAR_SCALE).setDepth(30);
+      sp.play(dir > 0 ? `char_${charKey}_walk_down` : `char_${charKey}_walk_up`);
+      this.walkers.push({
+        sprite: sp, charKey, speed: 0.5 + Math.random() * 0.3,
+        mode: "alley", dir, minY: 60, maxY: H - 30,
+      });
+    });
   }
 
   private spawnRoadWalker(laneY: number, idx: number) {
@@ -375,11 +398,20 @@ export default class LoginScene extends Phaser.Scene {
 
   private moveWalkers() {
     this.walkers.forEach(w => {
-      w.sprite.x += w.speed * w.dir;
-      if (w.dir > 0 && w.sprite.x >= (w.maxX ?? W)) {
-        w.dir = -1; w.sprite.play(`char_${w.charKey}_walk_left`);
-      } else if (w.dir < 0 && w.sprite.x <= (w.minX ?? 0)) {
-        w.dir = 1; w.sprite.play(`char_${w.charKey}_walk_right`);
+      if (w.mode === "alley") {
+        w.sprite.y += w.speed * w.dir;
+        if (w.dir > 0 && w.sprite.y >= (w.maxY ?? H)) {
+          w.dir = -1; w.sprite.play(`char_${w.charKey}_walk_up`);
+        } else if (w.dir < 0 && w.sprite.y <= (w.minY ?? 0)) {
+          w.dir = 1; w.sprite.play(`char_${w.charKey}_walk_down`);
+        }
+      } else {
+        w.sprite.x += w.speed * w.dir;
+        if (w.dir > 0 && w.sprite.x >= (w.maxX ?? W)) {
+          w.dir = -1; w.sprite.play(`char_${w.charKey}_walk_left`);
+        } else if (w.dir < 0 && w.sprite.x <= (w.minX ?? 0)) {
+          w.dir = 1; w.sprite.play(`char_${w.charKey}_walk_right`);
+        }
       }
     });
   }
@@ -442,20 +474,23 @@ export default class LoginScene extends Phaser.Scene {
   // 행: 0=down, 1=left, 2=right, 3=up
   // ══════════════════════════════════════════════════════════
   private ensureAnims() {
-    // OfficeScene과 동일: 16×16 프레임, 7 cols × 4 rows
+    // /assets/chars/char_${i}.png (128×192, 32×48 프레임, 4×4)
+    // 행0=down, 1=left, 2=right, 3=up. walk 패턴 [0,1,0,3]
     CHAR_KEYS.forEach(key => {
       const k = `char_${key}`;
-      const cols = 7;
-      const anims: [string, number[]][] = [
-        [`${k}_walk_down`,  [0, 1, 0, 2]],
-        [`${k}_walk_left`,  [cols, cols+1, cols, cols+2]],
-        [`${k}_walk_right`, [cols*2, cols*2+1, cols*2, cols*2+2]],
-        [`${k}_walk_up`,    [cols*3, cols*3+1, cols*3, cols*3+2]],
+      const cols = 4;
+      const dirs: [string, number][] = [
+        ["walk_down", 0], ["walk_left", 1], ["walk_right", 2], ["walk_up", 3],
       ];
-      anims.forEach(([animKey, frames]) => {
+      dirs.forEach(([name, row]) => {
+        const animKey = `${k}_${name}`;
         if (this.anims.exists(animKey)) return;
-        this.anims.create({ key: animKey, frames: frames.map(f => ({ key: k, frame: f })),
-          frameRate: 6, repeat: -1 });
+        const base = row * cols;
+        this.anims.create({
+          key: animKey,
+          frames: [base, base + 1, base, base + 3].map(f => ({ key: k, frame: f })),
+          frameRate: 6, repeat: -1,
+        });
       });
     });
   }
