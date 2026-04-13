@@ -197,18 +197,15 @@ export default class LoginScene extends Phaser.Scene {
     // 결정적 랜덤 (매번 같은 배치)
     let seed = 7;
     const rand = () => { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; };
+    // 상단 띠(y=30-120) 제거 — 나무 라인과 엉킴 심함
+    // 오직 하단/중앙 풀밭 구간만 (공원 x=384-576 피함)
     const safeZones: [number, number, number, number][] = [
-      // 상단 건물-화면상단 사이 얇은 풀밭 띠 (HQ 간판 피해 좌우로)
-      [0, 30, 380, 120],
-      [580, 30, 960, 120],
-      // 건물 사이 가장자리 풀밭 (건물 렌더링 뒤로 가므로 depth 조절됨)
-      [0, 180, 120, 250],
-      [840, 180, 960, 250],
-      // 앞줄 카페-공원 / 공원-main_1f 사이
-      [220, 340, 400, 430],
-      [560, 340, 740, 430],
+      [0, 320, 140, 470],      // 좌측 풀밭 (mart 앞 건너편)
+      [820, 320, 960, 470],    // 우측 풀밭
+      [200, 340, 360, 430],    // 공원 좌측 풀밭 슬리버
+      [600, 340, 760, 430],    // 공원 우측 풀밭 슬리버
     ];
-    for (let i = 0; i < 45; i++) {
+    for (let i = 0; i < 22; i++) {
       const zone = safeZones[Math.floor(rand() * safeZones.length)];
       const fx = zone[0] + rand() * (zone[2] - zone[0]);
       const fy = zone[1] + rand() * (zone[3] - zone[1]);
@@ -286,46 +283,56 @@ export default class LoginScene extends Phaser.Scene {
         .setOrigin(0.5, 1).setScale(TILE_SCALE * 1.1).setDepth(15);
     });
 
-    // Pokemon 오브젝트 나무 — 상단 멀리, 중간, 전경 3단계 원근감
-    // 상단 먼 나무 (작은 스케일, HQ 간판 x~400~560 피함)
-    [20, 80, 140, 200, 260, 320, 640, 700, 760, 820, 880, 940].forEach((tx, i) => {
+    // Pokemon 오브젝트 나무 — 32×64 기본, 캐릭(24px) 대비 자연스러운 비율
+    // 상단 먼 나무 라인 (scale 0.9 → 29×58, HQ 간판 x=400~560 회피)
+    [20, 70, 120, 170, 220, 270, 320, 640, 690, 740, 790, 840, 890, 940].forEach((tx, i) => {
       const key = i % 2 === 0 ? "obj_tree_1a" : "obj_tree_2a";
-      this.add.image(tx, 36, key).setOrigin(0.5, 1).setScale(1.2).setDepth(1);
+      this.add.image(tx, 38, key).setOrigin(0.5, 1).setScale(0.9).setDepth(1);
     });
-    // 건물 틈새 — 중간 크기 Pokemon 나무
-    const medSpots: [[number, number, string]][] = [];
-    const betweenSpots = [
-      [170, 220, "obj_tree_1a"],
-      [360, 220, "obj_tree_2a"],
-      [600, 220, "obj_tree_1b"],
-      [790, 220, "obj_tree_2b"],
-    ] as const;
-    betweenSpots.forEach(([tx, ty, k]) => {
-      this.add.image(tx, ty, k).setOrigin(0.5, 1).setScale(1.8).setDepth(8);
-    });
-    // 전경 lg 코너 나무
-    [30, 930].forEach(tx => {
-      this.add.image(tx, H - 8, "obj_tree_1a").setOrigin(0.5, 1).setScale(2.5).setDepth(25);
-    });
-    // 부쉬 (공원 둘레 + 건물 앞)
-    const bushSpots: [number, number][] = [
-      [395, 465], [565, 465],                     // 공원 좌우
-      [400, 270], [560, 270],                     // HQ 광장 옆
-      [740, 500], [720, 470], [220, 500], [240, 470], // 하단 분산
+    // 건물 사이 틈새 — 중간 (scale 1.2 → 38×77)
+    // 건물 footprint (back row) 피해 간극만:
+    // palet_red 85 ±55 = 30-140, palet_green 245 ±67 = 178-312, HQ 480 ±108 = 372-588
+    // palet_blue 710 ±78 = 632-788, purple 870 ±79 = 791-949
+    // 간극: 140-178, 312-372, 588-632, 788-791(없음)
+    const betweenSpots: [number, number, string][] = [
+      [158, 230, "obj_tree_1a"],   // red-green 사이
+      [342, 230, "obj_tree_2a"],   // green-HQ 사이
+      [610, 230, "obj_tree_1b"],   // HQ-blue 사이
     ];
-    bushSpots.forEach(([bx, by]) => {
-      this.add.image(bx, by, "obj_bush_1").setOrigin(0.5, 1).setScale(1.4).setDepth(9);
+    betweenSpots.forEach(([tx, ty, k]) => {
+      this.add.image(tx, ty, k).setOrigin(0.5, 1).setScale(1.2).setDepth(8);
+    });
+    // 전경 코너 나무 (scale 1.6 → 51×102, 크긴 하나 프레임 효과)
+    // x=15 (화면 밖 살짝), x=945 (화면 밖 살짝) — 메인 씬과 겹치지 않음
+    [15, 945].forEach(tx => {
+      this.add.image(tx, H - 10, "obj_tree_1a").setOrigin(0.5, 1).setScale(1.6).setDepth(24);
     });
 
-    // 화단 (flower bed) — 여러 지점에 Flowers1/2 타일 빽빽히 클러스터
+    // 부쉬 (scale 1.2 → 38×38)
+    // 주의: HQ 광장 y=238~270, HQ 건물 x=372~588, front row 건물/공원 y=340~500 피함
+    // 안전 영역: 뒷줄 건물 사이 풀밭 y=210~230, 하단 인도-공원 사이 y=460~490
+    const bushSpots: [number, number][] = [
+      // 뒷줄 건물 사이 틈 (간극 내부)
+      [185, 240], [280, 240],       // red-green 사이
+      [625, 240], [775, 240],       // HQ-blue, blue-purple 사이
+      // 하단: 공원 밖 영역 (공원 x=384~576, 피함)
+      [160, 475], [360, 475],       // 공원 좌측 영역
+      [600, 475], [780, 475],       // 공원 우측 영역
+    ];
+    bushSpots.forEach(([bx, by]) => {
+      this.add.image(bx, by, "obj_bush_1").setOrigin(0.5, 1).setScale(1.2).setDepth(9);
+    });
+
+    // 화단 — 공원/건물 footprint 피해 풀밭에만 클러스터
+    // 뒷줄 건물 사이 풀밭(y=210-240) + 하단 풀밭(y=450-485, 공원 x=384-576 피함)
     const flowerBeds: [number, number, number, number][] = [
-      // [cx, cy, colsX2 widthTiles, rowsHeightTiles]
-      [485, 220, 3, 1],       // HQ 광장 좌측 옆
-      [475, 220, -3, 1],      // HQ 광장 우측 옆
-      [60, 460, 2, 2],        // 좌하단 코너
-      [900, 460, 2, 2],       // 우하단 코너
-      [300, 460, 3, 1],       // 하단 좌측
-      [660, 460, 3, 1],       // 하단 우측
+      // [cx, cy, cols (음수=좌로), rows]
+      [40, 460, 2, 2],        // 좌하단 외곽
+      [920, 460, 2, 2],       // 우하단 외곽
+      [160, 475, 3, 1],       // 하단 좌 (공원 밖)
+      [780, 475, -3, 1],      // 하단 우
+      [300, 475, 2, 1],       // 하단 중좌
+      [620, 475, 2, 1],       // 하단 중우
     ];
     flowerBeds.forEach(([cx, cy, cols, rows]) => {
       for (let r = 0; r < rows; r++) {
@@ -406,18 +413,20 @@ export default class LoginScene extends Phaser.Scene {
         .setOrigin(0, 0).setScale(1).setDepth(0);
     }
 
-    // 바위 (전경 코너 장식)
+    // 바위 — 건물 footprint 밖 풀밭
+    // 하단 밖(화면 끝)과 공원 밖 잔디 영역만
     const rockTex = this.textures.get("tile_rock");
     if (rockTex) rockTex.setFilter(Phaser.Textures.FilterMode.NEAREST);
-    [[90, 470], [870, 470]].forEach(([rx, ry]) => {
-      this.add.image(rx, ry, "tile_rock").setOrigin(0.5, 1).setScale(1.2).setDepth(14);
+    // y=475: 하단 인도 아님, 풀밭 구간 (공원 x=384-576 피함)
+    [[75, 475], [905, 475]].forEach(([rx, ry]) => {
+      this.add.image(rx, ry, "tile_rock").setOrigin(0.5, 1).setScale(1.1).setDepth(13);
     });
 
-    // 표지판 — HQ 광장 앞 (두근 컴퍼니 안내)
+    // 표지판 — 하단 인도 벤치 근처 (HQ 영역 피함)
     const signTex = this.textures.get("tile_signpost");
     if (signTex) signTex.setFilter(Phaser.Textures.FilterMode.NEAREST);
-    this.add.image(400, 230, "tile_signpost")
-      .setOrigin(0.5, 1).setScale(1.2).setDepth(14);
+    this.add.image(130, BOTTOM_SIDEWALK_Y - 4, "tile_signpost")
+      .setOrigin(0.5, 1).setScale(1.3).setDepth(15);
   }
 
   private getSeason(): "spring" | "summer" | "autumn" | "winter" {
