@@ -678,12 +678,11 @@ export default class OfficeScene extends Phaser.Scene {
     const monX = saved ? saved.x : defaultX;
     const monY = saved ? saved.y : defaultY;
 
-    // 데스크 (팀 책상과 동일: desk_front = 64x32, center origin)
-    const desk = this.add.image(monX, monY + 32, "desk_front").setOrigin(0.5, 0.5).setDepth(50);
+    // 통합 워크스테이션 (책상+CRT 컴퓨터 한 장, 48x48 - 자연스러운 합성)
+    const desk = this.add.image(monX, monY + 32, "server_workstation").setOrigin(0.5, 1).setDepth(50);
     this.envGroup.add(desk);
-    // 모니터 (책상 위 — 팀과 동일 앵커링, bottom-origin at desk top edge)
-    const monitor = this.add.image(monX, monY + 16, "monitor").setOrigin(0.5, 1).setDepth(60);
-    this.envGroup.add(monitor);
+    // monitor 변수 유지 (기존 setPos 호환) — 더미 오브젝트
+    const monitor = desk;
     // 서버실 라벨
     const label = this.add.text(monX, monY - 6, "SERVER", {
       fontSize: "9px", fontFamily: FONT,
@@ -692,14 +691,13 @@ export default class OfficeScene extends Phaser.Scene {
     this.envGroup.add(label);
 
     // 클릭 영역 (대시보드 트리거 / 드래그 핸들)
-    const monHit = this.add.zone(monX, monY + 24, 100, 60).setInteractive({ useHandCursor: true }).setDepth(102);
+    const monHit = this.add.zone(monX, monY + 8, 48, 48).setInteractive({ useHandCursor: true }).setDepth(102);
     this.envGroup.add(monHit);
 
     const setPos = (x: number, y: number) => {
       desk.setPosition(x, y + 32);
-      monitor.setPosition(x, y + 16);
       label.setPosition(x, y - 6);
-      monHit.setPosition(x, y + 24);
+      monHit.setPosition(x, y + 8);
     };
 
     const onClick = () => {

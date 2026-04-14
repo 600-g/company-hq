@@ -65,6 +65,8 @@ export function preloadAssets(scene: Phaser.Scene) {
   scene.load.image("pc_back", "/assets/pokemon_furniture/pc.png");
   scene.load.image("pc", "/assets/pokemon_furniture/pc.png");
   scene.load.image("monitor", "/assets/pokemon_furniture/monitor.png");
+  // 서버실 통합 컴퓨터 (책상+CRT+모니터 한 장, 48x48 세로형)
+  scene.load.image("server_workstation", "/assets/pokemon_furniture/computer_crt_desktop.png");
   scene.load.image("desk_side_drawers", "/assets/pokemon_furniture/desk_side_with_drawers.png");
   scene.load.image("desk_side_wicker", "/assets/pokemon_furniture/desk_side_wicker_short.png");
   scene.load.image("desk_side_wicker_long", "/assets/pokemon_furniture/desk_side_wicker_long.png");
