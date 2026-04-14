@@ -54,8 +54,9 @@ export function preloadAssets(scene: Phaser.Scene) {
   });
 
   // 가구 (Pokemon Another Red 포맷, 32px 그리드)
-  scene.load.image("desk_front", "/assets/pokemon_furniture/desk_1.png");
-  scene.load.image("desk_side", "/assets/pokemon_furniture/desk_2.png");
+  // desk_1.png, desk_2.png 파일 없음 → 기존 파일로 대체 (빗금친 missing-texture 방지)
+  scene.load.image("desk_front", "/assets/pokemon_furniture/desk_side_with_drawers.png");
+  scene.load.image("desk_side", "/assets/pokemon_furniture/desk_side_wicker_long.png");
   // PC — 단일 이미지 (깜빡임 애니메이션 없음). 하위 호환 위해 모든 키를 동일 이미지로 매핑
   scene.load.image("pc_on1", "/assets/pokemon_furniture/pc.png");
   scene.load.image("pc_on2", "/assets/pokemon_furniture/pc.png");
