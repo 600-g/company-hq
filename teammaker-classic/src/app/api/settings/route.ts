@@ -8,9 +8,11 @@ import {
 
 export async function GET() {
   const maskedKey = getMaskedKey();
+  // Max 플랜 모드면 키 없이도 hasKey:true 로 응답 (온보딩 스킵)
+  const useMaxPlan = process.env.USE_MAX_PLAN === "1";
   return NextResponse.json({
-    hasKey: !!getApiKey(),
-    maskedKey,
+    hasKey: useMaxPlan ? true : !!getApiKey(),
+    maskedKey: useMaxPlan ? "MAX_PLAN" : maskedKey,
   });
 }
 
