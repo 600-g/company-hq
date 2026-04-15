@@ -1,0 +1,715 @@
+{
+  "wallSets": [
+    {
+      "id": "wall_lavender_A",
+      "label": "Lavender A",
+      "tiles": {
+        "tl": "wall_lavender_A_tl.png",
+        "t": "wall_lavender_A_t.png",
+        "tr": "wall_lavender_A_tr.png",
+        "l": "wall_lavender_A_l.png",
+        "c": "wall_lavender_A_c.png",
+        "r": "wall_lavender_A_r.png"
+      },
+      "preview": "wall_lavender_A_t.png"
+    },
+    {
+      "id": "wall_lavender_B",
+      "label": "Lavender B",
+      "tiles": {
+        "l": "wall_lavender_B_l.png",
+        "c": "wall_lavender_B_c.png",
+        "r": "wall_lavender_B_r.png"
+      },
+      "preview": "wall_lavender_B_l.png"
+    },
+    {
+      "id": "wall_lavender_C",
+      "label": "Lavender C",
+      "tiles": {
+        "tl": "wall_lavender_C_tl.png",
+        "t": "wall_lavender_C_t.png",
+        "tr": "wall_lavender_C_tr.png",
+        "l": "wall_lavender_C_l.png",
+        "c": "wall_lavender_C_c.png",
+        "r": "wall_lavender_C_r.png"
+      },
+      "preview": "wall_lavender_C_t.png"
+    },
+    {
+      "id": "wall_gray_A",
+      "label": "Gray A",
+      "tiles": {
+        "tl": "wall_gray_A_tl.png",
+        "t": "wall_gray_A_t.png",
+        "tr": "wall_gray_A_tr.png",
+        "l": "wall_gray_A_l.png",
+        "c": "wall_gray_A_c.png",
+        "r": "wall_gray_A_r.png"
+      },
+      "preview": "wall_gray_A_t.png"
+    },
+    {
+      "id": "wall_gray_B",
+      "label": "Gray B",
+      "tiles": {
+        "l": "wall_gray_B_l.png",
+        "c": "wall_gray_B_c.png",
+        "r": "wall_gray_B_r.png"
+      },
+      "preview": "wall_gray_B_l.png"
+    },
+    {
+      "id": "wall_gray_C",
+      "label": "Gray C",
+      "tiles": {
+        "tl": "wall_gray_C_tl.png",
+        "t": "wall_gray_C_t.png",
+        "tr": "wall_gray_C_tr.png",
+        "l": "wall_gray_C_l.png",
+        "c": "wall_gray_C_c.png",
+        "r": "wall_gray_C_r.png"
+      },
+      "preview": "wall_gray_C_t.png"
+    },
+    {
+      "id": "wall_brick_A",
+      "label": "Brick A",
+      "tiles": {
+        "tl": "wall_brick_A_tl.png",
+        "t": "wall_brick_A_t.png",
+        "tr": "wall_brick_A_tr.png",
+        "l": "wall_brick_A_l.png",
+        "c": "wall_brick_A_c.png",
+        "r": "wall_brick_A_r.png"
+      },
+      "preview": "wall_brick_A_t.png"
+    },
+    {
+      "id": "wall_brick_B",
+      "label": "Brick B",
+      "tiles": {
+        "l": "wall_brick_B_l.png",
+        "c": "wall_brick_B_c.png",
+        "r": "wall_brick_B_r.png"
+      },
+      "preview": "wall_brick_B_l.png"
+    },
+    {
+      "id": "wall_brick_C",
+      "label": "Brick C",
+      "tiles": {
+        "tl": "wall_brick_C_tl.png",
+        "t": "wall_brick_C_t.png",
+        "tr": "wall_brick_C_tr.png",
+        "l": "wall_brick_C_l.png",
+        "c": "wall_brick_C_c.png",
+        "r": "wall_brick_C_r.png"
+      },
+      "preview": "wall_brick_C_t.png"
+    },
+    {
+      "id": "wall_pink_A",
+      "label": "Pink A",
+      "tiles": {
+        "tl": "wall_pink_A_tl.png",
+        "t": "wall_pink_A_t.png",
+        "tr": "wall_pink_A_tr.png"
+      },
+      "preview": "wall_pink_A_t.png"
+    },
+    {
+      "id": "wall_pink_C",
+      "label": "Pink C",
+      "tiles": {
+        "tl": "wall_pink_C_tl.png",
+        "t": "wall_pink_C_t.png",
+        "tr": "wall_pink_C_tr.png"
+      },
+      "preview": "wall_pink_C_t.png"
+    },
+    {
+      "id": "wall_base_lavender_A",
+      "label": "Base_Lavender A",
+      "tiles": {
+        "l": "wall_base_lavender_A_l.png",
+        "c": "wall_base_lavender_A_c.png",
+        "r": "wall_base_lavender_A_r.png"
+      },
+      "preview": "wall_base_lavender_A_l.png"
+    },
+    {
+      "id": "wall_base_lavender_B",
+      "label": "Base_Lavender B",
+      "tiles": {
+        "l": "wall_base_lavender_B_l.png",
+        "c": "wall_base_lavender_B_c.png",
+        "r": "wall_base_lavender_B_r.png"
+      },
+      "preview": "wall_base_lavender_B_l.png"
+    },
+    {
+      "id": "wall_base_lavender_C",
+      "label": "Base_Lavender C",
+      "tiles": {
+        "l": "wall_base_lavender_C_l.png",
+        "c": "wall_base_lavender_C_c.png",
+        "r": "wall_base_lavender_C_r.png"
+      },
+      "preview": "wall_base_lavender_C_l.png"
+    }
+  ],
+  "wallExtras": [],
+  "floorSets": [
+    {
+      "id": "floor_lavender_1",
+      "label": "Lavender 1",
+      "tile": "floor_lavender_1.png"
+    },
+    {
+      "id": "floor_lavender_2",
+      "label": "Lavender 2",
+      "tile": "floor_lavender_2.png"
+    },
+    {
+      "id": "floor_lavender_3",
+      "label": "Lavender 3",
+      "tile": "floor_lavender_3.png"
+    },
+    {
+      "id": "floor_lavender_4",
+      "label": "Lavender 4",
+      "tile": "floor_lavender_4.png"
+    },
+    {
+      "id": "floor_lavender_5",
+      "label": "Lavender 5",
+      "tile": "floor_lavender_5.png"
+    },
+    {
+      "id": "floor_lavender_6",
+      "label": "Lavender 6",
+      "tile": "floor_lavender_6.png"
+    },
+    {
+      "id": "floor_lavender_7",
+      "label": "Lavender 7",
+      "tile": "floor_lavender_7.png"
+    },
+    {
+      "id": "floor_lavender_8",
+      "label": "Lavender 8",
+      "tile": "floor_lavender_8.png"
+    },
+    {
+      "id": "floor_lavender_9",
+      "label": "Lavender 9",
+      "tile": "floor_lavender_9.png"
+    },
+    {
+      "id": "floor_lavender_10",
+      "label": "Lavender 10",
+      "tile": "floor_lavender_10.png"
+    },
+    {
+      "id": "floor_lavender_11",
+      "label": "Lavender 11",
+      "tile": "floor_lavender_11.png"
+    },
+    {
+      "id": "floor_lavender_12",
+      "label": "Lavender 12",
+      "tile": "floor_lavender_12.png"
+    },
+    {
+      "id": "floor_gray_1",
+      "label": "Gray 1",
+      "tile": "floor_gray_1.png"
+    },
+    {
+      "id": "floor_gray_2",
+      "label": "Gray 2",
+      "tile": "floor_gray_2.png"
+    },
+    {
+      "id": "floor_gray_3",
+      "label": "Gray 3",
+      "tile": "floor_gray_3.png"
+    },
+    {
+      "id": "floor_gray_4",
+      "label": "Gray 4",
+      "tile": "floor_gray_4.png"
+    },
+    {
+      "id": "floor_gray_5",
+      "label": "Gray 5",
+      "tile": "floor_gray_5.png"
+    },
+    {
+      "id": "floor_gray_6",
+      "label": "Gray 6",
+      "tile": "floor_gray_6.png"
+    },
+    {
+      "id": "floor_gray_7",
+      "label": "Gray 7",
+      "tile": "floor_gray_7.png"
+    },
+    {
+      "id": "floor_gray_8",
+      "label": "Gray 8",
+      "tile": "floor_gray_8.png"
+    },
+    {
+      "id": "floor_gray_9",
+      "label": "Gray 9",
+      "tile": "floor_gray_9.png"
+    },
+    {
+      "id": "floor_gray_10",
+      "label": "Gray 10",
+      "tile": "floor_gray_10.png"
+    },
+    {
+      "id": "floor_gray_11",
+      "label": "Gray 11",
+      "tile": "floor_gray_11.png"
+    },
+    {
+      "id": "floor_gray_12",
+      "label": "Gray 12",
+      "tile": "floor_gray_12.png"
+    },
+    {
+      "id": "floor_brick_1",
+      "label": "Brick 1",
+      "tile": "floor_brick_1.png"
+    },
+    {
+      "id": "floor_brick_2",
+      "label": "Brick 2",
+      "tile": "floor_brick_2.png"
+    },
+    {
+      "id": "floor_brick_3",
+      "label": "Brick 3",
+      "tile": "floor_brick_3.png"
+    },
+    {
+      "id": "floor_brick_4",
+      "label": "Brick 4",
+      "tile": "floor_brick_4.png"
+    },
+    {
+      "id": "floor_brick_5",
+      "label": "Brick 5",
+      "tile": "floor_brick_5.png"
+    },
+    {
+      "id": "floor_brick_6",
+      "label": "Brick 6",
+      "tile": "floor_brick_6.png"
+    },
+    {
+      "id": "floor_brick_7",
+      "label": "Brick 7",
+      "tile": "floor_brick_7.png"
+    },
+    {
+      "id": "floor_brick_8",
+      "label": "Brick 8",
+      "tile": "floor_brick_8.png"
+    },
+    {
+      "id": "floor_brick_9",
+      "label": "Brick 9",
+      "tile": "floor_brick_9.png"
+    },
+    {
+      "id": "floor_brick_10",
+      "label": "Brick 10",
+      "tile": "floor_brick_10.png"
+    },
+    {
+      "id": "floor_brick_11",
+      "label": "Brick 11",
+      "tile": "floor_brick_11.png"
+    },
+    {
+      "id": "floor_brick_12",
+      "label": "Brick 12",
+      "tile": "floor_brick_12.png"
+    },
+    {
+      "id": "floor_pink_1",
+      "label": "Pink 1",
+      "tile": "floor_pink_1.png"
+    },
+    {
+      "id": "floor_pink_2",
+      "label": "Pink 2",
+      "tile": "floor_pink_2.png"
+    },
+    {
+      "id": "floor_pink_3",
+      "label": "Pink 3",
+      "tile": "floor_pink_3.png"
+    },
+    {
+      "id": "floor_pink_4",
+      "label": "Pink 4",
+      "tile": "floor_pink_4.png"
+    },
+    {
+      "id": "floor_pink_5",
+      "label": "Pink 5",
+      "tile": "floor_pink_5.png"
+    },
+    {
+      "id": "floor_pink_6",
+      "label": "Pink 6",
+      "tile": "floor_pink_6.png"
+    },
+    {
+      "id": "floor_preview_lavender_1",
+      "label": "Preview_Lavender 1",
+      "tile": "floor_preview_lavender_1.png"
+    },
+    {
+      "id": "floor_preview_lavender_2",
+      "label": "Preview_Lavender 2",
+      "tile": "floor_preview_lavender_2.png"
+    },
+    {
+      "id": "floor_preview_lavender_3",
+      "label": "Preview_Lavender 3",
+      "tile": "floor_preview_lavender_3.png"
+    },
+    {
+      "id": "floor_preview_lavender_4",
+      "label": "Preview_Lavender 4",
+      "tile": "floor_preview_lavender_4.png"
+    },
+    {
+      "id": "floor_preview_lavender_5",
+      "label": "Preview_Lavender 5",
+      "tile": "floor_preview_lavender_5.png"
+    },
+    {
+      "id": "floor_preview_lavender_6",
+      "label": "Preview_Lavender 6",
+      "tile": "floor_preview_lavender_6.png"
+    }
+  ],
+  "dividerTiles": [
+    {
+      "id": "divider_outer_tl",
+      "label": "Divider: Outer Top-Left",
+      "tile": "divider_outer_tl.png",
+      "w": 1,
+      "h": 1
+    },
+    {
+      "id": "divider_outer_t",
+      "label": "Divider: Outer Top",
+      "tile": "divider_outer_t.png",
+      "w": 1,
+      "h": 1
+    },
+    {
+      "id": "divider_outer_tr",
+      "label": "Divider: Outer Top-Right",
+      "tile": "divider_outer_tr.png",
+      "w": 1,
+      "h": 1
+    },
+    {
+      "id": "divider_outer_l",
+      "label": "Divider: Outer Left",
+      "tile": "divider_outer_l.png",
+      "w": 1,
+      "h": 1
+    },
+    {
+      "id": "divider_door_t",
+      "label": "Divider: Door Top",
+      "tile": "divider_door_t.png",
+      "w": 1,
+      "h": 1
+    },
+    {
+      "id": "divider_window_tl",
+      "label": "Divider: Window Top-Left",
+      "tile": "divider_window_tl.png",
+      "w": 1,
+      "h": 1
+    },
+    {
+      "id": "divider_window_t",
+      "label": "Divider: Window Top",
+      "tile": "divider_window_t.png",
+      "w": 1,
+      "h": 1
+    },
+    {
+      "id": "divider_window_tr",
+      "label": "Divider: Window Top-Right",
+      "tile": "divider_window_tr.png",
+      "w": 1,
+      "h": 1
+    },
+    {
+      "id": "divider_inner_bl",
+      "label": "Divider: Inner Bottom-Left",
+      "tile": "divider_inner_bl.png",
+      "w": 1,
+      "h": 1
+    },
+    {
+      "id": "divider_inner_b",
+      "label": "Divider: Inner Bottom",
+      "tile": "divider_inner_b.png",
+      "w": 1,
+      "h": 1
+    },
+    {
+      "id": "divider_inner_br",
+      "label": "Divider: Inner Bottom-Right",
+      "tile": "divider_inner_br.png",
+      "w": 1,
+      "h": 1
+    },
+    {
+      "id": "divider_cross",
+      "label": "Divider: Cross",
+      "tile": "divider_cross.png",
+      "w": 1,
+      "h": 1
+    },
+    {
+      "id": "divider_t_right",
+      "label": "Divider: T-Right",
+      "tile": "divider_t_right.png",
+      "w": 1,
+      "h": 1
+    },
+    {
+      "id": "divider_t_left",
+      "label": "Divider: T-Left",
+      "tile": "divider_t_left.png",
+      "w": 1,
+      "h": 1
+    },
+    {
+      "id": "divider_horizontal",
+      "label": "Divider: Horizontal",
+      "tile": "divider_horizontal.png",
+      "w": 1,
+      "h": 1
+    },
+    {
+      "id": "divider_door_fl",
+      "label": "Divider: Door Frame Left",
+      "tile": "divider_door_fl.png",
+      "w": 1,
+      "h": 1
+    },
+    {
+      "id": "divider_door_fc",
+      "label": "Divider: Door Frame Center",
+      "tile": "divider_door_fc.png",
+      "w": 1,
+      "h": 1
+    },
+    {
+      "id": "divider_window_c",
+      "label": "Divider: Window Center",
+      "tile": "divider_window_c.png",
+      "w": 1,
+      "h": 1
+    },
+    {
+      "id": "divider_window_mr",
+      "label": "Divider: Window Mid-Right",
+      "tile": "divider_window_mr.png",
+      "w": 1,
+      "h": 1
+    },
+    {
+      "id": "divider_inner_tl",
+      "label": "Divider: Inner Top-Left",
+      "tile": "divider_inner_tl.png",
+      "w": 1,
+      "h": 1
+    },
+    {
+      "id": "divider_inner_t",
+      "label": "Divider: Inner Top",
+      "tile": "divider_inner_t.png",
+      "w": 1,
+      "h": 1
+    },
+    {
+      "id": "divider_single",
+      "label": "Divider: Single",
+      "tile": "divider_single.png",
+      "w": 1,
+      "h": 1
+    },
+    {
+      "id": "divider_door_fbl",
+      "label": "Divider: Door Frame Bottom-Left",
+      "tile": "divider_door_fbl.png",
+      "w": 1,
+      "h": 1
+    },
+    {
+      "id": "divider_door_fb",
+      "label": "Divider: Door Frame Bottom",
+      "tile": "divider_door_fb.png",
+      "w": 1,
+      "h": 1
+    },
+    {
+      "id": "divider_outer_b",
+      "label": "Divider: Outer Bottom",
+      "tile": "divider_outer_b.png",
+      "w": 1,
+      "h": 1
+    },
+    {
+      "id": "divider_outer_br2",
+      "label": "Divider: Outer Bottom-Right 2",
+      "tile": "divider_outer_br2.png",
+      "w": 1,
+      "h": 1
+    },
+    {
+      "id": "divider_door_thl",
+      "label": "Divider: Door Threshold Left",
+      "tile": "divider_door_thl.png",
+      "w": 1,
+      "h": 1
+    },
+    {
+      "id": "divider_door_th",
+      "label": "Divider: Door Threshold",
+      "tile": "divider_door_th.png",
+      "w": 1,
+      "h": 1
+    },
+    {
+      "id": "divider_base_lavender_gap",
+      "label": "Divider Base: Lavender Gap",
+      "tile": "divider_base_lavender_gap.png",
+      "w": 1,
+      "h": 1
+    },
+    {
+      "id": "divider_vertical",
+      "label": "Divider: Vertical",
+      "tile": "divider_vertical.png",
+      "w": 1,
+      "h": 1
+    },
+    {
+      "id": "divider_brick_gap",
+      "label": "Divider Pink: Gap",
+      "tile": "divider_brick_gap.png",
+      "w": 1,
+      "h": 1
+    },
+    {
+      "id": "divider_pink_gap",
+      "label": "Divider Pink: Gap",
+      "tile": "divider_pink_gap.png",
+      "w": 1,
+      "h": 1
+    },
+    {
+      "id": "divider_gray_gap_a",
+      "label": "Divider Gray: Gap A",
+      "tile": "divider_gray_gap_a.png",
+      "w": 1,
+      "h": 1
+    },
+    {
+      "id": "divider_brick_gap_a",
+      "label": "Divider Brick: Gap A",
+      "tile": "divider_brick_gap_a.png",
+      "w": 1,
+      "h": 1
+    },
+    {
+      "id": "divider_t_down",
+      "label": "Divider: T-Down",
+      "tile": "divider_t_down.png",
+      "w": 1,
+      "h": 1
+    },
+    {
+      "id": "divider_outer_r_2h",
+      "label": "Divider: Outer Right 2-High",
+      "tile": "divider_outer_r_2h.png",
+      "w": 1,
+      "h": 2
+    },
+    {
+      "id": "divider_inner_tr",
+      "label": "Divider: Inner Top-Right",
+      "tile": "divider_inner_tr.png",
+      "w": 1,
+      "h": 1
+    },
+    {
+      "id": "divider_outer_r",
+      "label": "Divider: Outer Right",
+      "tile": "divider_outer_r.png",
+      "w": 1,
+      "h": 1
+    },
+    {
+      "id": "divider_outer_bl",
+      "label": "Divider: Outer Bottom-Left",
+      "tile": "divider_outer_bl.png",
+      "w": 1,
+      "h": 1
+    },
+    {
+      "id": "divider_t_up",
+      "label": "Divider: T-Up",
+      "tile": "divider_t_up.png",
+      "w": 1,
+      "h": 1
+    },
+    {
+      "id": "divider_lavender_gap",
+      "label": "Divider Lavender: Gap",
+      "tile": "divider_lavender_gap.png",
+      "w": 1,
+      "h": 1
+    },
+    {
+      "id": "divider_gray_gap",
+      "label": "Divider Gray: Gap",
+      "tile": "divider_gray_gap.png",
+      "w": 1,
+      "h": 1
+    },
+    {
+      "id": "divider_corner_block",
+      "label": "Divider: Corner Block 2x2",
+      "tile": "divider_corner_block.png",
+      "w": 2,
+      "h": 2
+    },
+    {
+      "id": "divider_shadow_block",
+      "label": "Divider Shadow: Block 3x2",
+      "tile": "divider_shadow_block.png",
+      "w": 3,
+      "h": 2
+    }
+  ]
+}

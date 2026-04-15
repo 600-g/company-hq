@@ -1,0 +1,1808 @@
+[
+  {
+    "col": 0,
+    "row": 317,
+    "width": 3,
+    "height": 3,
+    "name": "reception_desk_large",
+    "category": "desk",
+    "px": {
+      "x": 0,
+      "y": 10144,
+      "w": 96,
+      "h": 96
+    }
+  },
+  {
+    "col": 4,
+    "row": 317,
+    "width": 1,
+    "height": 1,
+    "name": "chair_small_gray_L",
+    "category": "chair",
+    "px": {
+      "x": 128,
+      "y": 10144,
+      "w": 32,
+      "h": 32
+    }
+  },
+  {
+    "col": 5,
+    "row": 317,
+    "width": 1,
+    "height": 1,
+    "name": "chair_small_gray_R",
+    "category": "chair",
+    "px": {
+      "x": 160,
+      "y": 10144,
+      "w": 32,
+      "h": 32
+    }
+  },
+  {
+    "col": 6,
+    "row": 317,
+    "width": 1,
+    "height": 1,
+    "name": "chair_small_dark_L",
+    "category": "chair",
+    "px": {
+      "x": 192,
+      "y": 10144,
+      "w": 32,
+      "h": 32
+    }
+  },
+  {
+    "col": 7,
+    "row": 317,
+    "width": 1,
+    "height": 1,
+    "name": "chair_small_dark_R",
+    "category": "chair",
+    "px": {
+      "x": 224,
+      "y": 10144,
+      "w": 32,
+      "h": 32
+    }
+  },
+  {
+    "col": 8,
+    "row": 317,
+    "width": 4,
+    "height": 2,
+    "name": "counter_flat_long",
+    "category": "desk",
+    "px": {
+      "x": 256,
+      "y": 10144,
+      "w": 128,
+      "h": 64
+    }
+  },
+  {
+    "col": 4,
+    "row": 318,
+    "width": 1,
+    "height": 2,
+    "name": "vending_machine",
+    "category": "appliance",
+    "px": {
+      "x": 128,
+      "y": 10176,
+      "w": 32,
+      "h": 64
+    }
+  },
+  {
+    "col": 6,
+    "row": 319,
+    "width": 1,
+    "height": 1,
+    "name": "briefcase_brown",
+    "category": "accessory",
+    "px": {
+      "x": 192,
+      "y": 10208,
+      "w": 32,
+      "h": 32
+    }
+  },
+  {
+    "col": 7,
+    "row": 319,
+    "width": 1,
+    "height": 1,
+    "name": "bag_with_logo",
+    "category": "accessory",
+    "px": {
+      "x": 224,
+      "y": 10208,
+      "w": 32,
+      "h": 32
+    }
+  },
+  {
+    "col": 8,
+    "row": 319,
+    "width": 2,
+    "height": 2,
+    "name": "whiteboard",
+    "category": "board",
+    "px": {
+      "x": 256,
+      "y": 10208,
+      "w": 64,
+      "h": 64
+    }
+  },
+  {
+    "col": 10,
+    "row": 319,
+    "width": 2,
+    "height": 2,
+    "name": "presentation_screen",
+    "category": "board",
+    "px": {
+      "x": 320,
+      "y": 10208,
+      "w": 64,
+      "h": 64
+    }
+  },
+  {
+    "col": 13,
+    "row": 319,
+    "width": 1,
+    "height": 1,
+    "name": "frame_boy",
+    "category": "decor",
+    "px": {
+      "x": 416,
+      "y": 10208,
+      "w": 32,
+      "h": 32
+    }
+  },
+  {
+    "col": 14,
+    "row": 319,
+    "width": 1,
+    "height": 1,
+    "name": "frame_girl",
+    "category": "decor",
+    "px": {
+      "x": 448,
+      "y": 10208,
+      "w": 32,
+      "h": 32
+    }
+  },
+  {
+    "col": 0,
+    "row": 320,
+    "width": 3,
+    "height": 1,
+    "name": "sofa_yellow_long",
+    "category": "seating",
+    "px": {
+      "x": 0,
+      "y": 10240,
+      "w": 96,
+      "h": 32
+    }
+  },
+  {
+    "col": 1,
+    "row": 321,
+    "width": 2,
+    "height": 2,
+    "name": "door_blue",
+    "category": "door",
+    "px": {
+      "x": 32,
+      "y": 10272,
+      "w": 64,
+      "h": 64
+    }
+  },
+  {
+    "col": 3,
+    "row": 321,
+    "width": 2,
+    "height": 2,
+    "name": "door_red",
+    "category": "door",
+    "px": {
+      "x": 96,
+      "y": 10272,
+      "w": 64,
+      "h": 64
+    }
+  },
+  {
+    "col": 5,
+    "row": 321,
+    "width": 4,
+    "height": 2,
+    "name": "counter_brown_long",
+    "category": "desk",
+    "px": {
+      "x": 160,
+      "y": 10272,
+      "w": 128,
+      "h": 64
+    }
+  },
+  {
+    "col": 12,
+    "row": 321,
+    "width": 1,
+    "height": 1,
+    "name": "ceiling_lamp",
+    "category": "lighting",
+    "px": {
+      "x": 384,
+      "y": 10272,
+      "w": 32,
+      "h": 32
+    }
+  },
+  {
+    "col": 13,
+    "row": 321,
+    "width": 1,
+    "height": 1,
+    "name": "light_1",
+    "category": "lighting",
+    "px": {
+      "x": 416,
+      "y": 10272,
+      "w": 32,
+      "h": 32
+    }
+  },
+  {
+    "col": 14,
+    "row": 321,
+    "width": 1,
+    "height": 1,
+    "name": "light_2",
+    "category": "lighting",
+    "px": {
+      "x": 448,
+      "y": 10272,
+      "w": 32,
+      "h": 32
+    }
+  },
+  {
+    "col": 0,
+    "row": 323,
+    "width": 3,
+    "height": 2,
+    "name": "projection_screen_large",
+    "category": "board",
+    "px": {
+      "x": 0,
+      "y": 10336,
+      "w": 96,
+      "h": 64
+    }
+  },
+  {
+    "col": 3,
+    "row": 323,
+    "width": 5,
+    "height": 3,
+    "name": "conference_curtain",
+    "category": "decor",
+    "px": {
+      "x": 96,
+      "y": 10336,
+      "w": 160,
+      "h": 96
+    }
+  },
+  {
+    "col": 8,
+    "row": 323,
+    "width": 1,
+    "height": 2,
+    "name": "office_chair_swivel",
+    "category": "chair",
+    "px": {
+      "x": 256,
+      "y": 10336,
+      "w": 32,
+      "h": 64
+    }
+  },
+  {
+    "col": 9,
+    "row": 323,
+    "width": 1,
+    "height": 2,
+    "name": "backpack_person",
+    "category": "accessory",
+    "px": {
+      "x": 288,
+      "y": 10336,
+      "w": 32,
+      "h": 64
+    }
+  },
+  {
+    "col": 10,
+    "row": 324,
+    "width": 1,
+    "height": 1,
+    "name": "fire_extinguisher",
+    "category": "accessory",
+    "px": {
+      "x": 320,
+      "y": 10368,
+      "w": 32,
+      "h": 32
+    }
+  },
+  {
+    "col": 14,
+    "row": 323,
+    "width": 1,
+    "height": 2,
+    "name": "water_cooler",
+    "category": "appliance",
+    "px": {
+      "x": 448,
+      "y": 10336,
+      "w": 32,
+      "h": 64
+    }
+  },
+  {
+    "col": 0,
+    "row": 326,
+    "width": 1,
+    "height": 2,
+    "name": "wood_chair_L",
+    "category": "chair",
+    "px": {
+      "x": 0,
+      "y": 10432,
+      "w": 32,
+      "h": 64
+    }
+  },
+  {
+    "col": 1,
+    "row": 326,
+    "width": 1,
+    "height": 2,
+    "name": "wood_chair_R",
+    "category": "chair",
+    "px": {
+      "x": 32,
+      "y": 10432,
+      "w": 32,
+      "h": 64
+    }
+  },
+  {
+    "col": 2,
+    "row": 327,
+    "width": 2,
+    "height": 2,
+    "name": "partition_wood_window",
+    "category": "partition",
+    "px": {
+      "x": 64,
+      "y": 10464,
+      "w": 64,
+      "h": 64
+    }
+  },
+  {
+    "col": 4,
+    "row": 327,
+    "width": 2,
+    "height": 2,
+    "name": "filing_cabinet_1",
+    "category": "storage",
+    "px": {
+      "x": 128,
+      "y": 10464,
+      "w": 64,
+      "h": 64
+    }
+  },
+  {
+    "col": 6,
+    "row": 327,
+    "width": 2,
+    "height": 2,
+    "name": "filing_cabinet_2",
+    "category": "storage",
+    "px": {
+      "x": 192,
+      "y": 10464,
+      "w": 64,
+      "h": 64
+    }
+  },
+  {
+    "col": 8,
+    "row": 327,
+    "width": 2,
+    "height": 2,
+    "name": "filing_cabinet_3",
+    "category": "storage",
+    "px": {
+      "x": 256,
+      "y": 10464,
+      "w": 64,
+      "h": 64
+    }
+  },
+  {
+    "col": 10,
+    "row": 327,
+    "width": 2,
+    "height": 2,
+    "name": "filing_cabinet_4",
+    "category": "storage",
+    "px": {
+      "x": 320,
+      "y": 10464,
+      "w": 64,
+      "h": 64
+    }
+  },
+  {
+    "col": 13,
+    "row": 327,
+    "width": 1,
+    "height": 2,
+    "name": "curtain_red",
+    "category": "decor",
+    "px": {
+      "x": 416,
+      "y": 10464,
+      "w": 32,
+      "h": 64
+    }
+  },
+  {
+    "col": 14,
+    "row": 327,
+    "width": 1,
+    "height": 2,
+    "name": "curtain_white",
+    "category": "decor",
+    "px": {
+      "x": 448,
+      "y": 10464,
+      "w": 32,
+      "h": 64
+    }
+  },
+  {
+    "col": 2,
+    "row": 329,
+    "width": 2,
+    "height": 3,
+    "name": "partition_wood_tall",
+    "category": "partition",
+    "px": {
+      "x": 64,
+      "y": 10528,
+      "w": 64,
+      "h": 96
+    }
+  },
+  {
+    "col": 4,
+    "row": 329,
+    "width": 2,
+    "height": 3,
+    "name": "partition_metal_1",
+    "category": "partition",
+    "px": {
+      "x": 128,
+      "y": 10528,
+      "w": 64,
+      "h": 96
+    }
+  },
+  {
+    "col": 6,
+    "row": 329,
+    "width": 2,
+    "height": 3,
+    "name": "partition_metal_2",
+    "category": "partition",
+    "px": {
+      "x": 192,
+      "y": 10528,
+      "w": 64,
+      "h": 96
+    }
+  },
+  {
+    "col": 8,
+    "row": 329,
+    "width": 2,
+    "height": 3,
+    "name": "partition_metal_3",
+    "category": "partition",
+    "px": {
+      "x": 256,
+      "y": 10528,
+      "w": 64,
+      "h": 96
+    }
+  },
+  {
+    "col": 10,
+    "row": 329,
+    "width": 2,
+    "height": 2,
+    "name": "partition_metal_4",
+    "category": "partition",
+    "px": {
+      "x": 320,
+      "y": 10528,
+      "w": 64,
+      "h": 64
+    }
+  },
+  {
+    "col": 0,
+    "row": 333,
+    "width": 1,
+    "height": 2,
+    "name": "work_desk_green",
+    "category": "desk",
+    "px": {
+      "x": 0,
+      "y": 10656,
+      "w": 32,
+      "h": 64
+    }
+  },
+  {
+    "col": 1,
+    "row": 333,
+    "width": 1,
+    "height": 2,
+    "name": "easel_stand",
+    "category": "accessory",
+    "px": {
+      "x": 32,
+      "y": 10656,
+      "w": 32,
+      "h": 64
+    }
+  },
+  {
+    "col": 2,
+    "row": 333,
+    "width": 2,
+    "height": 2,
+    "name": "desk_with_books",
+    "category": "desk",
+    "px": {
+      "x": 64,
+      "y": 10656,
+      "w": 64,
+      "h": 64
+    }
+  },
+  {
+    "col": 4,
+    "row": 333,
+    "width": 2,
+    "height": 2,
+    "name": "desk_with_computer",
+    "category": "desk",
+    "px": {
+      "x": 128,
+      "y": 10656,
+      "w": 64,
+      "h": 64
+    }
+  },
+  {
+    "col": 7,
+    "row": 333,
+    "width": 2,
+    "height": 2,
+    "name": "desk_front_green",
+    "category": "desk",
+    "px": {
+      "x": 224,
+      "y": 10656,
+      "w": 64,
+      "h": 64
+    }
+  },
+  {
+    "col": 9,
+    "row": 333,
+    "width": 2,
+    "height": 2,
+    "name": "bulletin_board",
+    "category": "board",
+    "px": {
+      "x": 288,
+      "y": 10656,
+      "w": 64,
+      "h": 64
+    }
+  },
+  {
+    "col": 11,
+    "row": 333,
+    "width": 2,
+    "height": 2,
+    "name": "sofa_green",
+    "category": "seating",
+    "px": {
+      "x": 352,
+      "y": 10656,
+      "w": 64,
+      "h": 64
+    }
+  },
+  {
+    "col": 14,
+    "row": 333,
+    "width": 1,
+    "height": 2,
+    "name": "globe_1",
+    "category": "decor",
+    "px": {
+      "x": 448,
+      "y": 10656,
+      "w": 32,
+      "h": 64
+    }
+  },
+  {
+    "col": 15,
+    "row": 333,
+    "width": 1,
+    "height": 2,
+    "name": "globe_2",
+    "category": "decor",
+    "px": {
+      "x": 480,
+      "y": 10656,
+      "w": 32,
+      "h": 64
+    }
+  },
+  {
+    "col": 0,
+    "row": 335,
+    "width": 8,
+    "height": 1,
+    "name": "workstation_row_long",
+    "category": "desk",
+    "px": {
+      "x": 0,
+      "y": 10720,
+      "w": 256,
+      "h": 32
+    }
+  },
+  {
+    "col": 0,
+    "row": 336,
+    "width": 1,
+    "height": 1,
+    "name": "chair_green_1",
+    "category": "chair",
+    "px": {
+      "x": 0,
+      "y": 10752,
+      "w": 32,
+      "h": 32
+    }
+  },
+  {
+    "col": 1,
+    "row": 336,
+    "width": 1,
+    "height": 1,
+    "name": "chair_green_2",
+    "category": "chair",
+    "px": {
+      "x": 32,
+      "y": 10752,
+      "w": 32,
+      "h": 32
+    }
+  },
+  {
+    "col": 2,
+    "row": 337,
+    "width": 1,
+    "height": 1,
+    "name": "chair_front_1",
+    "category": "chair",
+    "px": {
+      "x": 64,
+      "y": 10784,
+      "w": 32,
+      "h": 32
+    }
+  },
+  {
+    "col": 3,
+    "row": 337,
+    "width": 1,
+    "height": 1,
+    "name": "chair_front_2",
+    "category": "chair",
+    "px": {
+      "x": 96,
+      "y": 10784,
+      "w": 32,
+      "h": 32
+    }
+  },
+  {
+    "col": 4,
+    "row": 337,
+    "width": 1,
+    "height": 1,
+    "name": "chair_side_1",
+    "category": "chair",
+    "px": {
+      "x": 128,
+      "y": 10784,
+      "w": 32,
+      "h": 32
+    }
+  },
+  {
+    "col": 5,
+    "row": 337,
+    "width": 1,
+    "height": 1,
+    "name": "chair_side_2",
+    "category": "chair",
+    "px": {
+      "x": 160,
+      "y": 10784,
+      "w": 32,
+      "h": 32
+    }
+  },
+  {
+    "col": 6,
+    "row": 337,
+    "width": 1,
+    "height": 1,
+    "name": "chair_back_1",
+    "category": "chair",
+    "px": {
+      "x": 192,
+      "y": 10784,
+      "w": 32,
+      "h": 32
+    }
+  },
+  {
+    "col": 7,
+    "row": 337,
+    "width": 1,
+    "height": 1,
+    "name": "chair_back_2",
+    "category": "chair",
+    "px": {
+      "x": 224,
+      "y": 10784,
+      "w": 32,
+      "h": 32
+    }
+  },
+  {
+    "col": 4,
+    "row": 338,
+    "width": 2,
+    "height": 1,
+    "name": "desk_open_book",
+    "category": "desk",
+    "px": {
+      "x": 128,
+      "y": 10816,
+      "w": 64,
+      "h": 32
+    }
+  },
+  {
+    "col": 12,
+    "row": 338,
+    "width": 1,
+    "height": 2,
+    "name": "server_fridge",
+    "category": "appliance",
+    "px": {
+      "x": 384,
+      "y": 10816,
+      "w": 32,
+      "h": 64
+    }
+  },
+  {
+    "col": 0,
+    "row": 339,
+    "width": 2,
+    "height": 2,
+    "name": "blackboard_dark",
+    "category": "board",
+    "px": {
+      "x": 0,
+      "y": 10848,
+      "w": 64,
+      "h": 64
+    }
+  },
+  {
+    "col": 2,
+    "row": 339,
+    "width": 2,
+    "height": 2,
+    "name": "greenboard",
+    "category": "board",
+    "px": {
+      "x": 64,
+      "y": 10848,
+      "w": 64,
+      "h": 64
+    }
+  },
+  {
+    "col": 4,
+    "row": 339,
+    "width": 2,
+    "height": 2,
+    "name": "notice_board",
+    "category": "board",
+    "px": {
+      "x": 128,
+      "y": 10848,
+      "w": 64,
+      "h": 64
+    }
+  },
+  {
+    "col": 0,
+    "row": 342,
+    "width": 2,
+    "height": 1,
+    "name": "side_table_1",
+    "category": "desk",
+    "px": {
+      "x": 0,
+      "y": 10944,
+      "w": 64,
+      "h": 32
+    }
+  },
+  {
+    "col": 0,
+    "row": 345,
+    "width": 1,
+    "height": 2,
+    "name": "round_table_1",
+    "category": "desk",
+    "px": {
+      "x": 0,
+      "y": 11040,
+      "w": 32,
+      "h": 64
+    }
+  },
+  {
+    "col": 0,
+    "row": 348,
+    "width": 1,
+    "height": 2,
+    "name": "round_table_2",
+    "category": "desk",
+    "px": {
+      "x": 0,
+      "y": 11136,
+      "w": 32,
+      "h": 64
+    }
+  },
+  {
+    "col": 3,
+    "row": 342,
+    "width": 3,
+    "height": 2,
+    "name": "sofa_gray_1",
+    "category": "seating",
+    "px": {
+      "x": 96,
+      "y": 10944,
+      "w": 96,
+      "h": 64
+    }
+  },
+  {
+    "col": 6,
+    "row": 342,
+    "width": 3,
+    "height": 2,
+    "name": "sofa_gray_2",
+    "category": "seating",
+    "px": {
+      "x": 192,
+      "y": 10944,
+      "w": 96,
+      "h": 64
+    }
+  },
+  {
+    "col": 9,
+    "row": 342,
+    "width": 3,
+    "height": 2,
+    "name": "sofa_brown_1",
+    "category": "seating",
+    "px": {
+      "x": 288,
+      "y": 10944,
+      "w": 96,
+      "h": 64
+    }
+  },
+  {
+    "col": 3,
+    "row": 345,
+    "width": 3,
+    "height": 3,
+    "name": "sofa_gray_tall_1",
+    "category": "seating",
+    "px": {
+      "x": 96,
+      "y": 11040,
+      "w": 96,
+      "h": 96
+    }
+  },
+  {
+    "col": 6,
+    "row": 345,
+    "width": 3,
+    "height": 3,
+    "name": "sofa_gray_tall_2",
+    "category": "seating",
+    "px": {
+      "x": 192,
+      "y": 11040,
+      "w": 96,
+      "h": 96
+    }
+  },
+  {
+    "col": 9,
+    "row": 345,
+    "width": 3,
+    "height": 3,
+    "name": "sofa_brown_tall",
+    "category": "seating",
+    "px": {
+      "x": 288,
+      "y": 11040,
+      "w": 96,
+      "h": 96
+    }
+  },
+  {
+    "col": 13,
+    "row": 342,
+    "width": 1,
+    "height": 1,
+    "name": "cushion_gold",
+    "category": "decor",
+    "px": {
+      "x": 416,
+      "y": 10944,
+      "w": 32,
+      "h": 32
+    }
+  },
+  {
+    "col": 14,
+    "row": 342,
+    "width": 1,
+    "height": 1,
+    "name": "cushion_blue",
+    "category": "decor",
+    "px": {
+      "x": 448,
+      "y": 10944,
+      "w": 32,
+      "h": 32
+    }
+  },
+  {
+    "col": 15,
+    "row": 345,
+    "width": 1,
+    "height": 2,
+    "name": "vase_blue",
+    "category": "decor",
+    "px": {
+      "x": 480,
+      "y": 11040,
+      "w": 32,
+      "h": 64
+    }
+  },
+  {
+    "col": 15,
+    "row": 348,
+    "width": 1,
+    "height": 2,
+    "name": "vase_purple",
+    "category": "decor",
+    "px": {
+      "x": 480,
+      "y": 11136,
+      "w": 32,
+      "h": 64
+    }
+  },
+  {
+    "col": 4,
+    "row": 349,
+    "width": 5,
+    "height": 2,
+    "name": "sofa_large_1",
+    "category": "seating",
+    "px": {
+      "x": 128,
+      "y": 11168,
+      "w": 160,
+      "h": 64
+    }
+  },
+  {
+    "col": 9,
+    "row": 349,
+    "width": 3,
+    "height": 2,
+    "name": "sofa_large_2",
+    "category": "seating",
+    "px": {
+      "x": 288,
+      "y": 11168,
+      "w": 96,
+      "h": 64
+    }
+  },
+  {
+    "col": 0,
+    "row": 353,
+    "width": 2,
+    "height": 2,
+    "name": "bench_blue",
+    "category": "seating",
+    "px": {
+      "x": 0,
+      "y": 11296,
+      "w": 64,
+      "h": 64
+    }
+  },
+  {
+    "col": 2,
+    "row": 353,
+    "width": 2,
+    "height": 2,
+    "name": "bench_green",
+    "category": "seating",
+    "px": {
+      "x": 64,
+      "y": 11296,
+      "w": 64,
+      "h": 64
+    }
+  },
+  {
+    "col": 5,
+    "row": 355,
+    "width": 2,
+    "height": 1,
+    "name": "bench_brown",
+    "category": "seating",
+    "px": {
+      "x": 160,
+      "y": 11360,
+      "w": 64,
+      "h": 32
+    }
+  },
+  {
+    "col": 8,
+    "row": 355,
+    "width": 2,
+    "height": 1,
+    "name": "bench_green_low",
+    "category": "seating",
+    "px": {
+      "x": 256,
+      "y": 11360,
+      "w": 64,
+      "h": 32
+    }
+  },
+  {
+    "col": 14,
+    "row": 353,
+    "width": 1,
+    "height": 1,
+    "name": "stool_blue",
+    "category": "chair",
+    "px": {
+      "x": 448,
+      "y": 11296,
+      "w": 32,
+      "h": 32
+    }
+  },
+  {
+    "col": 14,
+    "row": 355,
+    "width": 1,
+    "height": 1,
+    "name": "stool_yellow",
+    "category": "chair",
+    "px": {
+      "x": 448,
+      "y": 11360,
+      "w": 32,
+      "h": 32
+    }
+  },
+  {
+    "col": 0,
+    "row": 357,
+    "width": 3,
+    "height": 3,
+    "name": "carpet_large",
+    "category": "floor_decor",
+    "px": {
+      "x": 0,
+      "y": 11424,
+      "w": 96,
+      "h": 96
+    }
+  },
+  {
+    "col": 1,
+    "row": 368,
+    "width": 3,
+    "height": 3,
+    "name": "monitor_teal",
+    "category": "appliance",
+    "px": {
+      "x": 32,
+      "y": 11776,
+      "w": 96,
+      "h": 96
+    }
+  },
+  {
+    "col": 4,
+    "row": 369,
+    "width": 3,
+    "height": 2,
+    "name": "monitor_blue",
+    "category": "appliance",
+    "px": {
+      "x": 128,
+      "y": 11808,
+      "w": 96,
+      "h": 64
+    }
+  },
+  {
+    "col": 8,
+    "row": 370,
+    "width": 2,
+    "height": 1,
+    "name": "tv_wall_1",
+    "category": "appliance",
+    "px": {
+      "x": 256,
+      "y": 11840,
+      "w": 64,
+      "h": 32
+    }
+  },
+  {
+    "col": 10,
+    "row": 370,
+    "width": 2,
+    "height": 1,
+    "name": "tv_dark_1",
+    "category": "appliance",
+    "px": {
+      "x": 320,
+      "y": 11840,
+      "w": 64,
+      "h": 32
+    }
+  },
+  {
+    "col": 12,
+    "row": 370,
+    "width": 2,
+    "height": 1,
+    "name": "tv_dark_2",
+    "category": "appliance",
+    "px": {
+      "x": 384,
+      "y": 11840,
+      "w": 64,
+      "h": 32
+    }
+  },
+  {
+    "col": 8,
+    "row": 371,
+    "width": 3,
+    "height": 1,
+    "name": "tv_large_dark",
+    "category": "appliance",
+    "px": {
+      "x": 256,
+      "y": 11872,
+      "w": 96,
+      "h": 32
+    }
+  },
+  {
+    "col": 12,
+    "row": 371,
+    "width": 1,
+    "height": 2,
+    "name": "flower_blue",
+    "category": "decor",
+    "px": {
+      "x": 384,
+      "y": 11872,
+      "w": 32,
+      "h": 64
+    }
+  },
+  {
+    "col": 13,
+    "row": 371,
+    "width": 1,
+    "height": 2,
+    "name": "flower_yellow",
+    "category": "decor",
+    "px": {
+      "x": 416,
+      "y": 11872,
+      "w": 32,
+      "h": 64
+    }
+  },
+  {
+    "col": 1,
+    "row": 374,
+    "width": 1,
+    "height": 2,
+    "name": "armchair_white",
+    "category": "seating",
+    "px": {
+      "x": 32,
+      "y": 11968,
+      "w": 32,
+      "h": 64
+    }
+  },
+  {
+    "col": 2,
+    "row": 374,
+    "width": 1,
+    "height": 2,
+    "name": "armchair_skyblue",
+    "category": "seating",
+    "px": {
+      "x": 64,
+      "y": 11968,
+      "w": 32,
+      "h": 64
+    }
+  },
+  {
+    "col": 3,
+    "row": 374,
+    "width": 1,
+    "height": 2,
+    "name": "armchair_blue",
+    "category": "seating",
+    "px": {
+      "x": 96,
+      "y": 11968,
+      "w": 32,
+      "h": 64
+    }
+  },
+  {
+    "col": 4,
+    "row": 374,
+    "width": 1,
+    "height": 2,
+    "name": "armchair_yellow",
+    "category": "seating",
+    "px": {
+      "x": 128,
+      "y": 11968,
+      "w": 32,
+      "h": 64
+    }
+  },
+  {
+    "col": 1,
+    "row": 376,
+    "width": 1,
+    "height": 2,
+    "name": "armchair_gold_side",
+    "category": "seating",
+    "px": {
+      "x": 32,
+      "y": 12032,
+      "w": 32,
+      "h": 64
+    }
+  },
+  {
+    "col": 2,
+    "row": 376,
+    "width": 1,
+    "height": 2,
+    "name": "armchair_red_side",
+    "category": "seating",
+    "px": {
+      "x": 64,
+      "y": 12032,
+      "w": 32,
+      "h": 64
+    }
+  },
+  {
+    "col": 3,
+    "row": 376,
+    "width": 1,
+    "height": 2,
+    "name": "armchair_rose_side",
+    "category": "seating",
+    "px": {
+      "x": 96,
+      "y": 12032,
+      "w": 32,
+      "h": 64
+    }
+  },
+  {
+    "col": 4,
+    "row": 376,
+    "width": 1,
+    "height": 2,
+    "name": "armchair_white_side",
+    "category": "seating",
+    "px": {
+      "x": 128,
+      "y": 12032,
+      "w": 32,
+      "h": 64
+    }
+  },
+  {
+    "col": 1,
+    "row": 378,
+    "width": 1,
+    "height": 2,
+    "name": "armchair_red_top",
+    "category": "seating",
+    "px": {
+      "x": 32,
+      "y": 12096,
+      "w": 32,
+      "h": 64
+    }
+  },
+  {
+    "col": 2,
+    "row": 378,
+    "width": 1,
+    "height": 2,
+    "name": "armchair_yellow_top",
+    "category": "seating",
+    "px": {
+      "x": 64,
+      "y": 12096,
+      "w": 32,
+      "h": 64
+    }
+  },
+  {
+    "col": 3,
+    "row": 378,
+    "width": 1,
+    "height": 2,
+    "name": "armchair_rose_top",
+    "category": "seating",
+    "px": {
+      "x": 96,
+      "y": 12096,
+      "w": 32,
+      "h": 64
+    }
+  },
+  {
+    "col": 4,
+    "row": 378,
+    "width": 1,
+    "height": 2,
+    "name": "armchair_white_top",
+    "category": "seating",
+    "px": {
+      "x": 128,
+      "y": 12096,
+      "w": 32,
+      "h": 64
+    }
+  },
+  {
+    "col": 1,
+    "row": 380,
+    "width": 1,
+    "height": 2,
+    "name": "armchair_skyblue_back",
+    "category": "seating",
+    "px": {
+      "x": 32,
+      "y": 12160,
+      "w": 32,
+      "h": 64
+    }
+  },
+  {
+    "col": 2,
+    "row": 380,
+    "width": 1,
+    "height": 2,
+    "name": "armchair_white_back",
+    "category": "seating",
+    "px": {
+      "x": 64,
+      "y": 12160,
+      "w": 32,
+      "h": 64
+    }
+  },
+  {
+    "col": 3,
+    "row": 380,
+    "width": 1,
+    "height": 2,
+    "name": "armchair_blue_back",
+    "category": "seating",
+    "px": {
+      "x": 96,
+      "y": 12160,
+      "w": 32,
+      "h": 64
+    }
+  },
+  {
+    "col": 4,
+    "row": 380,
+    "width": 1,
+    "height": 2,
+    "name": "armchair_yellow_back",
+    "category": "seating",
+    "px": {
+      "x": 128,
+      "y": 12160,
+      "w": 32,
+      "h": 64
+    }
+  },
+  {
+    "col": 1,
+    "row": 384,
+    "width": 2,
+    "height": 2,
+    "name": "painting_1",
+    "category": "decor",
+    "px": {
+      "x": 32,
+      "y": 12288,
+      "w": 64,
+      "h": 64
+    }
+  },
+  {
+    "col": 3,
+    "row": 384,
+    "width": 2,
+    "height": 2,
+    "name": "painting_2",
+    "category": "decor",
+    "px": {
+      "x": 96,
+      "y": 12288,
+      "w": 64,
+      "h": 64
+    }
+  },
+  {
+    "col": 2,
+    "row": 386,
+    "width": 1,
+    "height": 1,
+    "name": "frame_small_1",
+    "category": "decor",
+    "px": {
+      "x": 64,
+      "y": 12352,
+      "w": 32,
+      "h": 32
+    }
+  },
+  {
+    "col": 3,
+    "row": 386,
+    "width": 1,
+    "height": 1,
+    "name": "frame_small_2",
+    "category": "decor",
+    "px": {
+      "x": 96,
+      "y": 12352,
+      "w": 32,
+      "h": 32
+    }
+  },
+  {
+    "col": 4,
+    "row": 386,
+    "width": 1,
+    "height": 1,
+    "name": "frame_tiny_1",
+    "category": "decor",
+    "px": {
+      "x": 128,
+      "y": 12352,
+      "w": 32,
+      "h": 32
+    }
+  },
+  {
+    "col": 5,
+    "row": 386,
+    "width": 1,
+    "height": 1,
+    "name": "frame_tiny_2",
+    "category": "decor",
+    "px": {
+      "x": 160,
+      "y": 12352,
+      "w": 32,
+      "h": 32
+    }
+  },
+  {
+    "col": 6,
+    "row": 385,
+    "width": 4,
+    "height": 3,
+    "name": "glass_wall_large",
+    "category": "structure",
+    "px": {
+      "x": 192,
+      "y": 12320,
+      "w": 128,
+      "h": 96
+    }
+  },
+  {
+    "col": 0,
+    "row": 0,
+    "width": 2,
+    "height": 3,
+    "name": "fridge_green",
+    "category": "appliance",
+    "px": {
+      "x": 0,
+      "y": 0,
+      "w": 64,
+      "h": 96
+    }
+  },
+  {
+    "col": 0,
+    "row": 4,
+    "width": 2,
+    "height": 3,
+    "name": "fridge_white",
+    "category": "appliance",
+    "px": {
+      "x": 0,
+      "y": 128,
+      "w": 64,
+      "h": 96
+    }
+  },
+  {
+    "col": 0,
+    "row": 10,
+    "width": 3,
+    "height": 2,
+    "name": "desk_brown_large",
+    "category": "desk",
+    "px": {
+      "x": 0,
+      "y": 320,
+      "w": 96,
+      "h": 64
+    }
+  },
+  {
+    "col": 5,
+    "row": 10,
+    "width": 3,
+    "height": 2,
+    "name": "desk_beige_large",
+    "category": "desk",
+    "px": {
+      "x": 160,
+      "y": 320,
+      "w": 96,
+      "h": 64
+    }
+  },
+  {
+    "col": 8,
+    "row": 10,
+    "width": 3,
+    "height": 2,
+    "name": "desk_yellow_large",
+    "category": "desk",
+    "px": {
+      "x": 256,
+      "y": 320,
+      "w": 96,
+      "h": 64
+    }
+  },
+  {
+    "col": 0,
+    "row": 13,
+    "width": 1,
+    "height": 1,
+    "name": "frame_wall_1",
+    "category": "decor",
+    "px": {
+      "x": 0,
+      "y": 416,
+      "w": 32,
+      "h": 32
+    }
+  },
+  {
+    "col": 2,
+    "row": 13,
+    "width": 2,
+    "height": 1,
+    "name": "frame_wall_2",
+    "category": "decor",
+    "px": {
+      "x": 64,
+      "y": 416,
+      "w": 64,
+      "h": 32
+    }
+  },
+  {
+    "col": 14,
+    "row": 10,
+    "width": 2,
+    "height": 5,
+    "name": "rug_blue",
+    "category": "floor_decor",
+    "px": {
+      "x": 448,
+      "y": 320,
+      "w": 64,
+      "h": 160
+    }
+  },
+  {
+    "col": 14,
+    "row": 15,
+    "width": 2,
+    "height": 5,
+    "name": "rug_red",
+    "category": "floor_decor",
+    "px": {
+      "x": 448,
+      "y": 480,
+      "w": 64,
+      "h": 160
+    }
+  },
+  {
+    "col": 6,
+    "row": 9,
+    "width": 2,
+    "height": 2,
+    "name": "door_brown",
+    "category": "door",
+    "px": {
+      "x": 192,
+      "y": 288,
+      "w": 64,
+      "h": 64
+    }
+  },
+  {
+    "col": 8,
+    "row": 9,
+    "width": 2,
+    "height": 2,
+    "name": "door_dark",
+    "category": "door",
+    "px": {
+      "x": 256,
+      "y": 288,
+      "w": 64,
+      "h": 64
+    }
+  },
+  {
+    "col": 1,
+    "row": 16,
+    "width": 3,
+    "height": 2,
+    "name": "drawer_cabinet",
+    "category": "storage",
+    "px": {
+      "x": 32,
+      "y": 512,
+      "w": 96,
+      "h": 64
+    }
+  },
+  {
+    "col": 5,
+    "row": 16,
+    "width": 3,
+    "height": 2,
+    "name": "bookshelf_color",
+    "category": "storage",
+    "px": {
+      "x": 160,
+      "y": 512,
+      "w": 96,
+      "h": 64
+    }
+  }
+]

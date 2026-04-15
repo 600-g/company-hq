@@ -1,0 +1,17 @@
+node_modules/
+.next/
+out/
+dist-electron/
+build/
+*.log
+.env.local
+.env*.local
+.DS_Store
+
+# Electron 빌드 산출물
+release/
+dist/
+
+# 캐시
+.cache/
+.turbo/

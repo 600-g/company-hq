@@ -1,0 +1,4 @@
+{
+  "_NOTE": "TeamMaker 원본 config 의 ANTHROPIC_API_KEY 는 보안상 제거됨. 직접 실행 시 본인 키로 채울 것.",
+  "ANTHROPIC_API_KEY": ""
+}
