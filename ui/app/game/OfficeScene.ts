@@ -424,8 +424,9 @@ export default class OfficeScene extends Phaser.Scene {
       chars: ["cpo"], gridX: 22, gridY: 11, gridW: 2, gridH: 2,
     };
     if (saved && saved[cpoConfig.id]) {
-      cpoConfig.gridX = saved[cpoConfig.id].gx;
-      cpoConfig.gridY = saved[cpoConfig.id].gy;
+      // CPO 저장 위치도 벽/복도 밖으로 clamp (벽 안쪽으로 들어간 경우 복구)
+      cpoConfig.gridX = Math.max(0, Math.min(COLS - cpoConfig.gridW, saved[cpoConfig.id].gx));
+      cpoConfig.gridY = Math.max(WALL_H, Math.min(ROWS - cpoConfig.gridH - 3, saved[cpoConfig.id].gy));
     }
     this.createTeamGroup(cpoConfig);
     this.occupyGrid(cpoConfig.gridX, cpoConfig.gridY, cpoConfig.gridW, cpoConfig.gridH, true);
@@ -1255,8 +1256,15 @@ export default class OfficeScene extends Phaser.Scene {
 
     this.dragTarget.container.setData("dragging", true);
     const t = this.dragTarget;
-    t.container.x = ptr.worldX - this.dragOffX;
-    t.container.y = ptr.worldY - this.dragOffY;
+    // 드래그 좌표 clamp: 벽/복도 영역 침범 방지
+    const halfW = (t.config.gridW * TILE) / 2;
+    const halfH = (t.config.gridH * TILE) / 2;
+    const minX = halfW;
+    const maxX = WORLD_W - halfW;
+    const minY = WALL_H * TILE + halfH; // 벽 아래
+    const maxY = WORLD_H - 3 * TILE - halfH; // 복도 위 (복도 3칸)
+    t.container.x = Phaser.Math.Clamp(ptr.worldX - this.dragOffX, minX, maxX);
+    t.container.y = Phaser.Math.Clamp(ptr.worldY - this.dragOffY, minY, maxY);
 
     const sgx = Math.round((t.container.x - (t.config.gridW * TILE) / 2) / TILE);
     const sgy = Math.round((t.container.y - (t.config.gridH * TILE) / 2) / TILE);
