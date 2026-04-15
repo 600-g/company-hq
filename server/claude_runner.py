@@ -732,6 +732,33 @@ async def run_claude(
 
     # ── 시스템프롬프트 ──
     system_prompt = TEAM_SYSTEM_PROMPTS.get(team_id, DEFAULT_SYSTEM_PROMPT)
+    # ── SOP 자동 주입 (TeamMaker skill-router 패턴) ──
+    # 팀 역할에 맞는 SOP가 server/skills/ 에 있으면 시스템프롬프트 뒤에 부착
+    try:
+        sop_map = {
+            "frontend-team": "dev-web-nextjs",
+            "backend-team": "dev-backend",
+            "design-team": "design",
+            "qa-agent": "qa",
+            "qa-check": "qa",
+            "content-lab": "planning",
+            "cpo-claude": "planning",
+        }
+        sop_role = sop_map.get(team_id)
+        if sop_role:
+            sop_path = Path(__file__).parent / "skills" / f"{sop_role}.md"
+            if sop_path.exists():
+                sop_content = sop_path.read_text(encoding="utf-8")
+                system_prompt = (
+                    f"{system_prompt}\n\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"📋 표준 작업 절차 (SOP — server/skills/{sop_role}.md):\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                    f"{sop_content}\n\n"
+                    f"위 SOP를 따라 작업할 것."
+                )
+    except Exception as _sop_err:
+        logger.warning(f"[{team_id}] SOP 로드 실패 (무시): {_sop_err}")
     cmd.extend(["--append-system-prompt", system_prompt])
 
     # ── 모델 + 프롬프트 + stream-json ──
