@@ -1522,6 +1522,7 @@ async def smart_dispatch(body: dict):
                     ws_manager.add_message(_tid, "user", _prompt)
                     try:
                         await ws_manager.send_json(_tid, {"type": "user", "content": _prompt})
+                        await ws_manager.send_json(_tid, {"type": "ai_start"})
                     except Exception:
                         pass
                     _result = ""
@@ -1531,13 +1532,13 @@ async def smart_dispatch(body: dict):
                                 _result += chunk["content"]
                                 # 2) 각 청크를 해당 팀 WS에 실시간 스트림
                                 try:
-                                    await ws_manager.send_json(_tid, {"type": "assistant_chunk", "content": chunk["content"]})
+                                    await ws_manager.send_json(_tid, {"type": "ai_chunk", "content": chunk["content"]})
                                 except Exception:
                                     pass
                         # 3) 완성된 응답을 히스토리에 저장 + 완료 알림
                         ws_manager.add_message(_tid, "assistant", _result)
                         try:
-                            await ws_manager.send_json(_tid, {"type": "assistant_done", "content": _result})
+                            await ws_manager.send_json(_tid, {"type": "ai_end", "content": _result})
                         except Exception:
                             pass
                         team_results[_tid] = {"status": "done", "team_name": _team["name"], "emoji": _team["emoji"], "result": _result}
@@ -1665,6 +1666,7 @@ async def smart_dispatch(body: dict):
             ws_manager.add_message(team_id, "user", prompt)
             try:
                 await ws_manager.send_json(team_id, {"type": "user", "content": prompt})
+                await ws_manager.send_json(team_id, {"type": "ai_start"})
             except Exception:
                 pass
             try:
@@ -1674,13 +1676,13 @@ async def smart_dispatch(body: dict):
                         result_text += chunk["content"]
                         # 2) 청크를 해당 팀 채팅창에 실시간 스트림
                         try:
-                            await ws_manager.send_json(team_id, {"type": "assistant_chunk", "content": chunk["content"]})
+                            await ws_manager.send_json(team_id, {"type": "ai_chunk", "content": chunk["content"]})
                         except Exception:
                             pass
                 # 3) 완성 응답을 히스토리에 저장 + 완료 알림
                 ws_manager.add_message(team_id, "assistant", result_text)
                 try:
-                    await ws_manager.send_json(team_id, {"type": "assistant_done", "content": result_text})
+                    await ws_manager.send_json(team_id, {"type": "ai_end", "content": result_text})
                 except Exception:
                     pass
                 team_results[team_id] = {
