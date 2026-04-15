@@ -1450,6 +1450,23 @@ async def smart_dispatch(body: dict):
     async def stream():
         import re as _re
 
+        # ── 통합채팅 진입을 CPO 채팅창에도 기록 (사용자→CPO 대화로 묶기) ──
+        ws_manager.add_message("cpo-claude", "user", message)
+        try:
+            await ws_manager.send_json("cpo-claude", {"type": "user", "content": message})
+            await ws_manager.send_json("cpo-claude", {"type": "ai_start"})
+        except Exception:
+            pass
+        _cpo_log: list[str] = []
+
+        async def _cpo_emit(text: str):
+            """CPO 채팅창에 진행 상황 청크 전송 + 누적."""
+            _cpo_log.append(text)
+            try:
+                await ws_manager.send_json("cpo-claude", {"type": "ai_chunk", "content": text})
+            except Exception:
+                pass
+
         # 팀 목록 (CPO 제외)
         available_teams = [t for t in TEAMS if t["id"] not in ("cpo-claude",)]
         team_map = {t["id"]: t for t in available_teams}
