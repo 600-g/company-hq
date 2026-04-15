@@ -541,13 +541,6 @@ export default class LoginScene extends Phaser.Scene {
         const zoneY = slot.y - zoneH / 2;
         const zone = this.add.zone(slot.x, zoneY, zoneW, zoneH)
           .setDepth(20).setInteractive({ useHandCursor: true });
-        // 시안색 간판 "TEAMMAKER" (HQ와 시각적 구분)
-        this.add.text(slot.x, slot.y - img.displayHeight - 6, "🧪 TEAMMAKER", {
-          fontSize: "9px", fontFamily: FONT,
-          color: "#22d3ee", resolution: DPR * 4,
-          fontStyle: "700",
-          stroke: "#000000", strokeThickness: 2,
-        }).setOrigin(0.5, 1).setDepth(22);
         let hoverG2: Phaser.GameObjects.Graphics | null = null;
         zone.on("pointerover", () => {
           hoverG2 = this.add.graphics().setDepth(19);

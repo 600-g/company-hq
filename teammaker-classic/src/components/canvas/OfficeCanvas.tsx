@@ -87,7 +87,15 @@ function getManagerPosition(
   },
   savedManagerPos: { x: number; y: number } | null,
 ) {
-  if (savedManagerPos) {
+  // 저장된 위치가 FLOOR 가 아니면 무시하고 기본값 계산
+  const isValidFloor = (x: number, y: number) => {
+    const col = Math.round(x / TILE_SIZE);
+    const row = Math.round(y / TILE_SIZE);
+    if (col < 0 || col >= layout.cols || row < 0 || row >= layout.rows) return false;
+    return (layout.tiles[row * layout.cols + col] ?? 0) >= 2;
+  };
+
+  if (savedManagerPos && isValidFloor(savedManagerPos.x, savedManagerPos.y)) {
     return {
       x: savedManagerPos.x,
       y: savedManagerPos.y,

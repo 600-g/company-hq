@@ -1653,3 +1653,8 @@ company-hq UI 사이드바 로그아웃 버튼 색상을 빨강에서
 
 사용자가 웹을 만들어달라고 요청했습니다. 구체적으로 어떤 기능이나 페이지를 만들어야 하는지 먼저 확인하고 필요한 작업을 진행해주세요
 2026-04-15 20:13:41,899 [INFO] [frontend-team] 응답 완료 (exit=0, ~0K tokens, 자동=False)
+2026-04-15 21:26:41,731 [INFO] [DELETE] 로컬 폴더 삭제: /Users/600mac/Developer/my-company/test-agent-debug
+2026-04-15 21:26:42,594 [INFO] Request DELETE /repos/600-g/test-agent-debug failed with 403: Forbidden
+2026-04-15 21:26:42,594 [WARNING] [DELETE] GitHub 레포 삭제 실패: 403 {"message": "Must have admin rights to Repository.", "documentation_url": "https://docs.github.com/rest/repos/repos#delete-a-repository", "status": "403"}
+2026-04-15 21:26:42,595 [INFO] [DELETE] 프롬프트 정리 완료: test-agent-debug
+2026-04-15 21:26:42,596 [INFO] [DELETE] 세션 정리 완료: test-agent-debug
