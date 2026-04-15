@@ -2,12 +2,17 @@
 set -e
 cd "$(dirname "$0")/ui"
 BUILD_ID="$(git log --oneline -1 --format='%h' 2>/dev/null || date +%s)-$(date +%s)"
+# 시맨틱 버전 자동 증가: 3.0.<커밋 수>
+MAJOR_MINOR="3.0"
+PATCH="$(git rev-list --count HEAD 2>/dev/null || echo 0)"
+APP_VERSION="${MAJOR_MINOR}.${PATCH}"
+echo "📦 version=$APP_VERSION build=$BUILD_ID"
 echo "🧪 Validating scene layout..."
 node scripts/validate-scene.mjs
 echo "🔨 Building... (build=$BUILD_ID)"
 npx next build
 # version.json에 빌드 ID 주입 (자동 리로드용)
-echo "{\"build\":\"$BUILD_ID\"}" > out/version.json
+echo "{\"build\":\"$BUILD_ID\",\"version\":\"$APP_VERSION\"}" > out/version.json
 # Cloudflare Pages 20K 파일 한도 대응: 미사용 에셋 제거
 echo "🧹 Pruning unused assets (CF Pages 20K limit)..."
 rm -rf out/assets/pokemon_assets/sliced

@@ -11,6 +11,7 @@ const LS_KEYS = ["hq-build-id", "hq-floor-teams-order", "hq-chat-history", "hq-f
 
 export default function BuildStampInline({ appVersion, showBrand = false }: Props) {
   const [build, setBuild] = useState<string | null>(null);
+  const [serverVersion, setServerVersion] = useState<string | null>(null);
   const [clearing, setClearing] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [postClearToast, setPostClearToast] = useState<string | null>(null);
@@ -22,7 +23,10 @@ export default function BuildStampInline({ appVersion, showBrand = false }: Prop
         const r = await fetch(`/version.json?t=${Date.now()}`, { cache: "no-store" });
         if (!r.ok || cancelled) return;
         const j = await r.json();
-        if (!cancelled) setBuild(j.build ?? null);
+        if (!cancelled) {
+          setBuild(j.build ?? null);
+          if (j.version) setServerVersion(j.version);
+        }
       } catch {}
     };
     load();
@@ -89,7 +93,7 @@ export default function BuildStampInline({ appVersion, showBrand = false }: Prop
 
   return (
     <span className="inline-flex items-center gap-1 font-mono relative">
-      <span className="text-gray-500">v{appVersion}</span>
+      <span className="text-gray-500">v{serverVersion ?? appVersion}</span>
       <span className="opacity-50">·</span>
       <span className={tone} title={build ?? "loading"}>{buildLabel}</span>
       <button
