@@ -71,6 +71,167 @@ function flattenMessages(messages: unknown[]): string {
   return parts.join("\n\n");
 }
 
+// ── Tool 이름 매핑 (Claude CLI 내장 도구 → TeamMaker 표시명) ──
+export const TOOL_NAME_MAP: Record<string, string> = {
+  Read: "read_file",
+  Write: "write_file",
+  Edit: "write_file",
+  MultiEdit: "write_file",
+  Bash: "run_command",
+  Glob: "list_directory",
+  LS: "list_directory",
+  Grep: "search_files",
+  WebFetch: "web_fetch",
+  WebSearch: "web_search",
+  Task: "delegate_subagent",
+};
+
+export interface StreamEvent {
+  kind: "tool" | "text" | "result" | "error";
+  toolName?: string;
+  toolDetail?: string;
+  step?: number;
+  text?: string;
+  finalText?: string;
+  writtenFiles?: { path: string; content: string }[];
+  error?: string;
+}
+
+/**
+ * stream-json 모드 — 도구 사용 이벤트를 실시간 yield.
+ * route.ts 가 NDJSON 으로 클라이언트에 스트림.
+ */
+export async function* callClaudeMaxPlanStream(
+  messages: unknown[],
+  options: BridgeOptions = {},
+): AsyncGenerator<StreamEvent> {
+  const { systemPrompt, cwd, modelOverride, timeoutMs = 300_000 } = options;
+
+  const promptBody = flattenMessages(messages);
+  const fullPrompt = systemPrompt
+    ? `## System\n${systemPrompt}\n\n## Conversation\n${promptBody}`
+    : promptBody;
+
+  const claudeBin = detectClaudeBin();
+  const args = [
+    "-p", fullPrompt,
+    "--dangerously-skip-permissions",
+    "--output-format", "stream-json",
+    "--verbose",
+  ];
+  if (modelOverride) {
+    if (/haiku/i.test(modelOverride)) args.push("--model", "haiku");
+    else if (/opus/i.test(modelOverride)) args.push("--model", "opus");
+    else args.push("--model", "sonnet");
+  } else {
+    args.push("--model", "sonnet");
+  }
+
+  const env = { ...process.env, PATH: `/opt/homebrew/bin:${process.env.PATH ?? ""}` };
+  const workingDir = cwd && cwd.length > 0 ? cwd : process.cwd();
+
+  const proc = spawn(claudeBin, args, { env, cwd: workingDir });
+  const writtenFiles: { path: string; content: string }[] = [];
+  const finalTextChunks: string[] = [];
+  let stepCount = 0;
+
+  const events: StreamEvent[] = [];
+  let done = false;
+  let errorMsg: string | null = null;
+  let buffer = "";
+
+  proc.stdout.on("data", (chunk: Buffer) => {
+    buffer += chunk.toString("utf-8");
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      try {
+        const evt = JSON.parse(trimmed) as { type?: string; message?: { content?: Array<{ type?: string; name?: string; input?: Record<string, unknown>; text?: string }> }; subtype?: string; result?: string };
+        if (evt.type === "assistant" && evt.message?.content) {
+          for (const block of evt.message.content) {
+            if (block.type === "text" && block.text) {
+              finalTextChunks.push(block.text);
+              events.push({ kind: "text", text: block.text });
+            } else if (block.type === "tool_use" && block.name) {
+              stepCount++;
+              const mappedName = TOOL_NAME_MAP[block.name] ?? block.name;
+              const inputStr = block.input ? JSON.stringify(block.input).slice(0, 200) : "";
+              events.push({
+                kind: "tool",
+                toolName: mappedName,
+                toolDetail: inputStr,
+                step: stepCount,
+              });
+              // Write/Edit 도구 호출은 writtenFiles 로 추적
+              if ((block.name === "Write" || block.name === "Edit" || block.name === "MultiEdit") && block.input) {
+                const filePath = (block.input as { file_path?: string }).file_path;
+                const content = (block.input as { content?: string; new_string?: string }).content ?? (block.input as { new_string?: string }).new_string ?? "";
+                if (filePath) writtenFiles.push({ path: filePath, content });
+              }
+            }
+          }
+        } else if (evt.type === "result" && evt.subtype === "success" && evt.result) {
+          // 최종 텍스트 결과
+          if (!finalTextChunks.length) finalTextChunks.push(evt.result);
+        }
+      } catch {
+        // JSON 파싱 실패는 무시 (일부 라인 누락)
+      }
+    }
+  });
+  proc.stderr.on("data", (chunk: Buffer) => {
+    const tail = chunk.toString("utf-8");
+    if (tail.length > 0 && tail.length < 500) {
+      console.error("[claude-cli-bridge] stderr:", tail);
+    }
+  });
+  const exitPromise = new Promise<number>((resolve) => {
+    proc.on("close", (code) => {
+      done = true;
+      resolve(code ?? 0);
+    });
+    proc.on("error", (err) => {
+      done = true;
+      errorMsg = err.message;
+      resolve(1);
+    });
+  });
+  const timer = setTimeout(() => {
+    if (!done) {
+      proc.kill("SIGTERM");
+      errorMsg = `claude CLI 타임아웃 (${timeoutMs}ms)`;
+    }
+  }, timeoutMs);
+
+  // events 큐를 폴링하며 yield
+  let yielded = 0;
+  while (!done) {
+    while (yielded < events.length) {
+      yield events[yielded++];
+    }
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  // 종료 후 남은 이벤트
+  while (yielded < events.length) {
+    yield events[yielded++];
+  }
+  clearTimeout(timer);
+  await exitPromise;
+
+  if (errorMsg) {
+    yield { kind: "error", error: errorMsg };
+    return;
+  }
+
+  yield {
+    kind: "result",
+    finalText: finalTextChunks.join("") || "(빈 응답)",
+    writtenFiles,
+  };
+}
+
 export async function callClaudeMaxPlan(
   messages: unknown[],
   options: BridgeOptions = {},

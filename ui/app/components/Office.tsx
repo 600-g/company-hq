@@ -2288,8 +2288,19 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
           title="더블클릭: 새로고침 및 업데이트 반영"
         >
           <div className="flex items-center justify-between gap-2 flex-wrap">
-            <span>Claude Code CLI · $0 · <BuildStampInline appVersion="3.0.0" /></span>
-            <EditorToolbar onApplied={() => { /* 레이아웃 복원 시 페이지 리로드 필요 */ }} />
+            <span>
+              Claude Code CLI · $0 · <BuildStampInline appVersion="3.0.0" />
+              <a
+                href="http://localhost:4827"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="ml-2 text-cyan-400/80 hover:text-cyan-300"
+                title="TeamMaker 클래식 (별도 실행: cd teammaker-classic && USE_MAX_PLAN=1 npm run dev)"
+              >
+                🧪 TeamMaker
+              </a>
+            </span>
+            <EditorToolbar onApplied={() => {}} />
           </div>
         </div>
       </aside>

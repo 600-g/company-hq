@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getApiKey } from "@/lib/server/config";
 import { executeTool } from "@/lib/server/tool-executor";
-import { callClaudeMaxPlan } from "@/lib/server/claude-cli-bridge";
+import { callClaudeMaxPlan, callClaudeMaxPlanStream } from "@/lib/server/claude-cli-bridge";
 
 import { DEFAULT_MODEL } from "@/lib/models";
 
@@ -158,8 +158,52 @@ export async function POST(request: Request) {
 
   // ── Max 플랜 모드: claude CLI subprocess 로 우회 (BYO-API 키 불필요) ──
   if (USE_MAX_PLAN) {
+    const cwd = (toolContext && (toolContext as { cwd?: string }).cwd) || undefined;
+    // 도구가 있으면 stream-json 으로 시각효과까지, 없으면 단순 호출
+    if (tools && tools.length > 0) {
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream({
+        async start(controller) {
+          const send = (data: unknown) => {
+            controller.enqueue(encoder.encode(JSON.stringify(data) + "\n"));
+          };
+          try {
+            for await (const evt of callClaudeMaxPlanStream(messages, {
+              systemPrompt,
+              cwd,
+              modelOverride: model,
+            })) {
+              if (evt.kind === "tool") {
+                send({ type: "tool", tool: evt.toolName, detail: evt.toolDetail, step: evt.step });
+              } else if (evt.kind === "result") {
+                send({
+                  type: "result",
+                  data: {
+                    content: [{ type: "text", text: evt.finalText }],
+                    stop_reason: "end_turn",
+                    writtenFiles: evt.writtenFiles ?? [],
+                  },
+                });
+              } else if (evt.kind === "error") {
+                send({ type: "error", status: 500, data: { error: { type: "max_plan_error", message: evt.error } } });
+              }
+            }
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            send({ type: "error", status: 500, data: { error: { type: "max_plan_error", message: msg } } });
+          } finally {
+            controller.close();
+          }
+        },
+      });
+      return new Response(stream, {
+        headers: {
+          "Content-Type": "application/x-ndjson",
+          "Cache-Control": "no-cache",
+        },
+      });
+    }
     try {
-      const cwd = (toolContext && (toolContext as { cwd?: string }).cwd) || undefined;
       const data = await callClaudeMaxPlan(messages, {
         systemPrompt,
         cwd,
