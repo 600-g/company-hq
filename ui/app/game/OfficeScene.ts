@@ -691,7 +691,7 @@ export default class OfficeScene extends Phaser.Scene {
     this.envGroup.add(label);
 
     // 클릭 영역 (대시보드 트리거 / 드래그 핸들)
-    const monHit = this.add.zone(monX, monY + 8, 48, 48).setInteractive({ useHandCursor: true }).setDepth(102);
+    const monHit = this.add.zone(monX, monY + 8, 64, 48).setInteractive({ useHandCursor: true }).setDepth(102);
     this.envGroup.add(monHit);
 
     const setPos = (x: number, y: number) => {
