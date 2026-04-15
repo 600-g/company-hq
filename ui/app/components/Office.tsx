@@ -1537,6 +1537,19 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
 
   const handleWorkingChange = useCallback((teamId: string, working: boolean) => {
     gameRef.current?.setWorking(teamId, working);
+    // TeamMaker 스타일 — 작업 시작 시 "로딩" 말풍선, 끝나면 제거
+    if (working) {
+      gameRef.current?.showBubble(teamId, "작업 중…", "loading");
+    } else {
+      gameRef.current?.clearBubble(teamId);
+    }
+  }, []);
+
+  /** 채팅 응답 수신 시 결과 말풍선 — 응답 첫 줄 미리보기 (6초 자동 소멸) */
+  const handleChatResponse = useCallback((teamId: string, responseText: string) => {
+    const firstLine = responseText.split("\n").find((l) => l.trim().length > 0) ?? responseText;
+    const preview = firstLine.trim().slice(0, 60);
+    if (preview) gameRef.current?.showBubble(teamId, preview, "result");
   }, []);
 
   const handleAddTeam = useCallback((newTeam: Team) => {

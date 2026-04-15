@@ -8,6 +8,7 @@
 
 import * as Phaser from "phaser";
 import { preloadAssets, registerCharAnims, createCustomFurniture, NPC_POOL_SIZE, PRIMARY_CHAR_POOL_SIZE } from "./sprites";
+import { BubbleManager } from "./bubbles";
 
 // ─────────────────────────────────────────
 // NPC 랜덤 픽 (팀 ID 시드 기반 — 리로드 간 동일 결과)
@@ -172,6 +173,7 @@ interface TeamGroup {
 export default class OfficeScene extends Phaser.Scene {
   private teamGroups: Map<string, TeamGroup> = new Map();
   private workingSet: Set<string> = new Set();
+  private bubbleManager?: BubbleManager;
   private onTeamClick?: (id: string, screenX?: number, screenY?: number) => void;
   private dragTarget: TeamGroup | null = null;
   private dragOffX = 0; private dragOffY = 0;
@@ -285,6 +287,14 @@ export default class OfficeScene extends Phaser.Scene {
 
     // 엘리베이터 (우하단)
     this.drawElevator();
+
+    // 말풍선 매니저 (TeamMaker 패턴) — 팀 컨테이너 위 좌표 기준
+    this.bubbleManager = new BubbleManager(this, (teamId) => {
+      const tg = this.teamGroups.get(teamId);
+      if (!tg) return null;
+      // 그룹 컨테이너 중앙 상단 (가구 위)
+      return { x: tg.container.x, y: tg.container.y - (tg.config.gridH * TILE) / 2 - 8 };
+    });
 
     // 카메라 — roundPixels 명시적 활성화 (서브픽셀 이동 시 픽셀아트 깨짐 방지)
     this.cameras.main.setBounds(-32, -32, WORLD_W + 64, WORLD_H + 64);
@@ -1487,6 +1497,18 @@ export default class OfficeScene extends Phaser.Scene {
         },
       });
     });
+  }
+
+  /** 팀 머리 위 말풍선 (응답 미리보기/결과 표시) */
+  showBubble(teamId: string, text: string, variant: "loading" | "result" | "info" = "result") {
+    if (!this.bubbleManager) return;
+    const short = text.length > 80 ? text.slice(0, 77) + "…" : text;
+    this.bubbleManager.add({ teamId, text: short, variant });
+  }
+
+  /** 해당 팀의 모든 말풍선 제거 */
+  clearBubble(teamId: string) {
+    this.bubbleManager?.removeForTeam(teamId);
   }
 
   setWorking(teamId: string, working: boolean) {

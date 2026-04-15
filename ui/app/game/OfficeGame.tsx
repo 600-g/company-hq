@@ -8,6 +8,8 @@ export interface OfficeGameHandle {
   addTeam: (teamId: string, teamName: string, emoji: string) => void;
   moveTeamToFloor: (teamId: string, targetFloor: number) => void;
   getTeamFloor: (teamId: string) => number | null;
+  showBubble: (teamId: string, text: string, variant?: "loading" | "result" | "info") => void;
+  clearBubble: (teamId: string) => void;
 }
 
 interface Props {
@@ -42,6 +44,14 @@ const OfficeGame = forwardRef<OfficeGameHandle, Props>(({ onTeamClick }, ref) =>
     moveTeamToFloor: (teamId: string, targetFloor: number) => {
       const scene = sceneRef.current as { moveTeamToFloor?: (id: string, floor: number) => void } | null;
       scene?.moveTeamToFloor?.(teamId, targetFloor);
+    },
+    showBubble: (teamId: string, text: string, variant: "loading" | "result" | "info" = "result") => {
+      const scene = sceneRef.current as { showBubble?: (id: string, t: string, v?: string) => void } | null;
+      scene?.showBubble?.(teamId, text, variant);
+    },
+    clearBubble: (teamId: string) => {
+      const scene = sceneRef.current as { clearBubble?: (id: string) => void } | null;
+      scene?.clearBubble?.(teamId);
     },
     getTeamFloor: (teamId: string) => {
       const scene = sceneRef.current as { getTeamFloor?: (id: string) => number | null } | null;
