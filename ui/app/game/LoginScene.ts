@@ -30,6 +30,7 @@ interface BuildingSlot {
   y: number;
   key: string;
   isHQ?: boolean;
+  isTeamMaker?: boolean;
   isPark?: boolean;
 }
 
@@ -38,7 +39,7 @@ const BUILDINGS: BuildingSlot[] = [
   { x: 100, y: BACK_ROW_BOTTOM_Y, key: "palet_red" },
   { x: 270, y: BACK_ROW_BOTTOM_Y, key: "palet_green" },
   { x: 480, y: BACK_ROW_BOTTOM_Y, key: "city_hq", isHQ: true },
-  { x: 695, y: BACK_ROW_BOTTOM_Y, key: "palet_blue" },
+  { x: 695, y: BACK_ROW_BOTTOM_Y, key: "palet_blue", isTeamMaker: true },
   { x: 865, y: BACK_ROW_BOTTOM_Y, key: "city_purple" },
   // 앞줄: 마트(좌) + 공원(중) + 카페(우)
   { x: 170, y: FRONT_ROW_BOTTOM_Y, key: "city_mart" },
@@ -531,6 +532,34 @@ export default class LoginScene extends Phaser.Scene {
         });
         zone.on("pointerout", () => { hoverG?.destroy(); hoverG = null; });
         zone.on("pointerdown", () => this.enterOffice());
+      }
+
+      // ── TeamMaker 입구 (파란 건물) ──
+      if (slot.isTeamMaker) {
+        const zoneW = 32 * scale;
+        const zoneH = 32 * scale;
+        const zoneY = slot.y - zoneH / 2;
+        const zone = this.add.zone(slot.x, zoneY, zoneW, zoneH)
+          .setDepth(20).setInteractive({ useHandCursor: true });
+        // 시안색 간판 "TEAMMAKER" (HQ와 시각적 구분)
+        this.add.text(slot.x, slot.y - img.displayHeight - 6, "🧪 TEAMMAKER", {
+          fontSize: "9px", fontFamily: FONT,
+          color: "#22d3ee", resolution: DPR * 4,
+          fontStyle: "700",
+          stroke: "#000000", strokeThickness: 2,
+        }).setOrigin(0.5, 1).setDepth(22);
+        let hoverG2: Phaser.GameObjects.Graphics | null = null;
+        zone.on("pointerover", () => {
+          hoverG2 = this.add.graphics().setDepth(19);
+          hoverG2.fillStyle(0x22d3ee, 0.35);
+          hoverG2.fillRoundedRect(slot.x - zoneW / 2, zoneY - zoneH / 2, zoneW, zoneH, 6);
+        });
+        zone.on("pointerout", () => { hoverG2?.destroy(); hoverG2 = null; });
+        zone.on("pointerdown", () => {
+          // 별도 자회사 — 새 탭에서 TeamMaker (localhost:4827)
+          // 추후 공개 URL (tunnel) 바뀌면 여기만 변경
+          window.open("http://localhost:4827", "_blank", "noopener,noreferrer");
+        });
       }
     });
   }
