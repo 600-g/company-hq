@@ -969,7 +969,7 @@ function SideMenu({ user, open, onClose, onLogout, pushEnabled, onTogglePush }: 
         {/* 하단 */}
         <div className="p-3 border-t border-[#1a2040]">
           <button onClick={onLogout}
-            className="w-full px-3 py-2 text-[11px] text-red-400/70 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors text-left">
+            className="w-full px-3 py-2 text-[11px] text-orange-400/70 hover:text-orange-400 hover:bg-orange-500/10 rounded transition-colors text-left">
             로그아웃
           </button>
         </div>
