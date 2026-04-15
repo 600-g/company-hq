@@ -9,7 +9,27 @@
 
 import type { Scene } from "phaser";
 
-export type BubbleVariant = "loading" | "result" | "info";
+export type BubbleVariant = "loading" | "result" | "info" | "tool";
+
+/** 도구명 → 이모지 매핑 (Claude CLI 내장 도구) */
+export const TOOL_EMOJI: Record<string, string> = {
+  Read: "📖",
+  Write: "✍️",
+  Edit: "✏️",
+  MultiEdit: "✏️",
+  Bash: "💻",
+  Glob: "🔍",
+  LS: "📂",
+  Grep: "🔎",
+  WebFetch: "🌐",
+  WebSearch: "🔍",
+  Task: "🤝",
+  TodoWrite: "📝",
+};
+
+export function toolToEmoji(toolName: string): string {
+  return TOOL_EMOJI[toolName] ?? "⚙️";
+}
 
 export interface BubbleOpts {
   teamId: string;

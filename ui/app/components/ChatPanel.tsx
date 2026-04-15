@@ -18,6 +18,7 @@ interface Props {
   messages: Message[];
   onMessages: (msgs: Message[]) => void;
   onOpenTradingDash?: () => void;
+  onAiEnd?: (content: string) => void;
 }
 
 // ── 마크다운 렌더러 ────────────────────────────────────
@@ -106,7 +107,7 @@ export function getWsStorageKey() { return "hq-ws-base-url"; }
 
 // ─────────────────────────────────────────────────────
 
-export default function ChatPanel({ team, onClose, onWorkingChange, inline, messages: initMessages, onMessages, onOpenTradingDash }: Props) {
+export default function ChatPanel({ team, onClose, onWorkingChange, inline, messages: initMessages, onMessages, onOpenTradingDash, onAiEnd }: Props) {
   const [messages, setMessagesInternal] = useState<Message[]>(initMessages);
   const setMessages = useCallback((updater: Message[] | ((prev: Message[]) => Message[])) => {
     setMessagesInternal(prev => {
@@ -263,6 +264,8 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
           setToolStatus("");
           setLastDone(prev => ({ sec, tools: (prev?.tools ?? 0) + toolLog.length }));
           onWorkingChangeRef.current(false);
+          // 결과 미리보기 콜백 (부모가 bubble 등 표시)
+          try { onAiEnd?.(data.content ?? ""); } catch {}
           // 큐에 다음 메시지가 있으면 자동 전송
           setQueued(prev => {
             if (prev.length > 0) {

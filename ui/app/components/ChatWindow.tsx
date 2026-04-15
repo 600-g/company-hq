@@ -148,6 +148,7 @@ interface Props {
   onMessages: (msgs: Message[]) => void;
   onClose: () => void;
   onWorkingChange: (working: boolean) => void;
+  onAiEnd?: (content: string) => void;
   onFocus: () => void;
   zIndex: number;
   initialX: number;
@@ -158,7 +159,7 @@ const MIN_W = 300;
 const MIN_H = 300;
 
 export default function ChatWindow({
-  team, messages, onMessages, onClose, onWorkingChange, onFocus, zIndex, initialX, initialY
+  team, messages, onMessages, onClose, onWorkingChange, onAiEnd, onFocus, zIndex, initialX, initialY
 }: Props) {
   const isDashboard = team.id === "server-monitor";
   const isTrading = team.id === "trading-bot";
@@ -291,7 +292,7 @@ export default function ChatWindow({
               : !CHAT_TEAMS.has(team.id)
                 ? <TeamMonitor teamId={team.id} teamName={team.name} teamEmoji={team.emoji} model={team.model} siteUrl={team.siteUrl} onClose={onClose} />
                 : <ChatPanel team={team} onClose={onClose} onWorkingChange={onWorkingChange}
-                    inline messages={messages} onMessages={onMessages} />
+                    inline messages={messages} onMessages={onMessages} onAiEnd={onAiEnd} />
             }
           </div>
         </div>
@@ -397,7 +398,7 @@ export default function ChatWindow({
           : !CHAT_TEAMS.has(team.id)
             ? <TeamMonitor teamId={team.id} teamName={team.name} teamEmoji={team.emoji} model={team.model} siteUrl={team.siteUrl} onClose={onClose} />
             : <ChatPanel team={team} onClose={onClose} onWorkingChange={onWorkingChange}
-                inline messages={messages} onMessages={onMessages} />
+                inline messages={messages} onMessages={onMessages} onAiEnd={onAiEnd} />
         }
       </div>
     </div>

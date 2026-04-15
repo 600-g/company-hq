@@ -1548,6 +1548,19 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
 
   /** 채팅 응답 수신 시 결과 말풍선 — 응답 첫 줄 미리보기 (6초 자동 소멸) */
   const handleChatResponse = useCallback((teamId: string, responseText: string) => {
+    if (!responseText) return;
+    // 도구 사용 이모지 감지 (claude CLI 결과에 [Read]/[Bash] 같은 마커가 있으면 추출)
+    const toolMatch = responseText.match(/\[(Read|Write|Edit|MultiEdit|Bash|Glob|LS|Grep|WebFetch|WebSearch|Task|TodoWrite)\]/);
+    if (toolMatch) {
+      const TOOL_EMOJI: Record<string, string> = {
+        Read: "📖", Write: "✍️", Edit: "✏️", MultiEdit: "✏️",
+        Bash: "💻", Glob: "🔍", LS: "📂", Grep: "🔎",
+        WebFetch: "🌐", WebSearch: "🔍", Task: "🤝", TodoWrite: "📝",
+      };
+      const emoji = TOOL_EMOJI[toolMatch[1]] ?? "⚙️";
+      gameRef.current?.showBubble(teamId, `${emoji} ${toolMatch[1]}`, "info");
+      return;
+    }
     const firstLine = responseText.split("\n").find((l) => l.trim().length > 0) ?? responseText;
     const preview = firstLine.trim().slice(0, 60);
     if (preview) gameRef.current?.showBubble(teamId, preview, "result");
@@ -1744,6 +1757,7 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
                           messages={chatHistory[team.id] || []}
                           onMessages={(msgs) => setChatHistory(prev => ({ ...prev, [team.id]: msgs }))}
                           onOpenTradingDash={() => setMobileChat("trading-dashboard")}
+                          onAiEnd={(content) => handleChatResponse(team.id, content)}
                         />
                     }
                   </div>
@@ -1983,6 +1997,7 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
                   onMessages={(msgs) => setChatHistory(prev => ({ ...prev, [winId]: msgs }))}
                   onClose={() => setOpenWindows(prev => prev.filter(id => id !== winId))}
                   onWorkingChange={(working) => handleWorkingChange(winId, working)}
+                  onAiEnd={(content) => handleChatResponse(winId, content)}
                   onFocus={() => setFocusedWindow(winId)}
                   zIndex={isFocused ? 1010 : 1001 + idx}
                   initialX={baseX + idx * 40}
