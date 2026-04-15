@@ -1458,12 +1458,25 @@ async def smart_dispatch(body: dict):
         except Exception:
             pass
         _cpo_log: list[str] = []
+        _cpo_closed = {"v": False}
 
         async def _cpo_emit(text: str):
             """CPO 채팅창에 진행 상황 청크 전송 + 누적."""
             _cpo_log.append(text)
             try:
                 await ws_manager.send_json("cpo-claude", {"type": "ai_chunk", "content": text})
+            except Exception:
+                pass
+
+        async def _cpo_close(extra_text: str = ""):
+            """CPO 채팅창 ai_end + 히스토리 저장 (모든 return 경로에서 호출됨)."""
+            if _cpo_closed["v"]:
+                return
+            _cpo_closed["v"] = True
+            final = "".join(_cpo_log) + (extra_text if extra_text and extra_text not in "".join(_cpo_log) else "")
+            ws_manager.add_message("cpo-claude", "ai", final or "(완료)")
+            try:
+                await ws_manager.send_json("cpo-claude", {"type": "ai_end", "content": final})
             except Exception:
                 pass
 
@@ -1514,6 +1527,7 @@ async def smart_dispatch(body: dict):
                 DISPATCH_TASKS[dispatch_id]["summary"] = direct_text
                 yield f"data: {json.dumps({'phase': 'done', 'dispatch_id': dispatch_id, 'summary': direct_text, 'team_results': {}})}\n\n"
                 _log_activity("cpo-claude", f"✅ @CPO 멘션 응답: {clean_message[:50]}")
+                await _cpo_close(direct_text)
                 return
 
             # 특정 팀 멘션 → haiku 스킵, 직접 실행
@@ -1586,6 +1600,7 @@ async def smart_dispatch(body: dict):
                 DISPATCH_TASKS[dispatch_id]["status"] = "done"
                 meta = {"routed_count": len(routed_steps), "total_teams": len(available_teams), "mention": True}
                 yield f"data: {json.dumps({'phase': 'done', 'dispatch_id': dispatch_id, 'summary': all_results_text.strip(), 'team_results': team_results, 'meta': meta})}\n\n"
+                await _cpo_close(all_results_text.strip())
                 return
 
         # 카테고리별 팀 목록 구성
@@ -1630,12 +1645,14 @@ async def smart_dispatch(body: dict):
             yield f"data: {json.dumps({'phase': 'done', 'dispatch_id': dispatch_id, 'summary': route_result, 'team_results': {}})}\n\n"
             DISPATCH_TASKS[dispatch_id]["status"] = "done"
             DISPATCH_TASKS[dispatch_id]["summary"] = route_result
+            await _cpo_close(route_result)
             return
 
         try:
             routed_steps = json.loads(json_match.group())
         except json.JSONDecodeError:
             yield f"data: {json.dumps({'phase': 'error', 'error': 'JSON 파싱 실패'})}\n\n"
+            await _cpo_close("⚠️ 라우팅 JSON 파싱 실패")
             return
 
         # ── 빈 배열 = CPO가 직접 답변 ──
@@ -1657,6 +1674,7 @@ async def smart_dispatch(body: dict):
             DISPATCH_TASKS[dispatch_id]["summary"] = direct_text
             yield f"data: {json.dumps({'phase': 'done', 'dispatch_id': dispatch_id, 'summary': direct_text, 'team_results': {}})}\n\n"
             _log_activity("cpo-claude", f"✅ CPO 직접 응답: {message[:50]}")
+            await _cpo_close(direct_text)
             return
 
         routed_team_ids = [s["team"] for s in routed_steps]
@@ -1759,6 +1777,15 @@ async def smart_dispatch(body: dict):
                 if chunk["kind"] == "text":
                     summary_text += chunk["content"]
                     yield f"data: {json.dumps({'phase': 'summary_chunk', 'content': chunk['content']})}\n\n"
+                    # CPO 채팅창에도 실시간 스트림
+                    await _cpo_emit(chunk["content"])
+
+        # ── CPO 채팅창 마무리 (사용자 → CPO 대화로 묶임) ──
+        ws_manager.add_message("cpo-claude", "ai", summary_text)
+        try:
+            await ws_manager.send_json("cpo-claude", {"type": "ai_end", "content": summary_text})
+        except Exception:
+            pass
 
         # 최종 결과
         DISPATCH_TASKS[dispatch_id]["status"] = "done"
