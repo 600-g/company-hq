@@ -18,5 +18,5 @@ rm -rf "out/assets/pokemon_assets/Pokemon/Footprints"
 rm -rf "out/assets/pokemon_assets/Characters/Followers shiny"
 echo "   남은 파일 수: $(find out -type f | wc -l)"
 echo "🚀 Deploying..."
-wrangler pages deploy out --project-name company-hq --commit-message="deploy: $BUILD_ID"
+wrangler pages deploy out --project-name company-hq --commit-message="deploy: $BUILD_ID" --skip-caching
 echo "✅ Done! build=$BUILD_ID"
