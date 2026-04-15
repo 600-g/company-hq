@@ -8,11 +8,15 @@ echo "🔨 Building... (build=$BUILD_ID)"
 npx next build
 # version.json에 빌드 ID 주입 (자동 리로드용)
 echo "{\"build\":\"$BUILD_ID\"}" > out/version.json
-# Cloudflare Pages 20K 파일 한도 대응: 미사용 sliced/ 폴더 제거
-if [ -d "out/assets/pokemon_assets/sliced" ]; then
-  echo "🧹 Removing unused sliced/ (CF Pages 20K limit)..."
-  rm -rf out/assets/pokemon_assets/sliced
-fi
+# Cloudflare Pages 20K 파일 한도 대응: 미사용 에셋 제거
+echo "🧹 Pruning unused assets (CF Pages 20K limit)..."
+rm -rf out/assets/pokemon_assets/sliced
+rm -rf "out/assets/pokemon_assets/Pokemon/Front shiny"
+rm -rf "out/assets/pokemon_assets/Pokemon/Back shiny"
+rm -rf "out/assets/pokemon_assets/Pokemon/Icons shiny"
+rm -rf "out/assets/pokemon_assets/Pokemon/Footprints"
+rm -rf "out/assets/pokemon_assets/Characters/Followers shiny"
+echo "   남은 파일 수: $(find out -type f | wc -l)"
 echo "🚀 Deploying..."
 wrangler pages deploy out --project-name company-hq --commit-message="deploy: $BUILD_ID"
 echo "✅ Done! build=$BUILD_ID"
