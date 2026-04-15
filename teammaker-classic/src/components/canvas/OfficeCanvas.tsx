@@ -1243,7 +1243,18 @@ export default function OfficeCanvas() {
           if (mgrIsDragging) {
             const snapX = Math.round((mgrOrigX + dx) / TILE_SIZE) * TILE_SIZE;
             const snapY = Math.round((mgrOrigY + dy) / TILE_SIZE) * TILE_SIZE;
-            managerContainer.position.set(snapX, snapY);
+            // 타일 타입 체크 — FLOOR (>=2) 위에서만 이동 허용
+            const curLayout = useOfficeStore.getState().layout;
+            const col = snapX / TILE_SIZE;
+            const row = snapY / TILE_SIZE;
+            if (
+              curLayout &&
+              col >= 0 && col < curLayout.cols &&
+              row >= 0 && row < curLayout.rows &&
+              (curLayout.tiles[row * curLayout.cols + col] ?? 0) >= 2
+            ) {
+              managerContainer.position.set(snapX, snapY);
+            }
           }
         };
 
@@ -1255,6 +1266,20 @@ export default function OfficeCanvas() {
             managerContainer.alpha = 1;
             const snapX = Math.round(managerContainer.x / TILE_SIZE) * TILE_SIZE;
             const snapY = Math.round(managerContainer.y / TILE_SIZE) * TILE_SIZE;
+            // 최종 위치도 FLOOR 여야 함 (드래그 중 valid 였지만 혹시 모를 경우 대비)
+            const curLayout = useOfficeStore.getState().layout;
+            const col = snapX / TILE_SIZE;
+            const row = snapY / TILE_SIZE;
+            const isFloor =
+              curLayout &&
+              col >= 0 && col < curLayout.cols &&
+              row >= 0 && row < curLayout.rows &&
+              (curLayout.tiles[row * curLayout.cols + col] ?? 0) >= 2;
+            if (!isFloor) {
+              // FLOOR 아니면 원위치로 복구
+              managerContainer.position.set(mgrOrigX, mgrOrigY);
+              return;
+            }
             managerContainer.position.set(snapX, snapY);
             managerContainer.zIndex = snapY + MANAGER_CHAR_H + 5;
             useOfficeStore.getState().setManagerPosition({
