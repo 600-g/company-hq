@@ -58,7 +58,6 @@ const OfficeGame = forwardRef<OfficeGameHandle, Props>(({ onTeamClick }, ref) =>
       const { default: OfficeScene } = await import("./OfficeScene");
       const { default: OutdoorScene } = await import("./OutdoorScene");
       const { default: LoginScene } = await import("./LoginScene");
-      const { default: TankShooterScene } = await import("./TankShooterScene");
 
       if (destroyed || !containerRef.current) return;
 
@@ -95,7 +94,7 @@ const OfficeGame = forwardRef<OfficeGameHandle, Props>(({ onTeamClick }, ref) =>
           autoCenter: Phaser.Scale.CENTER_BOTH,
           zoom: dpr,
         },
-        scene: [scene, new OutdoorScene(), new LoginScene(), new TankShooterScene()],
+        scene: [scene, new OutdoorScene(), new LoginScene()],
       });
       // 테스트/디버그용: 전역 게임 참조
       if (typeof window !== "undefined") (window as unknown as { __hqGame?: Phaser.Game }).__hqGame = game;
