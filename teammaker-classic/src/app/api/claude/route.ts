@@ -1,8 +1,12 @@
 import { NextResponse } from "next/server";
 import { getApiKey } from "@/lib/server/config";
 import { executeTool } from "@/lib/server/tool-executor";
+import { callClaudeMaxPlan } from "@/lib/server/claude-cli-bridge";
 
 import { DEFAULT_MODEL } from "@/lib/models";
+
+// Max 플랜(claude CLI) 사용 모드 — `USE_MAX_PLAN=1` 환경변수로 활성
+const USE_MAX_PLAN = process.env.USE_MAX_PLAN === "1";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const MAX_TOOL_ITERATIONS = 200;
@@ -141,14 +145,7 @@ async function callAnthropic(
 }
 
 export async function POST(request: Request) {
-  const apiKey = getApiKey();
-  if (!apiKey) {
-    return NextResponse.json(
-      { error: "API key is not configured" },
-      { status: 401 },
-    );
-  }
-
+  const body = await request.json();
   const {
     messages,
     systemPrompt,
@@ -157,7 +154,35 @@ export async function POST(request: Request) {
     toolContext,
     maxToolIterations,
     model,
-  } = await request.json();
+  } = body;
+
+  // ── Max 플랜 모드: claude CLI subprocess 로 우회 (BYO-API 키 불필요) ──
+  if (USE_MAX_PLAN) {
+    try {
+      const cwd = (toolContext && (toolContext as { cwd?: string }).cwd) || undefined;
+      const data = await callClaudeMaxPlan(messages, {
+        systemPrompt,
+        cwd,
+        modelOverride: model,
+      });
+      return NextResponse.json(data);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return NextResponse.json(
+        { error: { type: "max_plan_error", message: msg } },
+        { status: 500 },
+      );
+    }
+  }
+
+  // ── 기본: Anthropic API 키 모드 ──
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    return NextResponse.json(
+      { error: "API key is not configured" },
+      { status: 401 },
+    );
+  }
 
   // No tools → simple pass-through
   if (!tools || tools.length === 0) {
