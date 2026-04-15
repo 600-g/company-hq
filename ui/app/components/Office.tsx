@@ -10,6 +10,9 @@ import WeatherBoard from "./WeatherBoard";
 import type { OfficeGameHandle } from "../game/OfficeGame";
 import DevTerminal from "./DevTerminal";
 import BuildStampInline from "./BuildStampInline";
+import { Button } from "./ui/button";
+import { Input } from "./ui/input";
+import { gsap } from "gsap";
 
 // ── CPO 주도 스마트 디스패치 ────────────────────────────
 type DispatchStatus = "pending" | "sending" | "working" | "done" | "skipped" | "error";
@@ -601,36 +604,46 @@ function AddTeamModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
     }
   };
 
+  const modalRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    // GSAP 입장 애니메이션: 살짝 스케일 + 페이드
+    if (modalRef.current) {
+      gsap.fromTo(
+        modalRef.current,
+        { scale: 0.96, opacity: 0, y: 8 },
+        { scale: 1, opacity: 1, y: 0, duration: 0.22, ease: "power2.out" },
+      );
+    }
+  }, []);
+
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70" onClick={onClose}>
-      <div className="bg-[#0f0f1f] border border-[#3a3a5a] rounded-lg p-5 w-[340px] shadow-2xl" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={onClose}>
+      <div ref={modalRef} className="bg-[#0f0f1f] border border-[#3a3a5a] rounded-lg p-5 w-[340px] shadow-2xl" onClick={e => e.stopPropagation()}>
         <h3 className="text-sm font-bold text-yellow-400 mb-3">+ 새 에이전트 추가</h3>
         <div className="space-y-2.5">
           {/* 이모지 + 표시 이름 */}
           <div className="flex gap-2">
             <div className="w-16">
               <label className="text-[9px] text-gray-500 block mb-0.5">이모지</label>
-              <input value={emoji} onChange={e => setEmoji(e.target.value)} maxLength={4}
-                className="w-full bg-[#1a1a2e] border border-[#3a3a5a] text-white text-center px-1 py-1.5 text-lg rounded focus:outline-none focus:border-yellow-400/50" />
+              <Input value={emoji} onChange={e => setEmoji(e.target.value)} maxLength={4}
+                className="text-center text-lg" />
             </div>
             <div className="flex-1">
               <label className="text-[9px] text-gray-500 block mb-0.5">표시 이름 (한글 OK)</label>
-              <input autoFocus value={displayName} onChange={e => setDisplayName(e.target.value)}
-                placeholder="예) 회고, 매매봇, 크롤러"
-                className="w-full bg-[#1a1a2e] border border-[#3a3a5a] text-white px-2 py-1.5 text-xs rounded focus:outline-none focus:border-yellow-400/50" />
+              <Input autoFocus value={displayName} onChange={e => setDisplayName(e.target.value)}
+                placeholder="예) 회고, 매매봇, 크롤러" />
             </div>
           </div>
 
           {/* 레포/ID (영문만) */}
           <div>
             <label className="text-[9px] text-gray-500 block mb-0.5">레포 이름 — GitHub용 (영문 소문자/숫자/하이픈)</label>
-            <input value={repoName}
+            <Input value={repoName}
               onChange={e => { setRepoName(e.target.value); setRepoTouched(true); }}
               onKeyDown={e => e.key === "Enter" && !loading && submit()}
               placeholder="예) retrospect-agent, web-crawler"
-              className={`w-full bg-[#1a1a2e] border text-white px-2 py-1.5 text-xs rounded focus:outline-none font-mono ${
-                (repoInvalid || hasHyphenIssue) ? "border-red-400 focus:border-red-400" : "border-[#3a3a5a] focus:border-yellow-400/50"
-              }`} />
+              className="font-mono"
+              error={repoInvalid || hasHyphenIssue} />
             {(repoInvalid || hasHyphenIssue) && (
               <p className="text-[9px] text-red-400 mt-0.5">
                 {repoInvalid ? "영문 소문자(a-z), 숫자(0-9), 하이픈(-)만 사용" : "하이픈 시작/종료/연속(--) 불가"}
@@ -676,11 +689,14 @@ function AddTeamModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
           <p className="text-[8px] text-gray-600">자동: GitHub 레포 + 로컬 클론 + CLAUDE.md + 시스템프롬프트</p>
         </div>
         <div className="flex gap-2 mt-3">
-          <button onClick={submit} disabled={loading || repoInvalid || hasHyphenIssue || !displayTrimmed || !repoTrimmed}
-            className="flex-1 bg-yellow-500 text-black py-1.5 text-xs font-bold rounded hover:bg-yellow-400 disabled:opacity-50 disabled:cursor-not-allowed">
+          <Button
+            onClick={submit}
+            disabled={loading || repoInvalid || hasHyphenIssue || !displayTrimmed || !repoTrimmed}
+            className="flex-1 font-bold"
+          >
             {loading ? `🔄 ${step}` : "에이전트 생성"}
-          </button>
-          <button onClick={onClose} className="flex-1 bg-[#2a2a3a] text-gray-400 py-1.5 text-xs rounded hover:bg-[#3a3a4a]">취소</button>
+          </Button>
+          <Button variant="secondary" onClick={onClose} className="flex-1">취소</Button>
         </div>
       </div>
     </div>

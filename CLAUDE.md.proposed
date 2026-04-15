@@ -1,0 +1,120 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## 명령어 (Commands)
+
+```bash
+# 개발 서버 (Next.js + Turbopack, :3000)
+cd ui && npm run dev
+
+# 프로덕션 빌드 + 배포 (Cloudflare Pages, 600g.net)
+bash deploy.sh                       # validator 통과시에만 배포
+
+# 씬 레이아웃 검증 (건물 footprint vs 장식 충돌)
+cd ui && node scripts/validate-scene.mjs
+
+# 백엔드 FastAPI 서버 (맥미니, :8000)
+cd server && source venv/bin/activate && python main.py
+
+# 헤드리스 스크린샷 (LoginScene 검증용)
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+  --headless=new --enable-gpu --use-gl=swiftshader --enable-webgl \
+  --virtual-time-budget=11000 \
+  --screenshot=/tmp/hq.png --window-size=960,540 --hide-scrollbars \
+  http://localhost:3000/game-preview
+```
+
+**배포 전 체크**: `deploy.sh` 가 자동으로 `validate-scene.mjs` 호출 → 건물 위 장식물 있으면 실패로 배포 차단. Cloudflare Pages 20K 파일 한도 대응 위해 `out/assets/pokemon_assets/sliced/` 는 배포 출력에서 자동 제외.
+
+## 아키텍처
+
+```
+600g.net (Cloudflare Pages)           api.600g.net (Cloudflare Tunnel)
+       │                                      │
+       ▼                                      ▼
+Next.js 16 (ui/)                      FastAPI (server/)
+  ├─ LoginPage + LoginScene (Phaser)    ├─ WebSocket /ws/chat/{team}
+  │  = 타이쿤 사무실 마을                 ├─ Claude CLI 런처 (subprocess)
+  ├─ OfficeScene (Phaser) = 내부         └─ teams.json 세션 영속
+  └─ ChatPanel = WS 터미널
+```
+
+- **AI 처리**: Claude API **절대 호출 안함**. 서버가 `claude-runner` 로 Claude Code CLI 를 subprocess 실행 (Max 구독 내).
+- **Phaser 씬**: `ui/app/game/LoginScene.ts` (외부 마을), `OfficeScene.ts` (내부). 둘 다 `pixelArt:false + antialias:true` 로 설정.
+
+## 씬 좌표 시스템 (LoginScene)
+
+**단일 소스**: `ui/app/game/sceneLayout.ts` 에 모든 건물 spec 선언.
+
+```typescript
+BUILDING_SPECS = [
+  { id: "red", key: "palet_red", centerX: 100, baselineY: 250,
+    baseW: 128, baseH: 160, scale: 1.2 },
+  ...
+]
+```
+
+- `footprintOf(b)` → 자동 화면 좌표 계산
+- `validateLayout(decors)` → console.warn 로 건물 몸통 침범 실시간 감지
+- `safeXGaps(y, w)` → 장식 배치 가능한 안전 구간 반환
+
+**장식 추가 워크플로**:
+1. `validate-scene.mjs` 의 `decors` 배열에 좌표 추가
+2. `node scripts/validate-scene.mjs` 실행 → 충돌 0건 확인
+3. `LoginScene.ts` 에 실제 배치 + `recordDecor()` 계측
+4. 배포 (`deploy.sh` 가 다시 validator 재실행)
+
+## Y-Sort Depth 규칙
+
+Phaser 는 전경/배경 깊이를 `setDepth(n)` 으로 제어. 모든 움직이는/배치 오브젝트는 **baseline y 를 depth 로 사용**해 캐릭이 건물 지붕 뚫고 지나가는 문제 방지:
+
+```typescript
+building.setDepth(slot.y);          // 건물 발끝 y
+walker.setDepth(sprite.y);          // 매 프레임 갱신 (moveWalkers)
+staticNpc.setDepth(npc.y);
+rock.setDepth(rockBaselineY);
+```
+
+예외 (전체 오버레이): 날씨(`200`), 야간 틴트(`150`).
+
+## 에셋 규칙
+
+**반드시 먼저 읽기**: `ui/public/assets/pokemon_assets/ASSET_GUIDE.md`
+
+### 금지
+- `Tilesets/*.png` 원본 직접 크롭 (좌표 추측) — 예외 없음
+- `sliced/` 외 임의 타일 조합
+- 같은 장면 내 시트 혼용 (Celadopole + Johto 섞지 말기 — Bourg/Azuria 정도만 허용 현 상태)
+
+### 순서
+1. `composites/<시트>/obj_rXXX_cYY_HxW.png` — 통짜 오브젝트 (건물·트리·사인)
+2. `sliced/<시트>/rXXX_cYY.png` — 32×32 단일 타일
+3. `sliced_preview/<시트>_grid.png` — 좌표 참조 프리뷰 (3배 확대 + 라벨)
+
+### 이미 반영된 선택
+- **Red/Green 집**: Bourg `obj_r029_c00_6x8` half-split 파생
+- **Blue 집**: Bourg `obj_r034_c00_5x4` (단독)
+- **HQ**: Bourg `obj_r020_c00_6x7` (Prof Oak Lab)
+- **Mart**: Azuria `obj_r038_c03_6x5`
+- **공원 중앙 바위**: Bourg `obj_r036_c06_2x2` (3/4각 — 탑뷰 fountain 대체)
+- **Cafe**: Azuria `obj_r023_c04_5x4`
+
+## 팀 조직 (CPO 관점)
+
+```
+두근(Owner L5) → CPO(this) L4
+  ├─ 매매봇(upbit-auto-trading-bot) 🤖
+  ├─ 데이트지도(date-map) 🗺️
+  ├─ AI900 📚
+  ├─ 디자인팀 🎨
+  └─ 콘텐츠랩 🔬
+```
+
+자세한 운영 규칙/의사결정 프레임워크는 기존 섹션 참조.
+
+---
+
+## 역할 정의
+
+[기존 CLAUDE.md v3.1 내용 여기 유지]

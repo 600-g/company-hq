@@ -65,8 +65,8 @@ export function preloadAssets(scene: Phaser.Scene) {
   scene.load.image("pc_back", "/assets/pokemon_furniture/pc.png");
   scene.load.image("pc", "/assets/pokemon_furniture/pc.png");
   scene.load.image("monitor", "/assets/pokemon_furniture/monitor.png");
-  // 서버실 통합 컴퓨터 (책상+CRT+모니터 한 장, 48x48 세로형)
-  scene.load.image("server_workstation", "/assets/pokemon_furniture/computer_crt_pair.png");
+  // server_workstation: drawServerRoom()이 코드 드로잉으로 대체 — 더 이상 로드 불필요
+  // scene.load.image("server_workstation", "/assets/pokemon_furniture/computer_crt_pair.png");
   scene.load.image("desk_side_drawers", "/assets/pokemon_furniture/desk_side_with_drawers.png");
   scene.load.image("desk_side_wicker", "/assets/pokemon_furniture/desk_side_wicker_short.png");
   scene.load.image("desk_side_wicker_long", "/assets/pokemon_furniture/desk_side_wicker_long.png");
@@ -153,8 +153,9 @@ export function preloadAssets(scene: Phaser.Scene) {
   scene.load.image("o_chair_front", "/assets/original/office/chair_front.png");
   scene.load.image("o_chair_back", "/assets/original/office/chair_back.png");
   scene.load.image("o_bookshelf", "/assets/original/office/bookshelf.png");
-  scene.load.image("o_server_rack", "/assets/original/office/server_rack.png");
-  scene.load.image("o_server_small", "/assets/original/office/server_small.png");
+  // o_server_rack, o_server_small: drawServerRoom()이 코드 드로잉으로 대체 — 미사용
+  // scene.load.image("o_server_rack", "/assets/original/office/server_rack.png");
+  // scene.load.image("o_server_small", "/assets/original/office/server_small.png");
   scene.load.image("o_window_day", "/assets/original/office/window_day.png");
   scene.load.image("o_window_night", "/assets/original/office/window_night.png");
   scene.load.image("o_whiteboard", "/assets/original/office/whiteboard.png");

@@ -671,49 +671,173 @@ export default class OfficeScene extends Phaser.Scene {
   }
 
   private drawServerRoom() {
-    // 서버실 컴퓨터 워크스테이션 (우상단 구석) — 시각적 요소 + 클릭 영역
-    const defaultX = WORLD_W - 52;
-    const defaultY = WALL_H * TILE + 16;
+    // ══════════════════════════════════════════════════════════
+    // 서버실 고도화 v2 — 서버 랙 3대 + LED 점멸 + 케이블 덕트 + 콘솔
+    // ══════════════════════════════════════════════════════════
     const saved = this.loadObjectPos("hq-server-pos");
-    const monX = saved ? saved.x : defaultX;
-    const monY = saved ? saved.y : defaultY;
+    let ox = saved ? saved.x : WORLD_W - 44;
+    let oy = saved ? saved.y : WALL_H * TILE + 4;
 
-    // 통합 워크스테이션 (책상+CRT 컴퓨터 한 장, 48x48 - 자연스러운 합성)
-    const desk = this.add.image(monX, monY + 32, "server_workstation").setOrigin(0.5, 1).setDepth(50);
-    this.envGroup.add(desk);
-    // monitor 변수 유지 (기존 setPos 호환) — 더미 오브젝트
-    const monitor = desk;
-    // 서버실 라벨
-    const label = this.add.text(monX, monY - 6, "SERVER", {
-      fontSize: "9px", fontFamily: FONT,
-      color: "#4a90d9", resolution: TEXT_RES,
-    }).setOrigin(0.5, 1).setDepth(7);
+    const RW = 80; const RH = 72; // 서버실 전체 영역
+    const RACK_W = 18; const RACK_H = 50; const RACK_GAP = 6;
+    const totalRackW = 3 * RACK_W + 2 * RACK_GAP; // 66px
+
+    // ── 배경 + 랙 3대 그리기 ──────────────────────────────────
+    const drawBase = (g: Phaser.GameObjects.Graphics, x: number, y: number) => {
+      g.clear();
+      // 서버실 바닥 영역 (어두운 타일)
+      g.fillStyle(0x12121e, 0.95);
+      g.fillRect(x - RW / 2, y, RW, RH);
+      g.lineStyle(1, 0x3a3a58, 0.7);
+      g.strokeRect(x - RW / 2, y, RW, RH);
+      // 바닥 그리드 패턴
+      g.fillStyle(0x1e1e30, 0.4);
+      for (let fx = 0; fx < RW; fx += 8) g.fillRect(x - RW / 2 + fx, y, 1, RH);
+      for (let fy = 0; fy < RH; fy += 8) g.fillRect(x - RW / 2, y + fy, RW, 1);
+
+      // 서버 랙 3대
+      const rsx = x - totalRackW / 2;
+      const rsy = y + 6;
+      for (let r = 0; r < 3; r++) {
+        const rx = rsx + r * (RACK_W + RACK_GAP);
+        // 랙 본체 (건트리)
+        g.fillStyle(0x22222e, 1);
+        g.fillRect(rx, rsy, RACK_W, RACK_H);
+        // 랙 테두리 (밝은 금속 느낌)
+        g.lineStyle(1, 0x5050748, 0.9);
+        g.strokeRect(rx, rsy, RACK_W, RACK_H);
+        // 전면 패널 (약간 밝은)
+        g.fillStyle(0x2e2e40, 1);
+        g.fillRect(rx + 1, rsy + 1, RACK_W - 2, 5);
+        // 슬롯 구분 선 (7슬롯)
+        g.fillStyle(0x0a0a18, 0.9);
+        for (let s = 1; s <= 6; s++) g.fillRect(rx + 2, rsy + 5 + s * 6, RACK_W - 4, 1);
+        // 케이블 구멍 (상단 바)
+        g.fillStyle(0x080810, 1);
+        g.fillRect(rx + 2, rsy, RACK_W - 4, 4);
+        // 벤트 슬롯 (하단)
+        g.fillStyle(0x181828, 0.8);
+        for (let v = 0; v < 4; v++) g.fillRect(rx + 3, rsy + RACK_H - 8 + v * 2, RACK_W - 6, 1);
+        // 하단 발판
+        g.fillStyle(0x4a4a60, 1);
+        g.fillRect(rx - 1, rsy + RACK_H, RACK_W + 2, 3);
+        // 랙 측면 하이라이트
+        g.fillStyle(0xffffff, 0.04);
+        g.fillRect(rx, rsy, 2, RACK_H);
+      }
+
+      // 케이블 덕트 (천장 위, 랙 전체 폭)
+      g.fillStyle(0x28283a, 1);
+      g.fillRect(x - totalRackW / 2 - 3, y + 1, totalRackW + 6, 7);
+      g.lineStyle(1, 0x4a4a60, 0.5);
+      g.strokeRect(x - totalRackW / 2 - 3, y + 1, totalRackW + 6, 7);
+      // 케이블 색상 번들 (빨/파/노/초)
+      const cColors = [0xf03020, 0x2080f0, 0xe8c020, 0x20c050];
+      cColors.forEach((c, i) => {
+        g.fillStyle(c, 0.75);
+        g.fillRect(x - totalRackW / 2 + 2 + i * 7, y + 2, 5, 4);
+      });
+
+      // 콘솔 워크스테이션 테이블 (하단)
+      g.fillStyle(0x303040, 1);
+      g.fillRect(x - 26, y + RH + 2, 52, 10);
+      g.lineStyle(1, 0x5050688, 0.6);
+      g.strokeRect(x - 26, y + RH + 2, 52, 10);
+      // 키보드 선
+      g.fillStyle(0x2a2a38, 1);
+      g.fillRect(x - 20, y + RH + 4, 40, 5);
+      g.fillStyle(0x4a4a58, 0.4);
+      for (let k = 0; k < 6; k++) g.fillRect(x - 18 + k * 6, y + RH + 5, 4, 3);
+    };
+
+    // ── LED 점멸 애니메이션 ───────────────────────────────────
+    const drawLEDs = (g: Phaser.GameObjects.Graphics, x: number, y: number) => {
+      g.clear();
+      const rsx = x - totalRackW / 2;
+      const rsy = y + 6;
+      for (let r = 0; r < 3; r++) {
+        const rx = rsx + r * (RACK_W + RACK_GAP);
+        // 전원 LED (초록, 항상 켜짐)
+        g.fillStyle(0x00ff40, 0.9);
+        g.fillRect(rx + RACK_W - 4, rsy + 2, 2, 2);
+        // 슬롯별 활동 LED
+        for (let s = 0; s < 6; s++) {
+          const sy = rsy + 6 + s * 6 + 1;
+          // 초록 (활동): 70% 확률로 켜짐
+          const act = Math.random() > 0.3;
+          g.fillStyle(act ? 0x00ff60 : 0x001808, act ? 0.85 : 0.2);
+          g.fillRect(rx + 3, sy, 2, 2);
+          // 파란 (네트워크): 50% 확률
+          const net = Math.random() > 0.5;
+          g.fillStyle(net ? 0x40b0ff : 0x000820, net ? 0.75 : 0.15);
+          g.fillRect(rx + 7, sy, 2, 2);
+          // 주황 (읽기/쓰기): 20% 확률
+          const io = Math.random() > 0.8;
+          g.fillStyle(io ? 0xff8020 : 0x100400, io ? 0.7 : 0.1);
+          g.fillRect(rx + 11, sy, 2, 2);
+        }
+      }
+      // 콘솔 모니터 CRT 글로우
+      g.fillStyle(0x00ff60, 0.12);
+      g.fillRect(x - 24, y + RH + 3, 48, 9);
+      g.fillStyle(0x20ff80, 0.55);
+      g.fillRect(x - 20, y + RH + 4, 40, 6);
+      // 커서 블링크
+      if (Math.random() > 0.4) {
+        g.fillStyle(0xffffff, 0.7);
+        g.fillRect(x - 18 + Math.floor(Math.random() * 32), y + RH + 6, 2, 3);
+      }
+    };
+
+    const baseG = this.add.graphics().setDepth(50);
+    const ledG  = this.add.graphics().setDepth(51);
+    drawBase(baseG, ox, oy);
+    drawLEDs(ledG, ox, oy);
+    this.envGroup.add(baseG);
+    this.envGroup.add(ledG);
+
+    // LED 점멸 타이머 (550ms 주기, 각 랙 독립)
+    this.time.addEvent({
+      delay: 550, loop: true,
+      callback: () => { if (ledG.active) drawLEDs(ledG, ox, oy); },
+    });
+
+    // ── 서버실 레이블 ─────────────────────────────────────────
+    const label = this.add.text(ox, oy - 7, "SERVER ROOM", {
+      fontSize: "7px", fontFamily: FONT,
+      color: "#5090e8", resolution: TEXT_RES,
+      backgroundColor: "#00000088", padding: { x: 3, y: 1 },
+    }).setOrigin(0.5, 1).setDepth(52);
     this.envGroup.add(label);
 
-    // 클릭 영역 (대시보드 트리거 / 드래그 핸들)
-    const monHit = this.add.zone(monX, monY + 8, 64, 48).setInteractive({ useHandCursor: true }).setDepth(102);
-    this.envGroup.add(monHit);
+    // ── 히트 존 (클릭 + 드래그) ──────────────────────────────
+    const hitH = RH + 14;
+    const hit = this.add.zone(ox, oy + hitH / 2, RW, hitH)
+      .setInteractive({ useHandCursor: true }).setDepth(102);
+    this.envGroup.add(hit);
 
     const setPos = (x: number, y: number) => {
-      desk.setPosition(x, y + 32);
-      label.setPosition(x, y - 6);
-      monHit.setPosition(x, y + 8);
+      ox = x; oy = y;
+      drawBase(baseG, x, y);
+      drawLEDs(ledG, x, y);
+      label.setPosition(x, y - 7);
+      hit.setPosition(x, y + hitH / 2);
     };
 
     const onClick = () => {
       const cam = this.cameras.main;
       const rect = this.game.canvas.getBoundingClientRect();
-      const sx = rect.left + (monX - cam.scrollX) * (rect.width / cam.width);
-      const sy = rect.top + (monY - cam.scrollY) * (rect.height / cam.height);
+      const sx = rect.left + (ox - cam.scrollX) * (rect.width / cam.width);
+      const sy = rect.top + (oy - cam.scrollY) * (rect.height / cam.height);
       this.onTeamClick?.("server-monitor", Math.round(sx), Math.round(sy));
     };
 
     this.attachObjectDrag({
       id: "server",
       storageKey: "hq-server-pos",
-      hit: monHit,
-      targets: [desk, monitor, label, monHit],
-      getAnchor: () => ({ x: desk.x, y: desk.y - 32 }),
+      hit,
+      targets: [baseG, ledG, label, hit],
+      getAnchor: () => ({ x: ox, y: oy }),
       setPos,
       onClick,
     });
