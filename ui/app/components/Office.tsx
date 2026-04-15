@@ -10,6 +10,7 @@ import WeatherBoard from "./WeatherBoard";
 import type { OfficeGameHandle } from "../game/OfficeGame";
 import DevTerminal from "./DevTerminal";
 import BuildStampInline from "./BuildStampInline";
+import EditorToolbar from "./EditorToolbar";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { gsap } from "gsap";
@@ -2286,7 +2287,10 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
           }}
           title="더블클릭: 새로고침 및 업데이트 반영"
         >
-          Claude Code CLI · $0 · <BuildStampInline appVersion="3.0.0" />
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <span>Claude Code CLI · $0 · <BuildStampInline appVersion="3.0.0" /></span>
+            <EditorToolbar onApplied={() => { /* 레이아웃 복원 시 페이지 리로드 필요 */ }} />
+          </div>
         </div>
       </aside>
     </div>

@@ -1416,6 +1416,8 @@ export default class OfficeScene extends Phaser.Scene {
     opts.hit.on("pointerdown", (ptr: Phaser.Input.Pointer) => {
       if (this.objectDrag || this.dragTarget) return;
       const anchor = opts.getAnchor();
+      // Undo 히스토리: 드래그 시작 시 현재 상태 저장 (dynamic import로 SSR safe)
+      import("../lib/office-editor").then((m) => m.pushHistory(`drag-${opts.id}`)).catch(() => {});
       opts.onDragStart?.();
       opts.targets.forEach(t => {
         const anyT = t as unknown as { setAlpha?: (a: number) => void };
