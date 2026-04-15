@@ -16,6 +16,7 @@ from dotenv import load_dotenv
 from ws_handler import (
     handle_chat, AGENT_STATUS, RECENT_ACTIVITY, _log_activity, set_team_lookup,
     collab_broadcast, CHAR_STATE, ACTIVE_COLLABS, get_char_state,
+    manager as ws_manager,
 )
 from project_scanner import scan_all
 from github_manager import create_repo, list_repos, _generate_system_prompt, PROJECT_TYPES
@@ -1517,11 +1518,28 @@ async def smart_dispatch(body: dict):
                     _tid = step["team"]
                     _team = team_map[_tid]
                     _prompt = f"[유저 원래 요청: {message}]\n\n{step['prompt']}"
+                    # 1) 유저 메시지를 해당 팀 채팅 히스토리에 추가 + WS 브로드캐스트
+                    ws_manager.add_message(_tid, "user", _prompt)
+                    try:
+                        await ws_manager.send_json(_tid, {"type": "user", "content": _prompt})
+                    except Exception:
+                        pass
                     _result = ""
                     try:
                         async for chunk in run_claude(_prompt, _team["localPath"], _tid, is_auto=False):
                             if chunk["kind"] == "text":
                                 _result += chunk["content"]
+                                # 2) 각 청크를 해당 팀 WS에 실시간 스트림
+                                try:
+                                    await ws_manager.send_json(_tid, {"type": "assistant_chunk", "content": chunk["content"]})
+                                except Exception:
+                                    pass
+                        # 3) 완성된 응답을 히스토리에 저장 + 완료 알림
+                        ws_manager.add_message(_tid, "assistant", _result)
+                        try:
+                            await ws_manager.send_json(_tid, {"type": "assistant_done", "content": _result})
+                        except Exception:
+                            pass
                         team_results[_tid] = {"status": "done", "team_name": _team["name"], "emoji": _team["emoji"], "result": _result}
                     except Exception as e:
                         team_results[_tid] = {"status": "error", "error": str(e)}
@@ -1643,11 +1661,28 @@ async def smart_dispatch(body: dict):
                 return
 
             result_text = ""
+            # 1) 유저 메시지를 팀 채팅 히스토리에 추가 + 브로드캐스트
+            ws_manager.add_message(team_id, "user", prompt)
+            try:
+                await ws_manager.send_json(team_id, {"type": "user", "content": prompt})
+            except Exception:
+                pass
             try:
                 # smart_dispatch 팀 병렬 실행 — 사용자 요청 기반이므로 is_auto=False
                 async for chunk in run_claude(prompt, team["localPath"], team_id, is_auto=False):
                     if chunk["kind"] == "text":
                         result_text += chunk["content"]
+                        # 2) 청크를 해당 팀 채팅창에 실시간 스트림
+                        try:
+                            await ws_manager.send_json(team_id, {"type": "assistant_chunk", "content": chunk["content"]})
+                        except Exception:
+                            pass
+                # 3) 완성 응답을 히스토리에 저장 + 완료 알림
+                ws_manager.add_message(team_id, "assistant", result_text)
+                try:
+                    await ws_manager.send_json(team_id, {"type": "assistant_done", "content": result_text})
+                except Exception:
+                    pass
                 team_results[team_id] = {
                     "status": "done",
                     "team_name": team["name"],
