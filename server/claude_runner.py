@@ -802,8 +802,69 @@ async def run_claude(
 
     # ── 시스템프롬프트 ──
     system_prompt = TEAM_SYSTEM_PROMPTS.get(team_id, DEFAULT_SYSTEM_PROMPT)
-    # ── SOP 자동 주입 (TeamMaker skill-router 패턴) ──
-    # 팀 역할에 맞는 SOP가 server/skills/ 에 있으면 시스템프롬프트 뒤에 부착
+
+    # ── Phase 1: 프로젝트 상태 컨텍스트 자동 주입 (팀메이커 workingDirectory/agentStatuses 등가물) ──
+    # 에이전트가 '현재 오피스 편집 상태', '최근 결정사항' 모르고 작업하는 문제 해결.
+    try:
+        context_sections: list[str] = []
+        # 1) 오피스 가구 overrides (사용자가 관리자로 바꾼 라벨/숨김)
+        try:
+            ov_path = Path(__file__).parent / "furniture_overrides.json"
+            if ov_path.exists():
+                ov = json.loads(ov_path.read_text())
+                if ov:
+                    # 요약만 (전체 덤프 시 토큰 낭비)
+                    summary = {k: (list(v.keys())[:10] if isinstance(v, dict) else v) for k, v in ov.items()}
+                    context_sections.append(f"[현재 오피스 가구 오버라이드 요약]\n{json.dumps(summary, ensure_ascii=False)[:800]}")
+        except Exception:
+            pass
+        # 2) 사용자 오피스 레이아웃 (최근 N개만)
+        try:
+            layout_path = Path(__file__).parent / "office_layout.json"
+            if layout_path.exists():
+                ly = json.loads(layout_path.read_text())
+                items = (ly.get("layout") or {}).get("items", []) if isinstance(ly, dict) else []
+                if items:
+                    types_cnt: dict = {}
+                    for it in items:
+                        t = it.get("type", "?")
+                        types_cnt[t] = types_cnt.get(t, 0) + 1
+                    top = sorted(types_cnt.items(), key=lambda x: -x[1])[:12]
+                    context_sections.append(f"[오피스 레이아웃 요약] 총 {len(items)}개 · 주요: {', '.join(f'{k}×{v}' for k, v in top)}")
+        except Exception:
+            pass
+        # 3) 최근 결정사항 (해당 팀 channel 마지막 N개 유저 메시지)
+        try:
+            import sessions_store as _ss2
+            history = _ss2.get_messages(team_id, hq_session_id) or []
+            user_msgs = [h for h in history[-30:] if h.get("role") == "user"]
+            recent = user_msgs[-5:]
+            if recent:
+                lines = []
+                for h in recent:
+                    content = (h.get("content") or "").strip().replace("\n", " ")[:160]
+                    if content:
+                        lines.append(f"• {content}")
+                if lines:
+                    context_sections.append("[최근 5개 유저 결정/요청 (참고 — 새 요청과 상충 시 새 요청 우선)]\n" + "\n".join(lines))
+        except Exception:
+            pass
+
+        if context_sections:
+            system_prompt = (
+                f"{system_prompt}\n\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"📍 현재 프로젝트 컨텍스트 (작업 전 필독)\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                + "\n\n".join(context_sections) +
+                f"\n\n※ 위 상태를 건드릴 때는 먼저 diff로 확인. 전체 덮어쓰기 금지."
+            )
+    except Exception as _ctx_err:
+        logger.warning(f"[{team_id}] 컨텍스트 주입 실패 (무시): {_ctx_err}")
+
+    # ── SOP 자동 주입 (단, 단순 인사/한줄 질문은 스킵하여 속도 향상) ──
+    _prompt_len = len(prompt.strip())
+    _is_simple = _prompt_len < 80 and "\n" not in prompt.strip()
     try:
         sop_map = {
             "frontend-team": "dev-web-nextjs",
@@ -815,7 +876,7 @@ async def run_claude(
             "cpo-claude": "planning",
         }
         sop_role = sop_map.get(team_id)
-        if sop_role:
+        if sop_role and not _is_simple:
             sop_path = Path(__file__).parent / "skills" / f"{sop_role}.md"
             if sop_path.exists():
                 sop_content = sop_path.read_text(encoding="utf-8")
@@ -832,8 +893,13 @@ async def run_claude(
     cmd.extend(["--append-system-prompt", system_prompt])
 
     # ── 모델 + 프롬프트 + stream-json ──
+    # 단순 요청(인사/한줄/짧은 질문)은 haiku로 자동 다운그레이드 → 속도 2~3x, 비용 ↓
     cmd.extend(["-p", prompt])
-    cmd.extend(["--model", TEAM_MODELS.get(team_id, "sonnet")])
+    _model = TEAM_MODELS.get(team_id, "sonnet")
+    if _is_simple and _model == "sonnet":
+        _model = "haiku"
+        logger.info("[%s] 단순 요청 감지 — haiku로 다운그레이드 (%d chars)", team_id, _prompt_len)
+    cmd.extend(["--model", _model])
     # stream-json: 구조화된 이벤트로 tool_use/tool_result/rate_limit 실시간 수신.
     # readline 기반이므로 FD 과다 이슈 없음.
     cmd.extend(["--output-format", "stream-json", "--verbose"])
@@ -1046,6 +1112,33 @@ async def run_claude(
 
     # 토큰 급등 감지 → 자동 실행만 스탠바이 (수동 대화 무관)
     _check_token_spike(is_auto=is_auto)
+
+    # Phase 6: 응답 품질 validator — 빈/짧은 응답 감지 → 1회 재시도 (수동 대화만)
+    # 재시도는 _retry_depth 인자로 무한루프 방지.
+    _retry_depth = getattr(run_claude, "_retry_depth", 0)
+    if (
+        proc.returncode == 0
+        and not is_auto
+        and not timed_out
+        and _retry_depth == 0
+    ):
+        _run_output_chars = chars_this_run
+        # 빈 응답 OR 10자 미만 짧은 응답 OR 명백 에러 문구만 있는 경우
+        is_empty = _run_output_chars == 0
+        is_too_short = _run_output_chars < 10 and len(prompt.strip()) >= 20
+        if is_empty or is_too_short:
+            reason = "빈 응답" if is_empty else f"너무 짧음 ({_run_output_chars}자)"
+            logger.warning("[%s] validator 재시도 트리거: %s", team_id, reason)
+            _log_error_lesson(team_id, f"validator: {reason}")
+            yield {"kind": "text", "content": f"\n⏳ 응답이 {reason} — 재시도 중...\n"}
+            # 재귀 호출 시 depth=1 로 표시 (추가 재시도 방지)
+            run_claude._retry_depth = 1  # type: ignore[attr-defined]
+            try:
+                async for event in run_claude(prompt, project_path, team_id, is_auto=False, session_id=session_id):
+                    yield event
+            finally:
+                run_claude._retry_depth = 0  # type: ignore[attr-defined]
+            return
 
     if proc.returncode != 0:
         stderr_data = await proc.stderr.read()

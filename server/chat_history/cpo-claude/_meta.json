@@ -3,8 +3,8 @@
     "id": "default",
     "title": "기본 세션",
     "createdAt": 1776400068837,
-    "updatedAt": 1776437687307,
-    "messageCount": 13,
+    "updatedAt": 1776446177144,
+    "messageCount": 18,
     "resumable": true,
     "agentStatus": {
       "working": false,

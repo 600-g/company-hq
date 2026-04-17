@@ -9,7 +9,7 @@ import json
 import uuid
 from pathlib import Path
 from datetime import datetime, timedelta
-from fastapi import FastAPI, WebSocket, UploadFile, File
+from fastapi import FastAPI, WebSocket, UploadFile, File, Request
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
@@ -2978,6 +2978,103 @@ async def deploy_trigger():
     return StreamingResponse(stream(), media_type="text/event-stream")
 
 
+@app.post("/api/deploy/project/{team_id}/github")
+async def deploy_project_github(team_id: str, req: Request):
+    """Phase 5: 팀 프로젝트를 GitHub에 push (레포 없으면 생성).
+    팀메이커 /api/deploy/github 등가물. SSE 스트림으로 진행 보고.
+    Body: {"message": "commit msg"}
+    """
+    from fastapi.responses import StreamingResponse
+    import subprocess
+    import os as _os
+    body = {}
+    try:
+        body = await req.json()
+    except Exception:
+        pass
+    commit_msg = (body.get("message") or "").strip() or "chore: update from company-hq"
+    team = next((t for t in TEAMS if t["id"] == team_id), None)
+    if not team:
+        return {"ok": False, "error": f"Team not found: {team_id}"}
+    local_path = _os.path.expanduser(team.get("localPath") or "")
+    if not local_path or not _os.path.isdir(local_path):
+        return {"ok": False, "error": f"Project path not found: {local_path}"}
+
+    async def stream():
+        def _run(cmd: list[str], cwd: str = local_path) -> tuple[int, str]:
+            try:
+                r = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=30)
+                return r.returncode, (r.stdout + r.stderr).strip()
+            except Exception as e:
+                return -1, str(e)
+
+        yield f"data: {json.dumps({'phase':'start','team':team_id,'path':local_path})}\n\n"
+
+        # 1) git status
+        rc, out = _run(["git", "status", "--porcelain"])
+        if rc != 0:
+            yield f"data: {json.dumps({'phase':'error','step':'status','message':out or 'git status 실패'})}\n\n"
+            return
+        dirty = bool(out.strip())
+        yield f"data: {json.dumps({'phase':'status','dirty':dirty,'detail':out[:200]})}\n\n"
+
+        # 2) git add + commit (dirty일 때만)
+        if dirty:
+            rc, out = _run(["git", "add", "-A"])
+            if rc != 0:
+                yield f"data: {json.dumps({'phase':'error','step':'add','message':out})}\n\n"
+                return
+            yield f"data: {json.dumps({'phase':'staged','message':'스테이징 완료'})}\n\n"
+
+            rc, out = _run(["git", "commit", "-m", commit_msg])
+            if rc != 0 and "nothing to commit" not in out.lower():
+                yield f"data: {json.dumps({'phase':'error','step':'commit','message':out[:500]})}\n\n"
+                return
+            yield f"data: {json.dumps({'phase':'committed','message':commit_msg})}\n\n"
+
+        # 3) remote 확인
+        rc, remote_out = _run(["git", "remote", "get-url", "origin"])
+        has_remote = rc == 0 and remote_out.strip()
+
+        # 4) remote 없으면 GitHub 레포 생성 후 연결
+        if not has_remote:
+            yield f"data: {json.dumps({'phase':'creating_repo','message':'GitHub 레포 생성 중...'})}\n\n"
+            try:
+                from github_manager import create_repo
+                repo_name = team.get("repo") or team_id
+                result = create_repo(repo_name, private=True)
+                repo_url = result.get("html_url") or result.get("url") or ""
+                if not repo_url:
+                    yield f"data: {json.dumps({'phase':'error','step':'create_repo','message':'레포 URL 취득 실패'})}\n\n"
+                    return
+                yield f"data: {json.dumps({'phase':'repo_created','url':repo_url})}\n\n"
+                rc, out = _run(["git", "remote", "add", "origin", repo_url])
+                if rc != 0:
+                    yield f"data: {json.dumps({'phase':'error','step':'remote_add','message':out})}\n\n"
+                    return
+            except Exception as e:
+                yield f"data: {json.dumps({'phase':'error','step':'create_repo','message':str(e)})}\n\n"
+                return
+
+        # 5) 브랜치 확인
+        rc, branch = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"])
+        branch = (branch or "main").strip()
+        yield f"data: {json.dumps({'phase':'pushing','branch':branch})}\n\n"
+
+        # 6) push
+        rc, out = _run(["git", "push", "-u", "origin", branch])
+        if rc != 0:
+            yield f"data: {json.dumps({'phase':'error','step':'push','message':out[:500]})}\n\n"
+            return
+        yield f"data: {json.dumps({'phase':'pushed','message':'원격 푸시 완료','detail':out[:200]})}\n\n"
+
+        # 7) 최종 URL 리포트
+        rc, remote = _run(["git", "remote", "get-url", "origin"])
+        yield f"data: {json.dumps({'phase':'done','remote':(remote or '').replace('.git','').strip()})}\n\n"
+
+    return StreamingResponse(stream(), media_type="text/event-stream")
+
+
 @app.get("/api/system/check")
 async def system_check():
     """TM SystemCheckDialog용 — node/git/npm/cloudflared/claude 버전 확인"""
@@ -3125,12 +3222,26 @@ async def delete_session_api(team_id: str, session_id: str, force: bool = False)
 
 @app.patch("/api/sessions/{team_id}/{session_id}")
 async def rename_session_api(team_id: str, session_id: str, body: dict):
+    """세션 제목 변경 + Phase 4: workingDirectory/githubRepo/supabaseProjectId 메타 설정.
+    Body:
+      - {"title": "..."} → 제목 변경
+      - {"workingDirectory": "...", "githubRepo": "...", "supabaseProjectId": "..."} → 프로젝트 메타
+    """
     import sessions_store
+    changed = False
     title = (body.get("title") or "").strip()
-    if not title:
-        return {"ok": False, "error": "title 필요"}
-    if not sessions_store.rename_session(team_id, session_id, title):
-        return {"ok": False, "error": "세션을 찾을 수 없습니다"}
+    if title:
+        if not sessions_store.rename_session(team_id, session_id, title):
+            return {"ok": False, "error": "세션을 찾을 수 없습니다"}
+        changed = True
+    # Phase 4: 프로젝트 필드 (팀메이커 Session 등가물)
+    for key in ("workingDirectory", "githubRepo", "supabaseProjectId"):
+        if key in body:
+            val = body[key]
+            if sessions_store.set_session_meta(team_id, session_id, key, val):
+                changed = True
+    if not changed:
+        return {"ok": False, "error": "변경할 필드 없음"}
     try:
         await ws_manager.send_json(team_id, {
             "type": "sessions_sync",

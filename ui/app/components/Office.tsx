@@ -65,6 +65,8 @@ function saveDispatchHistory(msgs: DispatchMessage[]) {
 function DispatchChat({ teams, onOpenChat }: { teams: Team[]; onOpenChat?: (teamId: string) => void }) {
   const [input, setInput] = useState("");
   const [entries, setEntries] = useState<DispatchEntry[]>([]);
+  const [batches, setBatches] = useState<{ teams: string[]; parallel: boolean }[]>([]);
+  const [directMode, setDirectMode] = useState(false);
   const [messages, setMessages] = useState<DispatchMessage[]>(loadDispatchHistory);
   const [sending, setSending] = useState(false);
   const [phase, setPhase] = useState<DispatchPhase>("idle");
@@ -190,6 +192,8 @@ function DispatchChat({ teams, onOpenChat }: { teams: Team[]; onOpenChat?: (team
                   status: "working" as DispatchStatus, routed: true, tools: [],
                 }));
               setEntries(newEntries);
+              setBatches([{ teams: routedIds, parallel: routedIds.length > 1 }]);
+              setDirectMode(true);
               setPhase("executing");
               // 해당 팀들에 직접 배분 뱃지 (CPO 거침 표시 없음)
               window.dispatchEvent(new CustomEvent("hq:dispatching", { detail: { teamIds: routedIds } }));
@@ -222,6 +226,8 @@ function DispatchChat({ teams, onOpenChat }: { teams: Team[]; onOpenChat?: (team
               ));
             } else if (data.phase === "batch_start") {
               const teamIds = data.teams as string[];
+              // Phase 2: batches state에 누적 → PipelineDAG가 순차/병렬 화살표 렌더
+              setBatches(prev => [...prev, { teams: teamIds, parallel: !!data.parallel }]);
               const teamNames = teamIds.map(id => teams.find(t => t.id === id)?.name || id).join(", ");
               setMessages(prev => [...prev, {
                 role: "agent", text: `${data.parallel ? "⚡ 병렬" : "➡️ 이어받기"} — ${teamNames}`,
@@ -249,6 +255,8 @@ function DispatchChat({ teams, onOpenChat }: { teams: Team[]; onOpenChat?: (team
               setSending(false);
               setPhase("idle");
               setEntries([]);
+              setBatches([]);
+              setDirectMode(false);
             } else if (data.phase === "summarizing") {
               setPhase("summarizing");
             } else if (data.phase === "summary_chunk") {
@@ -283,7 +291,7 @@ function DispatchChat({ teams, onOpenChat }: { teams: Team[]; onOpenChat?: (team
                 }]);
               }
               setSending(false);
-              setTimeout(() => setEntries([]), 3000);
+              setTimeout(() => { setEntries([]); setBatches([]); setDirectMode(false); }, 3000);
             } else if (data.phase === "error") {
               setMessages(prev => [...prev, {
                 role: "agent", text: `❌ ${data.error}`,
@@ -292,6 +300,8 @@ function DispatchChat({ teams, onOpenChat }: { teams: Team[]; onOpenChat?: (team
               setSending(false);
               setPhase("idle");
               setEntries([]);
+              setBatches([]);
+              setDirectMode(false);
             }
           } catch { /* ignore parse errors */ }
         }
@@ -394,8 +404,8 @@ function DispatchChat({ teams, onOpenChat }: { teams: Team[]; onOpenChat?: (team
           </button>
         </div>
       )}
-      {/* 작업 흐름 DAG — 디스패치 중일 때만 노출 */}
-      <PipelineDAG entries={entries} phase={phase} />
+      {/* 작업 흐름 DAG — 디스패치 중일 때만 노출, batches 있으면 순차/병렬 시각화 */}
+      <PipelineDAG entries={entries} phase={phase} batches={batches.length > 0 ? batches : undefined} directMode={directMode} />
       {/* 히스토리 + 진행중 */}
       {(messages.length > 0 || entries.length > 0) && (
         <div ref={scrollRef} className="max-h-[220px] overflow-y-auto space-y-1">

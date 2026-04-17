@@ -77,6 +77,9 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
   // ── 진행 추적 ──
   interface ToolEntry { tool: string; summary: string; done: boolean; error: boolean; resultSummary?: string }
   const [activeTools, setActiveTools] = useState<Record<string, ToolEntry>>({});
+  // Phase 3: Artifact 수집 — Write/Edit tool_use 감지해서 생성/수정 파일 추적
+  interface Artifact { toolId: string; tool: string; filePath: string; preview: string; done: boolean; error: boolean }
+  const [artifacts, setArtifacts] = useState<Record<string, Artifact>>({});
   const [toolLog, setToolLog] = useState<{time: string; text: string}[]>([]);  // 이번 작업 툴 타임라인
   const [elapsed, setElapsed] = useState(0);                      // 경과 초
   const [lastDone, setLastDone] = useState<{ sec: number; tools: number } | null>(null); // 완료 정보
@@ -246,6 +249,16 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
           setToolStatus(summary);
           setToolLog(prev => [...prev, { time: new Date().toLocaleTimeString("ko-KR", { hour12: false }), text: summary }]);
           setActiveTools(prev => ({ ...prev, [data.tool_id || data.tool]: { tool: data.tool, summary, done: false, error: false } }));
+          // Phase 3: Write/Edit → Artifact 수집
+          const tn = (data.tool as string) || "";
+          const input = (data.input as Record<string, unknown>) || {};
+          const fp = (input.file_path as string) || (input.filePath as string) || "";
+          if (fp && /^(Write|Edit|NotebookEdit|MultiEdit)$/.test(tn)) {
+            const content = (input.content as string) || (input.new_string as string) || "";
+            const preview = content.split("\n").slice(0, 3).join("\n").slice(0, 160);
+            const toolId = (data.tool_id as string) || data.tool;
+            setArtifacts(prev => ({ ...prev, [toolId]: { toolId, tool: tn, filePath: fp, preview, done: false, error: false } }));
+          }
         } else if (data.type === "tool_result") {
           setActiveTools(prev => {
             const key = data.tool_id || data.tool;
@@ -253,12 +266,20 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
             if (!cur) return prev;
             return { ...prev, [key]: { ...cur, done: true, error: !!data.is_error, resultSummary: data.summary } };
           });
+          // Artifact 완료/오류 표시
+          setArtifacts(prev => {
+            const key = (data.tool_id as string) || data.tool;
+            const cur = prev[key];
+            if (!cur) return prev;
+            return { ...prev, [key]: { ...cur, done: true, error: !!data.is_error } };
+          });
           setToolLog(prev => [...prev, { time: new Date().toLocaleTimeString("ko-KR", { hour12: false }), text: (data.summary as string) || "" }]);
         } else if (data.type === "ai_start") {
           setStreaming(true);
           setToolStatus("");
           setToolLog([]);
           setActiveTools({});
+          setArtifacts({});
           setLastDone(null);
           setElapsed(0);
           startTimeRef.current = Date.now();
@@ -747,6 +768,32 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
                           <span className="truncate">{t.summary}</span>
                         </div>
                       ))}
+                    </div>
+                  )}
+                  {/* Phase 3: 생성/수정된 파일 (Artifact 카드) */}
+                  {Object.keys(artifacts).length > 0 && (
+                    <div className="mt-1 mb-1.5 p-1.5 rounded border border-cyan-800/40 bg-cyan-950/20">
+                      <div className="text-[10px] text-cyan-300/80 mb-1 font-mono">
+                        📁 생성/수정 파일 {Object.keys(artifacts).length}개
+                      </div>
+                      <div className="space-y-0.5">
+                        {Object.values(artifacts).slice(0, 8).map(a => {
+                          const fname = a.filePath.split("/").pop() || a.filePath;
+                          const dir = a.filePath.slice(0, a.filePath.length - fname.length).replace(/\/$/, "");
+                          return (
+                            <div key={a.toolId} className={`flex items-center gap-1.5 px-1.5 py-0.5 rounded text-[11px] ${
+                              a.error ? "text-red-300" : a.done ? "text-cyan-200" : "text-cyan-400/70"
+                            }`} title={a.filePath + (a.preview ? `\n\n${a.preview}` : "")}>
+                              <span>{a.tool === "Write" ? "✏️" : "📝"}</span>
+                              <span className="font-mono font-bold truncate">{fname}</span>
+                              {dir && <span className="opacity-50 text-[9px] truncate">— {dir}</span>}
+                              <span className="ml-auto shrink-0">
+                                {a.error ? "✕" : a.done ? "✓" : "•"}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   )}
                   {msg.content.trim() === "" ? (

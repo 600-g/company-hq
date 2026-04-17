@@ -1524,25 +1524,17 @@ export default class OfficeScene extends Phaser.Scene {
       if (i >= 4) return;
 
       if (isSolo) {
-        // 의자 — 캐릭 바로 아래(등받이가 뒤로 보이도록), 캐릭이 앉은 자세
-        const chair = this.add.image(0, 12, "chair_back")
-          .setOrigin(0.5, 1).setDepth(51);
-        container.add(chair);
-
-        // 캐릭 (의자 위 +3px = 앉은 느낌)
-        const char = this.add.sprite(0, 3, `char_${charIdx}`, 0)
+        const char = this.add.sprite(0, 0, `char_${charIdx}`, 0)
           .setScale(S).setOrigin(0.5, 0.75).setDepth(52);
         container.add(char);
-        members.push({ char, charIdx, baseX: 0, baseY: 3 });
+        members.push({ char, charIdx, baseX: 0, baseY: 0 });
         return;
       }
 
       const ws = workstations[i];
       const { isTopRow } = ws;
 
-      // Depth: 책상 < 의자 < 캐릭 (캐릭이 의자 등받이 위에 앉은 것처럼 보임)
       const deskDepth = isTopRow ? 50 : 55;
-      const chairDepth = isTopRow ? 51 : 56;
       const charDepth = isTopRow ? 52 : 57;
 
       // 책상 (32x56 short wicker, 캐릭별 개별)
@@ -1551,24 +1543,14 @@ export default class OfficeScene extends Phaser.Scene {
         .setDepth(deskDepth);
       container.add(desk);
 
-      // 의자 — 캐릭 뒤에 등받이가 보이도록 (앉은 느낌)
-      // 윗줄(정면 대각): chair_back 등받이가 캐릭 뒤로
-      // 아랫줄(후면 대각): chair_front 등받이가 캐릭 앞쪽(하단)으로
-      const chairKey = isTopRow ? "chair_back" : "chair_front";
-      const chair = this.add.image(ws.charX, ws.charY + 12, chairKey)
-        .setOrigin(0.5, 1)
-        .setDepth(chairDepth);
-      container.add(chair);
-
       // Character facing toward desk (side-view idle frame)
-      // 의자에 앉은 느낌 — 3px 아래로 (앉은 자세)
-      const char = this.add.sprite(ws.charX, ws.charY + 3, `char_${charIdx}`, ws.facing)
+      const char = this.add.sprite(ws.charX, ws.charY, `char_${charIdx}`, ws.facing)
         .setScale(S).setOrigin(0.5, 0.75)
         .setDepth(charDepth)
         .play(`char_${charIdx}_idle`);
       container.add(char);
 
-      members.push({ char, charIdx, baseX: ws.charX, baseY: ws.charY + 3 });
+      members.push({ char, charIdx, baseX: ws.charX, baseY: ws.charY });
     });
 
     // 노트북 — forEach(책상+캐릭) 뒤에 추가 + 높은 depth로 맨 위에 렌더
