@@ -30,9 +30,10 @@ export interface FurnitureDef {
 
 export type FurnitureCategory = "accessory" | "appliance" | "board" | "chair" | "desk" | "divider" | "floor_decor" | "floor_tile" | "partition" | "plant" | "seating" | "storage" | "wall_decor" | "wall_tile";
 
-/** Categories that characters can walk through/over */
+/** Categories that characters can walk through/over
+ *  (wall_tile 제외 — 벽은 통과 불가) */
 export const WALKABLE_CATEGORIES = new Set<FurnitureCategory>([
-  "chair", "seating", "floor_tile", "wall_tile", "wall_decor", "floor_decor", "accessory",
+  "chair", "seating", "floor_tile", "wall_decor", "floor_decor", "accessory",
 ]);
 
 export const FURNITURE_CATEGORIES: { id: FurnitureCategory; label: string }[] = [

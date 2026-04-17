@@ -337,9 +337,24 @@ async def handle_chat(
             # ── 세션 관리 액션 ─────────────────────────────
             if action == "switch_session":
                 target = msg.get("session_id")
+                if target and target != current_sid:
+                    # E3: 기존 세션의 agentStatus 스냅샷 저장 (working/tool/working_since 등)
+                    try:
+                        snap = dict(AGENT_STATUS.get(team_id, {}))
+                        if snap:
+                            sessions_store.set_session_meta(team_id, current_sid, "agentStatus", snap)
+                    except Exception:
+                        pass
                 if target and sessions_store.switch_session(team_id, target):
                     current_sid = target
                     manager.set_ws_session(ws, current_sid)
+                    # 새 세션으로 전환 — 저장된 스냅샷 있으면 복원
+                    try:
+                        restored = sessions_store.get_session_meta(team_id, current_sid, "agentStatus")
+                        if isinstance(restored, dict):
+                            AGENT_STATUS[team_id] = dict(restored)
+                    except Exception:
+                        pass
                     try:
                         await ws.send_json({
                             "type": "history_sync",
@@ -490,6 +505,12 @@ async def handle_chat(
                         f"{_trading_ctx}\n"
                         f"───── 데이터 끝 ─────"
                     )
+
+            # 세션 = 작업 단위: 새 프롬프트마다 job 시작
+            try:
+                sessions_store.start_job(team_id, current_sid, prompt)
+            except Exception:
+                pass
 
             async def _stream_claude():
                 try:
@@ -653,6 +674,8 @@ async def handle_chat(
             # 취소 체크 — stream이 먼저 끝나도 cancel 플래그가 있으면 저장하지 않음
             if cancelled or _cancel_flags.get(team_id):
                 _cancel_flags.pop(team_id, None)
+                try: sessions_store.end_job(team_id, current_sid, "cancelled")
+                except Exception: pass
                 # _do_cancel이 이미 히스토리 정리 + history_sync 전송함
                 await manager.send_json(
                     team_id,
@@ -663,6 +686,8 @@ async def handle_chat(
 
             # 정상 완료 — 빈 응답 시 정확한 원인 안내 (rate limit 오진 방지)
             if not full_response.strip():
+                try: sessions_store.end_job(team_id, current_sid, "failed", "빈 응답")
+                except Exception: pass
                 full_response = "⚠️ 응답이 비어있습니다. 세션이 초기화되었거나 일시적 오류일 수 있어요. 다시 메시지를 보내주세요."
                 await manager.send_json(
                     team_id,
@@ -671,6 +696,8 @@ async def handle_chat(
                 )
 
             manager.add_message(team_id, "ai", full_response, current_sid)
+            try: sessions_store.end_job(team_id, current_sid, "done")
+            except Exception: pass
             _update_status(team_id, working=False, tool=None)
             _log_activity(team_id, f"✅ 완료 ({len(full_response)}자)")
             try:

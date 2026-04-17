@@ -867,10 +867,26 @@ async def run_claude(
     # ── stdout stream-json 라인 파싱 ──
     # 각 라인이 JSON 이벤트: system/assistant/user/rate_limit_event/result
     # readline()으로 안전하게 처리 (FD 누수 없음).
+    # idle timeout: 300초간 이벤트 없으면 강제 kill + 에러 surface.
+    _IDLE_TIMEOUT_SEC = 300
     seen_tool_ids: dict[str, str] = {}  # tool_use_id -> tool_name
     final_result_text = ""
+    timed_out = False
     while True:
-        raw_line = await proc.stdout.readline()
+        try:
+            raw_line = await asyncio.wait_for(proc.stdout.readline(), timeout=_IDLE_TIMEOUT_SEC)
+        except asyncio.TimeoutError:
+            logger.error("[%s] idle timeout %ds — 강제 종료", team_id, _IDLE_TIMEOUT_SEC)
+            try:
+                os.killpg(proc.pid, 9)
+            except (ProcessLookupError, PermissionError, OSError):
+                pass
+            timed_out = True
+            yield {
+                "kind": "text",
+                "content": f"\n⚠️ 응답 대기 {_IDLE_TIMEOUT_SEC}초 초과 — 작업이 멈춰있어 강제 종료했습니다. 다시 시도해주세요.",
+            }
+            break
         if not raw_line:
             break
         line = raw_line.decode("utf-8", errors="replace").strip()
@@ -992,7 +1008,21 @@ async def run_claude(
     # final_result_text는 assistant text 합과 동일하므로 별도 yield 불필요
     _ = final_result_text  # silence lint
 
-    await proc.wait()
+    # timed_out = True 인 경우 이미 kill 완료. wait는 빠르게 return.
+    try:
+        await asyncio.wait_for(proc.wait(), timeout=5)
+    except asyncio.TimeoutError:
+        logger.warning("[%s] proc.wait timeout — 강제 kill 재시도", team_id)
+        try:
+            os.killpg(proc.pid, 9)
+        except (ProcessLookupError, PermissionError, OSError):
+            pass
+        try:
+            await asyncio.wait_for(proc.wait(), timeout=3)
+        except asyncio.TimeoutError:
+            pass
+    if timed_out:
+        _log_error_lesson(team_id, f"idle timeout after {_IDLE_TIMEOUT_SEC}s")
 
     # 서브에이전트 포함 프로세스 그룹 전체 종료 (유령 방지)
     try:

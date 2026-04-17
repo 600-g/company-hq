@@ -3,7 +3,8 @@
     "id": "default",
     "title": "기본 세션",
     "createdAt": 1776403861126,
-    "updatedAt": 1776403861126,
-    "messageCount": 0
+    "updatedAt": 1776425523159,
+    "messageCount": 0,
+    "claudeSessionId": "bb24156f-24b9-472b-8aec-23203ada1099"
   }
 ]

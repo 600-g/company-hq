@@ -272,6 +272,29 @@ async def _agent_watchdog():
 async def _start_watchdog():
     global _watchdog_task
     _watchdog_task = asyncio.create_task(_agent_watchdog())
+    # F2: 10분마다 diag cleanup — closed 이슈 → 리포트 상태 resolved + 이미지 삭제
+    asyncio.create_task(_diag_cleanup_loop())
+    # 서버 재시작 시 running 상태 job들을 interrupted로 마킹 (이전 세션 크래시 복구)
+    try:
+        import sessions_store as _ss
+        n = _ss.sweep_interrupted_jobs()
+        if n > 0:
+            logger.info("[startup] %d interrupted jobs swept on boot", n)
+    except Exception as e:
+        logger.warning("sweep_interrupted_jobs failed: %s", e)
+
+
+async def _diag_cleanup_loop():
+    """10분 간격 자동 cleanup (GH closed 이슈 기준)"""
+    await asyncio.sleep(60)  # 부팅 후 1분 기다렸다가 시작
+    while True:
+        try:
+            r = await diag_cleanup()
+            if r.get("resolved", 0) > 0:
+                logger.info("[diag_cleanup] %d resolved, %d images deleted", r["resolved"], r["deleted_images"])
+        except Exception as e:
+            logger.warning("[diag_cleanup] error: %s", e)
+        await asyncio.sleep(600)  # 10분
 
 # ── 서버 종료 시 Claude 프로세스 정리 ────────────
 # NOTE: startup cleanup 제거됨 — uvicorn reload 시 활성 세션 kill 방지
@@ -982,10 +1005,82 @@ async def diag_logs(limit: int = 200, level: str | None = None) -> dict:
     return {"ok": True, "rows": rows[-limit:]}
 
 
+def _find_duplicate_report(title: str, note: str) -> dict | None:
+    """최근 open 리포트 중 title 또는 note 유사도가 높으면 반환 (F4)"""
+    if not os.path.exists(DIAG_REPORTS_PATH):
+        return None
+    try:
+        from difflib import SequenceMatcher
+        t_norm = (title or "").strip().lower()
+        n_norm = (note or "").strip().lower()
+        if not t_norm and not n_norm:
+            return None
+        with open(DIAG_REPORTS_PATH, "r", encoding="utf-8") as f:
+            lines = f.readlines()[-40:]  # 최근 40개만
+        for line in reversed(lines):
+            try:
+                r = json.loads(line)
+            except Exception:
+                continue
+            if r.get("status") == "resolved":
+                continue
+            if not r.get("issue_number"):
+                continue
+            # title 유사도 or note substring
+            t2 = (r.get("title") or "").strip().lower()
+            n2 = (r.get("note") or "").strip().lower()
+            if t_norm and t2:
+                ratio = SequenceMatcher(None, t_norm, t2).ratio()
+                if ratio >= 0.75:
+                    return r
+            if n_norm and n2 and len(n_norm) > 10 and len(n2) > 10:
+                if n_norm in n2 or n2 in n_norm:
+                    return r
+                r2 = SequenceMatcher(None, n_norm, n2).ratio()
+                if r2 >= 0.8:
+                    return r
+    except Exception:
+        pass
+    return None
+
+
 @app.post("/api/diag/report")
 async def diag_report(body: dict) -> dict:
     """버그 리포트 제출: {title, note, logs, meta, attachments}"""
     priority = "urgent" if str(body.get("priority", "")).lower() == "urgent" else "normal"
+    # F4: 중복 탐지 — 최근 open 리포트와 유사하면 기존 이슈에 코멘트만 추가
+    dup = _find_duplicate_report(str(body.get("title", "")), str(body.get("note", "")))
+    if dup and dup.get("issue_number"):
+        try:
+            import subprocess
+            gh = "/opt/homebrew/bin/gh" if os.path.exists("/opt/homebrew/bin/gh") else "gh"
+            user = str((body.get("meta") or {}).get("user", ""))[:80]
+            att = (body.get("attachments") or [])[:5]
+            att_md = ("\n\n**추가 첨부**:\n" + "\n".join(f"- `{p}`" for p in att)) if att else ""
+            comment = (
+                f"**추가 리포트** from {user} @ {datetime.utcnow().isoformat()}\n\n"
+                f"{str(body.get('note',''))[:1500]}{att_md}"
+            )
+            subprocess.run(
+                [gh, "issue", "comment", str(dup["issue_number"]), "--body", comment],
+                cwd="/Users/600mac/Developer/my-company/company-hq",
+                capture_output=True, text=True, timeout=10,
+            )
+            # 로컬에도 dup 레코드 남김
+            _append_jsonl(DIAG_REPORTS_PATH, {
+                "ts": datetime.utcnow().isoformat(),
+                "title": f"[dup → #{dup['issue_number']}] {body.get('title', '')}"[:200],
+                "note": str(body.get("note", ""))[:1000],
+                "user": user,
+                "priority": priority,
+                "status": "merged",
+                "merged_into": dup["issue_number"],
+                "merged_into_url": dup.get("issue_url"),
+                "attachments": [str(p)[:500] for p in att],
+            })
+            return {"ok": True, "issue_url": dup.get("issue_url"), "merged": True, "merged_into": dup["issue_number"]}
+        except Exception as e:
+            logger.warning("dup merge failed: %s", e)
     row = {
         "ts": datetime.utcnow().isoformat(),
         "title": str(body.get("title", ""))[:200],
@@ -1030,7 +1125,84 @@ async def diag_report(body: dict) -> dict:
             issue_url = (cp.stdout or "").strip().splitlines()[-1] if cp.stdout else None
     except Exception as e:
         logger.warning("gh issue create failed: %s", e)
+    # F1: jsonl 레코드에 issue_url + issue_number + status 삽입 (마지막 라인 교체)
+    try:
+        import re as _re
+        m = _re.search(r"/issues/(\d+)", issue_url or "")
+        issue_number = int(m.group(1)) if m else None
+        row["issue_url"] = issue_url
+        row["issue_number"] = issue_number
+        row["status"] = "open"
+        # 파일의 마지막 라인이 방금 쓴 것이므로 교체
+        with open(DIAG_REPORTS_PATH, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+        if lines:
+            lines[-1] = json.dumps(row, ensure_ascii=False) + "\n"
+            with open(DIAG_REPORTS_PATH, "w", encoding="utf-8") as f:
+                f.writelines(lines)
+    except Exception as e:
+        logger.warning("report issue linking failed: %s", e)
     return {"ok": True, "issue_url": issue_url}
+
+
+# ── F2: 자동 cleanup — closed 이슈의 첨부 이미지 + 상태 마킹 ──
+@app.post("/api/diag/cleanup")
+async def diag_cleanup() -> dict:
+    """gh CLI로 closed 이슈 확인 → 연결된 report status=resolved + 첨부 이미지 삭제"""
+    import subprocess
+    gh = "/opt/homebrew/bin/gh" if os.path.exists("/opt/homebrew/bin/gh") else "gh"
+    try:
+        cp = subprocess.run(
+            [gh, "issue", "list", "--repo", "600-g/company-hq", "--state", "closed",
+             "--label", "bug,auto", "--limit", "200", "--json", "number"],
+            cwd="/Users/600mac/Developer/my-company/company-hq",
+            capture_output=True, text=True, timeout=15,
+        )
+        if cp.returncode != 0:
+            return {"ok": False, "error": "gh list failed", "stderr": cp.stderr[:300]}
+        closed_numbers = {int(item["number"]) for item in json.loads(cp.stdout or "[]")}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+    if not closed_numbers:
+        return {"ok": True, "resolved": 0, "deleted_images": 0}
+
+    # 리포트 파일 순회 → status 업데이트 + 첨부 이미지 삭제
+    resolved_count = 0
+    deleted_images = 0
+    try:
+        with open(DIAG_REPORTS_PATH, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+    except FileNotFoundError:
+        lines = []
+
+    new_lines: list[str] = []
+    for line in lines:
+        try:
+            row = json.loads(line)
+        except Exception:
+            new_lines.append(line)
+            continue
+        num = row.get("issue_number")
+        if num and num in closed_numbers and row.get("status") != "resolved":
+            row["status"] = "resolved"
+            row["resolved_at"] = datetime.utcnow().isoformat()
+            resolved_count += 1
+            # 첨부 이미지 삭제
+            for p in row.get("attachments", []):
+                try:
+                    if p and os.path.exists(p):
+                        os.unlink(p)
+                        deleted_images += 1
+                except Exception:
+                    pass
+            row["attachments"] = []  # 경로도 비움
+        new_lines.append(json.dumps(row, ensure_ascii=False) + "\n")
+
+    if resolved_count > 0:
+        with open(DIAG_REPORTS_PATH, "w", encoding="utf-8") as f:
+            f.writelines(new_lines)
+    return {"ok": True, "resolved": resolved_count, "deleted_images": deleted_images}
 
 
 @app.get("/api/diag/reports")
@@ -1079,10 +1251,26 @@ async def get_furniture_overrides() -> dict:
 
 @app.put("/api/furniture/overrides")
 async def update_furniture_overrides(body: dict) -> dict:
-    """관리자 전용 — 가구 카탈로그 오버라이드 전체 덮어쓰기."""
+    """관리자 전용 — 가구 카탈로그 오버라이드 전체 덮어쓰기.
+
+    🛡 안전장치: 기존 override가 있고 새 payload가 `confirm_replace` 없이
+    기존보다 50% 이상 적으면 거부 (실수 덮어쓰기 방지).
+    """
     overrides = body.get("overrides") or {}
     if not isinstance(overrides, dict):
         return {"ok": False, "error": "overrides 객체 필요"}
+    # 기존 데이터와 비교
+    prev = _load_furniture_overrides()
+    prev_count = len(prev.get("overrides", {})) if isinstance(prev.get("overrides"), dict) else 0
+    new_count = len(overrides)
+    # 10개 이상 있던 상태에서 절반 이하로 줄어드는 경우만 안전장치 (정상 사용엔 영향 없음)
+    if prev_count >= 10 and new_count < prev_count * 0.5 and not body.get("confirm_replace"):
+        return {
+            "ok": False,
+            "error": "기존 override보다 크게 적음 — 실수 덮어쓰기 방지. 맞다면 confirm_replace:true 추가",
+            "prev_count": prev_count,
+            "new_count": new_count,
+        }
     cleaned: dict = {
         "version": 1,
         "overrides": overrides,
@@ -1128,6 +1316,7 @@ async def get_agents_status():
         ws_status = AGENT_STATUS.get(tid, {})
         agents.append({
             "id": tid,
+            "team_id": tid,  # alias — 클라가 team_id로 참조하는 케이스 호환
             "name": team.get("name", ""),
             "emoji": team.get("emoji", ""),
             "char_state": char["state"],
@@ -1135,6 +1324,7 @@ async def get_agents_status():
             "action": char["action"],
             "working": ws_status.get("working", False),
             "tool": ws_status.get("tool"),
+            "working_since": ws_status.get("working_since"),  # 경과초 계산용
             "last_active": ws_status.get("last_active"),
         })
     return {
@@ -2012,12 +2202,10 @@ async def smart_dispatch(body: dict):
                 if tid in team_map:
                     routed_steps.append({"team": tid, "prompt": clean_message})
             if routed_steps:
-                yield f"data: {json.dumps({'phase': 'routing', 'message': f'📌 멘션 감지 → {len(routed_steps)}팀 직접 실행'})}\n\n"
-                # Phase 2로 바로 점프 (아래 코드에서 처리)
+                # 멘션 = 직접 전달. CPO 라우팅/요약 없음.
+                # 프론트가 "CPO 흐름"이 아닌 "직접 전달" 모드로 UI 간소화할 수 있게 direct=True 플래그.
                 routed_team_ids = [s["team"] for s in routed_steps]
-                skipped_teams = [t for t in available_teams if t["id"] not in routed_team_ids]
-                yield f"data: {json.dumps({'phase': 'routed', 'teams': routed_team_ids, 'skipped': [t['id'] for t in skipped_teams]})}\n\n"
-                yield f"data: {json.dumps({'phase': 'executing', 'message': f'⚡ {len(routed_steps)}팀 작업 중...'})}\n\n"
+                yield f"data: {json.dumps({'phase': 'direct_dispatch', 'direct': True, 'teams': routed_team_ids, 'message': f'→ {len(routed_steps)}팀에 직접 전달'})}\n\n"
 
                 team_results: dict[str, dict] = {}
 
@@ -2074,9 +2262,9 @@ async def smart_dispatch(body: dict):
                     yield f"data: {json.dumps({'phase': 'summary_chunk', 'content': txt})}\n\n"
 
                 DISPATCH_TASKS[dispatch_id]["status"] = "done"
-                meta = {"routed_count": len(routed_steps), "total_teams": len(available_teams), "mention": True}
-                yield f"data: {json.dumps({'phase': 'done', 'dispatch_id': dispatch_id, 'summary': all_results_text.strip(), 'team_results': team_results, 'meta': meta})}\n\n"
-                await _cpo_close(all_results_text.strip())
+                meta = {"routed_count": len(routed_steps), "total_teams": len(available_teams), "mention": True, "direct": True}
+                yield f"data: {json.dumps({'phase': 'done', 'dispatch_id': dispatch_id, 'direct': True, 'summary': all_results_text.strip(), 'team_results': team_results, 'meta': meta})}\n\n"
+                # 멘션 직접 전달은 CPO 히스토리 오염 금지 — _cpo_close 호출 생략
                 return
 
         # 카테고리별 팀 목록 구성
@@ -2909,8 +3097,18 @@ async def create_session_api(team_id: str, body: dict | None = None):
 
 
 @app.delete("/api/sessions/{team_id}/{session_id}")
-async def delete_session_api(team_id: str, session_id: str):
+async def delete_session_api(team_id: str, session_id: str, force: bool = False):
     import sessions_store
+    # 진행 중 삭제 방지 — claude 프로세스 살아있거나 세션이 active면 거부 (force=true 시 우회)
+    if not force:
+        # AGENT_PIDS 체크 — 이 팀의 claude가 돌고 있으면 현재 active 세션 삭제 금지
+        active_sid = sessions_store.get_active_session_id(team_id)
+        if AGENT_PIDS.get(team_id) and session_id == active_sid:
+            return {
+                "ok": False,
+                "error": "세션이 작업 중입니다. 취소 후 삭제하거나 force=true 파라미터로 강제 삭제하세요.",
+                "running": True,
+            }
     ok = sessions_store.delete_session(team_id, session_id)
     if not ok:
         return {"ok": False, "error": "세션을 찾을 수 없습니다"}

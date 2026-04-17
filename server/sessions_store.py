@@ -285,6 +285,90 @@ def delete_session(team_id: str, session_id: str) -> bool:
     return True
 
 
+def set_session_meta(team_id: str, session_id: str, key: str, value: object) -> bool:
+    """세션에 임의 메타 필드 저장 (agentStatus 스냅샷, job 상태 등)."""
+    meta = _load_meta(team_id)
+    target = next((s for s in meta if s["id"] == session_id), None)
+    if not target:
+        return False
+    target[key] = value
+    target["updatedAt"] = int(time.time() * 1000)
+    _save_meta(team_id, meta)
+    return True
+
+
+def get_session_meta(team_id: str, session_id: str, key: str) -> object | None:
+    meta = _load_meta(team_id)
+    target = next((s for s in meta if s["id"] == session_id), None)
+    return target.get(key) if target else None
+
+
+# ── 작업(Job) 단위 상태 추적 ──
+# 세션 = 대화 스레드, job = 하나의 프롬프트 실행 단위.
+# 세션 메타에 `lastJob` 필드로 저장: { id, prompt, status, startedAt, endedAt?, interrupted? }
+def start_job(team_id: str, session_id: str, prompt: str) -> str:
+    """새 job 시작 — 세션에 기록. job_id 반환."""
+    import uuid as _u
+    job_id = _u.uuid4().hex[:12]
+    job = {
+        "id": job_id,
+        "prompt": prompt[:500],
+        "status": "running",
+        "startedAt": int(time.time() * 1000),
+    }
+    set_session_meta(team_id, session_id, "lastJob", job)
+    return job_id
+
+
+def end_job(team_id: str, session_id: str, status: str = "done", note: str | None = None) -> None:
+    """job 종료 — status: done | cancelled | failed | interrupted"""
+    job = get_session_meta(team_id, session_id, "lastJob")
+    if not isinstance(job, dict):
+        return
+    job["status"] = status
+    job["endedAt"] = int(time.time() * 1000)
+    if note:
+        job["note"] = note[:500]
+    set_session_meta(team_id, session_id, "lastJob", job)
+
+
+def mark_job_interrupted_for_team(team_id: str) -> None:
+    """서버 크래시/재시작 시 running 상태인 job들을 interrupted로 마킹"""
+    meta = _load_meta(team_id)
+    changed = False
+    for s in meta:
+        j = s.get("lastJob")
+        if isinstance(j, dict) and j.get("status") == "running":
+            j["status"] = "interrupted"
+            j["endedAt"] = int(time.time() * 1000)
+            changed = True
+    if changed:
+        _save_meta(team_id, meta)
+
+
+def sweep_interrupted_jobs() -> int:
+    """서버 부팅 시 전체 팀 순회해 running→interrupted 정리. 복구된 개수 반환."""
+    if not _BASE_DIR.exists():
+        return 0
+    count = 0
+    for team_dir in _BASE_DIR.iterdir():
+        if not team_dir.is_dir():
+            continue
+        team_id = team_dir.name
+        meta = _load_meta(team_id)
+        changed = False
+        for s in meta:
+            j = s.get("lastJob")
+            if isinstance(j, dict) and j.get("status") == "running":
+                j["status"] = "interrupted"
+                j["endedAt"] = int(time.time() * 1000)
+                changed = True
+                count += 1
+        if changed:
+            _save_meta(team_id, meta)
+    return count
+
+
 def rename_session(team_id: str, session_id: str, new_title: str) -> bool:
     meta = _load_meta(team_id)
     target = next((s for s in meta if s["id"] == session_id), None)

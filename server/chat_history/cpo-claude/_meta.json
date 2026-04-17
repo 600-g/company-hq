@@ -3,8 +3,37 @@
     "id": "default",
     "title": "기본 세션",
     "createdAt": 1776400068837,
-    "updatedAt": 1776419842026,
-    "messageCount": 43,
-    "claudeSessionId": "403ef1a9-4212-45e7-b26a-fa02f4be55d0"
+    "updatedAt": 1776437687307,
+    "messageCount": 13,
+    "resumable": true,
+    "agentStatus": {
+      "working": false,
+      "tool": null,
+      "last_active": null,
+      "last_prompt": "",
+      "working_since": null
+    },
+    "claudeSessionId": "403ef1a9-4212-45e7-b26a-fa02f4be55d0",
+    "lastJob": {
+      "id": "a7b0798a49a7",
+      "prompt": "그거 말고 콘텐츠랩 캐릭옆에있는 의자에 캐릭터 올라갈수있게 수정해야지",
+      "status": "done",
+      "startedAt": 1776437237609,
+      "endedAt": 1776437393676
+    }
+  },
+  {
+    "id": "799b35b3-a0cb-415c-afe5-299649b69850",
+    "title": "세션 2",
+    "createdAt": 1776426767121,
+    "updatedAt": 1776436719326,
+    "messageCount": 0,
+    "agentStatus": {
+      "working": false,
+      "tool": null,
+      "last_active": null,
+      "last_prompt": "",
+      "working_since": null
+    }
   }
 ]

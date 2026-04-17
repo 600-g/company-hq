@@ -16,8 +16,12 @@ import DeployGuideCard from "./chat/DeployGuideCard";
 import ToastContainer from "./Toast";
 import OfficeEditor from "./OfficeEditor";
 import BugReportDialog from "./BugReportDialog";
+import BugReportsList from "./BugReportsList";
+import WorkingStatusBar from "./WorkingStatusBar";
+import DiagLogsViewer from "./DiagLogsViewer";
 import TerminalPanel from "./chat/TerminalPanel";
 import BuildStampInline from "./BuildStampInline";
+import PipelineDAG from "./PipelineDAG";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { gsap } from "gsap";
@@ -175,6 +179,22 @@ function DispatchChat({ teams, onOpenChat }: { teams: Team[]; onOpenChat?: (team
                 teamId: "cpo-claude", emoji: "💭", name: "CPO 토론",
               }]);
             }
+            // ── 직접 전달 (단일 또는 복수 @mention, CPO 생략) ──
+            if (data.phase === "direct_dispatch") {
+              const allTeams = teams.filter(t => t.id !== "server-monitor" && t.id !== "cpo-claude");
+              const routedIds: string[] = data.teams || [];
+              const newEntries: DispatchEntry[] = allTeams
+                .filter(t => routedIds.includes(t.id))  // direct 모드는 routed만 보이게
+                .map(t => ({
+                  teamId: t.id, emoji: t.emoji, name: t.name, text: "",
+                  status: "working" as DispatchStatus, routed: true, tools: [],
+                }));
+              setEntries(newEntries);
+              setPhase("executing");
+              // 해당 팀들에 직접 배분 뱃지 (CPO 거침 표시 없음)
+              window.dispatchEvent(new CustomEvent("hq:dispatching", { detail: { teamIds: routedIds } }));
+              continue;
+            }
             if (data.phase === "routing") {
               setPhase("routing");
             } else if (data.phase === "routed") {
@@ -188,6 +208,8 @@ function DispatchChat({ teams, onOpenChat }: { teams: Team[]; onOpenChat?: (team
               }));
               setEntries(newEntries);
               setPhase("executing");
+              // A3: 라우팅된 팀들에게 "배분 중" 뱃지 (window event → Office 메인 수신 후 Phaser 적용)
+              window.dispatchEvent(new CustomEvent("hq:dispatching", { detail: { teamIds: routedIds } }));
             } else if (data.phase === "team_done") {
               // 팀 완료 알림 → 상태 업데이트
               const doneTeams: string[] = data.teams;
@@ -233,23 +255,34 @@ function DispatchChat({ teams, onOpenChat }: { teams: Team[]; onOpenChat?: (team
               setSummaryText(prev => prev + data.content);
             } else if (data.phase === "done") {
               setPhase("done");
-              // 팀별 결과를 엔트리에 반영
-              const teamResults: Record<string, { status: string; result: string }> = data.team_results || {};
+              const teamResults: Record<string, { status: string; result: string; team_name?: string; emoji?: string }> = data.team_results || {};
               setEntries(prev => prev.map(e => {
                 const r = teamResults[e.teamId];
                 return r ? { ...e, text: r.result, status: r.status as DispatchStatus } : e;
               }));
-              // CPO 통합 보고를 히스토리에 추가 (효율 메타 포함)
-              const meta = data.meta;
-              const metaLine = meta
-                ? `\n\n───\n⚡ haiku 라우팅 → ${meta.routed_count}/${meta.total_teams}팀 실행 → ${meta.summary_model === "opus" ? "opus 통합" : "직통 전달"}`
-                : "";
-              setMessages(prev => [...prev, {
-                role: "agent", text: data.summary + metaLine,
-                teamId: "cpo-claude", emoji: "🧠", name: "CPO 통합보고",
-              }]);
+              // 직접 전달 모드: CPO 통합보고 없이 각 팀 결과를 팀 이름으로 표시
+              if (data.direct) {
+                Object.entries(teamResults).forEach(([tid, r]) => {
+                  const team = teams.find(t => t.id === tid);
+                  setMessages(prev => [...prev, {
+                    role: "agent", text: r.result || "(빈 응답)",
+                    teamId: tid,
+                    emoji: r.emoji || team?.emoji || "🤖",
+                    name: r.team_name || team?.name || tid,
+                  }]);
+                });
+              } else {
+                // CPO 라우팅 모드: 통합 보고 표시
+                const meta = data.meta;
+                const metaLine = meta
+                  ? `\n\n───\n⚡ haiku 라우팅 → ${meta.routed_count}/${meta.total_teams}팀 실행 → ${meta.summary_model === "opus" ? "opus 통합" : "직통 전달"}`
+                  : "";
+                setMessages(prev => [...prev, {
+                  role: "agent", text: data.summary + metaLine,
+                  teamId: "cpo-claude", emoji: "🧠", name: "CPO 통합보고",
+                }]);
+              }
               setSending(false);
-              // 지연 후 엔트리 정리
               setTimeout(() => setEntries([]), 3000);
             } else if (data.phase === "error") {
               setMessages(prev => [...prev, {
@@ -361,6 +394,8 @@ function DispatchChat({ teams, onOpenChat }: { teams: Team[]; onOpenChat?: (team
           </button>
         </div>
       )}
+      {/* 작업 흐름 DAG — 디스패치 중일 때만 노출 */}
+      <PipelineDAG entries={entries} phase={phase} />
       {/* 히스토리 + 진행중 */}
       {(messages.length > 0 || entries.length > 0) && (
         <div ref={scrollRef} className="max-h-[220px] overflow-y-auto space-y-1">
@@ -437,7 +472,7 @@ function DispatchChat({ teams, onOpenChat }: { teams: Team[]; onOpenChat?: (team
           {/* TM AgentHandoffCard — 피드백/재작업 지원 */}
           {pendingHandoff && (
             <AgentHandoffCard
-              fromTo="CPO → 팀들"
+              fromTo={`🧠 CPO → ${pendingHandoff.steps.map(s => `${s.emoji} ${s.team_name}`).join(", ")} (${pendingHandoff.steps.length})`}
               summary={pendingHandoff.steps.map(s => `${s.emoji} ${s.team_name}: ${s.prompt}`).join("\n")}
               artifacts={[]}
               isPendingReview
@@ -1156,15 +1191,16 @@ export interface AuthUser {
 }
 
 // ── 좌측 슬라이드 메뉴 ──────────────────────────────
-function SideMenu({ user, open, onClose, onLogout, pushEnabled, onTogglePush, onOpenBugReport }: {
+function SideMenu({ user, open, onClose, onLogout, pushEnabled, onTogglePush, onOpenBugReport, onOpenDiagLogs, onOpenBugList }: {
   user: AuthUser; open: boolean; onClose: () => void; onLogout: () => void;
-  pushEnabled?: boolean; onTogglePush?: () => void; onOpenBugReport?: () => void;
+  pushEnabled?: boolean; onTogglePush?: () => void; onOpenBugReport?: () => void; onOpenDiagLogs?: () => void; onOpenBugList?: () => void;
 }) {
   const [editingName, setEditingName] = useState(false);
   const [newName, setNewName] = useState(user.nickname);
   const [codeRole, setCodeRole] = useState("member");
   const [generatedCode, setGeneratedCode] = useState("");
   const [showCodeGen, setShowCodeGen] = useState(false);
+  const [bugGroupOpen, setBugGroupOpen] = useState(false);
 
   const saveName = () => {
     // 로컬만 변경 (서버 API 추가 시 연동)
@@ -1226,20 +1262,7 @@ function SideMenu({ user, open, onClose, onLogout, pushEnabled, onTogglePush, on
 
         {/* 메뉴 항목 */}
         <div className="flex-1 overflow-y-auto p-2 space-y-1">
-          {/* ── 버그 리포트 (상단) ── */}
-          <button
-            onClick={() => { onClose(); onOpenBugReport?.(); }}
-            className="w-full flex items-center justify-between px-3 py-2 text-[13px] text-red-300 hover:bg-red-900/20 rounded transition-colors"
-            title="현재 화면 이슈 기록 + 최근 로그 자동 첨부 + 스크린샷 붙여넣기"
-          >
-            <span className="flex items-center gap-2">
-              <span className="text-base leading-none">🐛</span>
-              버그 리포트
-            </span>
-            <span className="text-[13px] text-gray-600">스샷 첨부</span>
-          </button>
-          <div className="h-px bg-[#1a2040] my-2" />
-          {/* ── 외부 및 팀메이커 ── */}
+          {/* ── 외부 및 팀메이커 (상단) ── */}
           <div className="px-2 py-1 flex items-center gap-1.5">
             <h3 className="text-[13px] text-gray-600 uppercase tracking-wider">외부 및 팀메이커</h3>
             <span className="text-[13px] font-bold px-1 py-[1px] rounded bg-yellow-500/20 border border-yellow-500/40 text-yellow-300 tracking-wider">BETA</span>
@@ -1266,22 +1289,51 @@ function SideMenu({ user, open, onClose, onLogout, pushEnabled, onTogglePush, on
             </span>
             <span className="text-[13px] text-gray-600">↗ 새 탭</span>
           </button>
+
           <div className="h-px bg-[#1a2040] my-2" />
-          {/* 알림 설정 */}
-          {onTogglePush && (
-            <button onClick={onTogglePush}
-              className="w-full flex items-center justify-between px-3 py-2 text-[13px] text-gray-400 hover:bg-[#1a2040] rounded transition-colors">
-              <span className="flex items-center gap-2">
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
-                </svg>
-                푸시 알림
-              </span>
-              <span className={`w-8 h-4 rounded-full relative transition-colors ${pushEnabled ? "bg-yellow-500" : "bg-gray-700"}`}>
-                <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${pushEnabled ? "right-0.5" : "left-0.5"}`} />
-              </span>
-            </button>
+
+          {/* ── 버그 도구 (토글로 묶음) ── */}
+          <button
+            onClick={() => setBugGroupOpen(v => !v)}
+            className="w-full flex items-center justify-between px-3 py-2 text-[13px] text-gray-300 hover:bg-[#1a2040] rounded transition-colors"
+          >
+            <span className="flex items-center gap-2">
+              <span className="text-base leading-none">🐛</span>
+              버그 도구
+            </span>
+            <span className={`text-[11px] text-gray-500 transition-transform inline-block ${bugGroupOpen ? "rotate-90" : ""}`}>▸</span>
+          </button>
+          {bugGroupOpen && (
+            <div className="ml-4 space-y-0.5 border-l border-[#1a2040] pl-2">
+              <button
+                onClick={() => { onClose(); onOpenBugReport?.(); }}
+                className="w-full flex items-center justify-between px-3 py-1.5 text-[12px] text-red-300 hover:bg-red-900/20 rounded transition-colors"
+                title="현재 화면 이슈 기록 + 스크린샷 붙여넣기"
+              >
+                <span className="flex items-center gap-2"><span>🐛</span>버그 리포트</span>
+                <span className="text-[11px] text-gray-600">스샷</span>
+              </button>
+              <button
+                onClick={() => { onClose(); onOpenDiagLogs?.(); }}
+                className="w-full flex items-center justify-between px-3 py-1.5 text-[12px] text-gray-300 hover:bg-[#1a2040] rounded transition-colors"
+                title="실시간 진단 로그"
+              >
+                <span className="flex items-center gap-2"><span>📋</span>실시간 로그</span>
+                <span className="text-[11px] text-gray-600">3초</span>
+              </button>
+              {user.permissions.level >= 4 && (
+                <button
+                  onClick={() => { onClose(); onOpenBugList?.(); }}
+                  className="w-full flex items-center justify-between px-3 py-1.5 text-[12px] text-gray-300 hover:bg-[#1a2040] rounded transition-colors"
+                  title="버그 리포트 목록 + GH 이슈 자동 정리 (관리자)"
+                >
+                  <span className="flex items-center gap-2"><span>🗂</span>버그 리스트</span>
+                  <span className="text-[11px] text-gray-600">관리자</span>
+                </button>
+              )}
+            </div>
           )}
+
           {/* 권한 관리 (오너/관리자만) */}
           {user.permissions.level >= 4 && (
             <>
@@ -1318,8 +1370,22 @@ function SideMenu({ user, open, onClose, onLogout, pushEnabled, onTogglePush, on
           )}
         </div>
 
-        {/* 하단 */}
-        <div className="p-3 border-t border-[#1a2040]">
+        {/* 하단 고정 — 푸시 알림 + 로그아웃 */}
+        <div className="p-2 border-t border-[#1a2040] space-y-1">
+          {onTogglePush && (
+            <button onClick={onTogglePush}
+              className="w-full flex items-center justify-between px-3 py-2 text-[13px] text-gray-400 hover:bg-[#1a2040] rounded transition-colors">
+              <span className="flex items-center gap-2">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
+                </svg>
+                푸시 알림
+              </span>
+              <span className={`w-8 h-4 rounded-full relative transition-colors ${pushEnabled ? "bg-yellow-500" : "bg-gray-700"}`}>
+                <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${pushEnabled ? "right-0.5" : "left-0.5"}`} />
+              </span>
+            </button>
+          )}
           <button onClick={onLogout}
             className="w-full px-3 py-2 text-[13px] text-orange-400/70 hover:text-orange-400 hover:bg-orange-500/10 rounded transition-colors text-left">
             로그아웃
@@ -1382,12 +1448,15 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
   const [terminalState, setTerminalState] = useState<{ open: boolean; cmd: string; cwd: string }>({ open: false, cmd: "", cwd: "" });
   const [guideTeamId, setGuideTeamId] = useState<string | null>(null);
   const [specPopup, setSpecPopup] = useState<{ teamId: string; x: number; y: number } | null>(null);
-  const [specInfo, setSpecInfo] = useState<{ model: string; session_id: string | null; has_session: boolean; msg_count?: number; last_preview?: string } | null>(null);
+  const [specInfo, setSpecInfo] = useState<{ model: string; session_id: string | null; has_session: boolean; msg_count?: number; last_preview?: string; working?: boolean; tool?: string | null; working_since?: number | null } | null>(null);
+  const [specNow, setSpecNow] = useState(Date.now());
   const [specBusy, setSpecBusy] = useState(false);
   const [specTest, setSpecTest] = useState<{ state: "idle" | "running" | "pass" | "fail"; message: string; ms?: number }>({ state: "idle", message: "" });
   const [confirmDialog, setConfirmDialog] = useState<{ message: string; onConfirm: () => void } | null>(null);
   const [showMenu, setShowMenu] = useState(false);
   const [showBugReport, setShowBugReport] = useState(false);
+  const [showDiagLogs, setShowDiagLogs] = useState(false);
+  const [showBugList, setShowBugList] = useState(false);
   const [openWindows, setOpenWindows] = useState<string[]>([]); // 열린 팀 id 목록
   const [focusedWindow, setFocusedWindow] = useState<string>("");
   const [mobileChat, setMobileChat] = useState<string | null>(null); // 모바일 채팅 팀 id
@@ -1640,6 +1709,14 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
     };
     window.addEventListener("hq:walk", onWalk);
     window.addEventListener("hq:open-terminal", onOpenTerm);
+    // A3: DispatchChat → 팀별 "배분 중" 뱃지
+    const onDispatching = (e: Event) => {
+      const d = (e as CustomEvent).detail as { teamIds?: string[] } | undefined;
+      d?.teamIds?.forEach(id => {
+        try { gameRef.current?.showStatusBadge(id, "dispatching"); } catch {}
+      });
+    };
+    window.addEventListener("hq:dispatching", onDispatching);
     // 디버그 — 콘솔에서 __hqTestWalk("from-team-id", "to-team-id") 호출 가능
     (window as unknown as { __hqTestWalk?: (f: string, t: string) => void }).__hqTestWalk = (f: string, t: string) => {
       window.dispatchEvent(new CustomEvent("hq:walk", { detail: { from: f, to: t } }));
@@ -1647,6 +1724,7 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
     return () => {
       window.removeEventListener("hq:walk", onWalk);
       window.removeEventListener("hq:open-terminal", onOpenTerm);
+      window.removeEventListener("hq:dispatching", onDispatching);
     };
   }, []);
 
@@ -1938,22 +2016,32 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
   useEffect(() => {
     if (!specPopup) { setSpecInfo(null); setSpecTest({ state: "idle", message: "" }); return; }
     let cancelled = false;
-    Promise.all([
+    const load = () => Promise.all([
       fetch(`${getApiBase()}/api/agents/${specPopup.teamId}/info`).then(r => r.json()).catch(() => null),
       fetch(`${getApiBase()}/api/chat/${specPopup.teamId}/history`).then(r => r.json()).catch(() => null),
-    ]).then(([info, hist]) => {
+      fetch(`${getApiBase()}/api/agents/status`).then(r => r.json()).catch(() => null),
+    ]).then(([info, hist, status]) => {
       if (cancelled) return;
       const msgs = hist?.messages || [];
       const last = msgs[msgs.length - 1];
+      const statusList = Array.isArray(status) ? status : (status?.agents || status?.rows || []);
+      const mine = statusList.find((s: { team_id?: string }) => s.team_id === specPopup.teamId);
       setSpecInfo({
         model: info?.model ?? "sonnet",
         session_id: info?.session_id ?? null,
         has_session: !!info?.has_session,
         msg_count: msgs.length,
         last_preview: last?.content?.slice(0, 80),
+        working: !!mine?.working,
+        tool: mine?.tool ?? null,
+        working_since: mine?.working_since ?? null,
       });
     });
-    return () => { cancelled = true; };
+    load();
+    // 진행 상황 3초마다 갱신 + 경과 초 1초
+    const poll = setInterval(load, 3000);
+    const tick = setInterval(() => setSpecNow(Date.now()), 1000);
+    return () => { cancelled = true; clearInterval(poll); clearInterval(tick); };
   }, [specPopup]);
 
   // URL ?team=xxx 파라미터로 팀 채팅 자동 열기 (알림 클릭 시)
@@ -2122,6 +2210,29 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
                 </div>
               </div>
               <div className="flex flex-col gap-0.5 text-[12px] text-gray-400">
+                {/* 진행 상황 (B3) — working일 때만 강조 */}
+                {specInfo?.working && (
+                  <div className="rounded bg-green-500/15 border border-green-500/40 px-1.5 py-1 mb-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className="relative flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-green-400" />
+                      </span>
+                      <span className="text-[11px] font-bold text-green-300">작업 중</span>
+                      {specInfo.working_since && (
+                        <span className="text-[10px] text-green-200/80 font-mono ml-auto">
+                          {(() => {
+                            const s = Math.floor((specNow - specInfo.working_since * 1000) / 1000);
+                            return s >= 60 ? `${Math.floor(s / 60)}분 ${s % 60}초` : `${s}초`;
+                          })()}
+                        </span>
+                      )}
+                    </div>
+                    {specInfo.tool && (
+                      <div className="text-[10px] text-green-100/80 mt-0.5 truncate">🛠 {specInfo.tool}</div>
+                    )}
+                  </div>
+                )}
                 {t.repo && <div className="flex gap-1"><span className="text-gray-600">repo</span><span className="truncate text-gray-300">{t.repo}</span></div>}
                 {t.status && <div className="flex gap-1"><span className="text-gray-600">상태</span><span className="text-gray-300">{t.status}</span></div>}
                 {typeof specInfo?.msg_count === "number" && (
@@ -2235,8 +2346,11 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
           </>
         );
       })()}
-      {user && onLogout && <SideMenu user={user} open={showMenu} onClose={() => setShowMenu(false)} onLogout={onLogout} pushEnabled={pushEnabled} onTogglePush={togglePush} onOpenBugReport={() => setShowBugReport(true)} />}
+      {user && onLogout && <SideMenu user={user} open={showMenu} onClose={() => setShowMenu(false)} onLogout={onLogout} pushEnabled={pushEnabled} onTogglePush={togglePush} onOpenBugReport={() => setShowBugReport(true)} onOpenDiagLogs={() => setShowDiagLogs(true)} onOpenBugList={() => setShowBugList(true)} />}
       <BugReportDialog open={showBugReport} onClose={() => setShowBugReport(false)} />
+      <DiagLogsViewer open={showDiagLogs} onClose={() => setShowDiagLogs(false)} />
+      <BugReportsList open={showBugList} onClose={() => setShowBugList(false)} />
+      <WorkingStatusBar />
       {/* ── 사무실 영역 ── */}
       <div className="flex-1 flex flex-col min-w-0 min-h-0">
         {/* HUD */}
@@ -2336,7 +2450,25 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
         )}
 
         {/* Phaser — 항상 풀 */}
-        <main className={`relative min-h-0 flex-1${(mobileSide || mobileChat) ? " pointer-events-none" : ""}`}>
+        <main
+          className={`relative min-h-0 flex-1${(mobileSide || mobileChat) ? " pointer-events-none" : ""}`}
+          onDragOver={(e) => {
+            if (e.dataTransfer.types.includes("application/hq-new-agent")) {
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "copy";
+            }
+          }}
+          onDrop={(e) => {
+            if (!e.dataTransfer.types.includes("application/hq-new-agent")) return;
+            e.preventDefault();
+            // D2: drop 좌표 저장 후 AddTeamModal 오픈 — 팀 생성 후 해당 위치에 자동 배치
+            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+            const dropX = e.clientX - rect.left;
+            const dropY = e.clientY - rect.top;
+            try { localStorage.setItem("hq-new-agent-drop", JSON.stringify({ x: dropX, y: dropY, ts: Date.now() })); } catch {}
+            setShowAddModal(true);
+          }}
+        >
           {GameComponent ? (
             <GameComponent ref={gameRef} onTeamClick={handleTeamClick} />
           ) : (
@@ -2667,10 +2799,15 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
               </button>
               <button
                 onClick={() => setShowAddModal(true)}
-                className="text-[13px] px-2 py-0.5 bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 rounded hover:bg-yellow-500/20 transition-colors"
-                title="새 팀 추가"
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.setData("application/hq-new-agent", "1");
+                  e.dataTransfer.effectAllowed = "copy";
+                }}
+                className="text-[13px] px-2 py-0.5 bg-yellow-500/10 text-yellow-400 border border-dashed border-yellow-500/40 rounded hover:bg-yellow-500/20 transition-colors cursor-grab active:cursor-grabbing"
+                title="클릭 또는 드래그하여 씬에 배치"
               >
-                + 추가
+                + 드래그 배치
               </button>
             </div>
           </div>

@@ -1,23 +1,20 @@
 {
   "version": 1,
   "overrides": {
-    "floor_cushion_set": {
-      "label": "서류+책상"
-    },
     "filing_cabinet_dark_a": {
       "label": "쇼파(2인)"
-    },
-    "l_desk_brown": {
-      "label": "쇼파(L자)_우측"
     },
     "filing_cabinet_dark_b": {
       "label": "쇼파2"
     },
-    "l_desk_beige": {
-      "label": "쇼파(L자)_좌측"
-    },
     "filing_cabinet_side": {
       "label": "쇼파(1인)"
+    },
+    "l_desk_brown": {
+      "label": "쇼파(L자)_우측"
+    },
+    "l_desk_beige": {
+      "label": "쇼파(L자)_좌측"
     },
     "office_desk_setup_a": {
       "deleted": true
@@ -30,5 +27,5 @@
   "poke_hidden": [],
   "tile_labels": {},
   "tile_hidden": [],
-  "updated_at": "2026-04-17T09:02:32.648680"
+  "updated_at": "2026-04-17T11:23:21.490144"
 }

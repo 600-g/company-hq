@@ -1423,17 +1423,24 @@ export default class OfficeScene extends Phaser.Scene {
   }
 
   private canPlace(gx: number, gy: number, gw: number, gh: number, excludeId?: string): boolean {
+    // 팀 배치 우선순위: 다른 팀만 충돌 — 가구(책상/의자 등)는 팀 아래에 깔리는 걸 허용
     for (let y = gy; y < gy + gh; y++)
       for (let x = gx; x < gx + gw; x++) {
         if (y < 0 || y >= ROWS || x < 0 || x >= COLS) return false;
-        if (this.grid[y][x]) {
-          if (excludeId) {
-            const tg = this.teamGroups.get(excludeId);
-            if (tg && x >= tg.gridX && x < tg.gridX + tg.config.gridW &&
-              y >= tg.gridY && y < tg.gridY + tg.config.gridH) continue;
+        if (!this.grid[y][x]) continue;
+        // 가구만 있는 셀은 팀 배치 허용 (우선순위: 팀 > 가구)
+        if (this.blockedByFurn[y][x]) continue;
+        // 다른 팀 영역인지 확인
+        let blockedByOtherTeam = false;
+        for (const [id, tg] of this.teamGroups) {
+          if (id === excludeId) continue;
+          if (x >= tg.gridX && x < tg.gridX + tg.config.gridW &&
+              y >= tg.gridY && y < tg.gridY + tg.config.gridH) {
+            blockedByOtherTeam = true;
+            break;
           }
-          return false;
         }
+        if (blockedByOtherTeam) return false;
       }
     return true;
   }
@@ -1517,11 +1524,16 @@ export default class OfficeScene extends Phaser.Scene {
       if (i >= 4) return;
 
       if (isSolo) {
-        // 가구는 팀 컨테이너 밖 (envGroup)에 따로 배치됨 — 캐릭만 움직이게
-        const char = this.add.sprite(0, 0, `char_${charIdx}`, 0)
-          .setScale(S).setOrigin(0.5, 0.75);
+        // 의자 — 캐릭 바로 아래(등받이가 뒤로 보이도록), 캐릭이 앉은 자세
+        const chair = this.add.image(0, 12, "chair_back")
+          .setOrigin(0.5, 1).setDepth(51);
+        container.add(chair);
+
+        // 캐릭 (의자 위 +3px = 앉은 느낌)
+        const char = this.add.sprite(0, 3, `char_${charIdx}`, 0)
+          .setScale(S).setOrigin(0.5, 0.75).setDepth(52);
         container.add(char);
-        members.push({ char, charIdx, baseX: 0, baseY: 0 });
+        members.push({ char, charIdx, baseX: 0, baseY: 3 });
         return;
       }
 

@@ -97,7 +97,8 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
   const forceScrollRef = useRef(false);
 
   // ── 세션 관리 상태 ─────────────────────────────────
-  interface SessionMeta { id: string; title: string; createdAt: number; updatedAt: number; messageCount: number; resumable?: boolean }
+  interface SessionJob { id: string; prompt: string; status: "running" | "done" | "cancelled" | "failed" | "interrupted"; startedAt: number; endedAt?: number; note?: string }
+  interface SessionMeta { id: string; title: string; createdAt: number; updatedAt: number; messageCount: number; resumable?: boolean; lastJob?: SessionJob }
   const [sessions, setSessions] = useState<SessionMeta[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [sessionMenuOpen, setSessionMenuOpen] = useState(false);
@@ -455,9 +456,20 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
   const deleteSessionById = useCallback(async (sessionId: string) => {
     if (!confirm("이 세션을 삭제합니다. 대화 내용은 복구되지 않습니다.")) return;
     try {
-      await fetch(`${getApiBase()}/api/sessions/${team.id}/${sessionId}`, { method: "DELETE" });
+      const r0 = await fetch(`${getApiBase()}/api/sessions/${team.id}/${sessionId}`, { method: "DELETE" });
+      const d0 = await r0.json();
+      if (!d0.ok && d0.running) {
+        // 진행 중 — 사용자 확인 후 force 삭제
+        if (confirm("⚠️ 세션이 작업 중입니다. 강제로 취소하고 삭제할까요?")) {
+          await fetch(`${getApiBase()}/api/sessions/${team.id}/${sessionId}?force=true`, { method: "DELETE" });
+        } else {
+          return;
+        }
+      } else if (!d0.ok) {
+        window.dispatchEvent(new CustomEvent("hq:toast", { detail: { text: `❌ ${d0.error || "삭제 실패"}`, variant: "error", center: true, ms: 2500 } }));
+        return;
+      }
       await refreshSessions();
-      // 현재 보고 있던 세션이면 active로 전환
       if (sessionId === activeSessionIdRef.current) {
         const r = await fetch(`${getApiBase()}/api/sessions/${team.id}`);
         const d = await r.json();
@@ -601,22 +613,36 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
           {sessions.length === 0 && (
             <div className="px-2 py-3 text-gray-500 text-center">세션 없음</div>
           )}
-          {sessions.map(s => (
-            <button
-              key={s.id}
-              onClick={() => { switchSession(s.id); setSessionMenuOpen(false); }}
-              className={`w-full text-left px-2 py-1.5 rounded hover:bg-[#1a1a2e] ${s.id === activeSessionId ? "bg-[#1a1a2e] border border-yellow-400/30" : ""}`}
-            >
-              <div className="flex items-center justify-between gap-2">
-                <span className="truncate text-gray-200 flex items-center gap-1">
-                  {s.resumable && <span title="이전 대화 이어할 수 있음">🔗</span>}
-                  {s.title}
-                </span>
-                <span className="text-[13px] text-gray-500 shrink-0">{s.messageCount}</span>
-              </div>
-              <div className="text-[13px] text-gray-600">{new Date(s.updatedAt).toLocaleString("ko-KR", { hour12: false, year: "2-digit", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</div>
-            </button>
-          ))}
+          {sessions.map(s => {
+            const job = s.lastJob;
+            const jobBadge = !job ? null
+              : job.status === "running" ? { color: "bg-green-500/20 text-green-300 border-green-400/40", label: "⚙ 작업 중" }
+              : job.status === "interrupted" ? { color: "bg-orange-500/20 text-orange-300 border-orange-400/40", label: "⚠ 중단됨" }
+              : job.status === "failed" ? { color: "bg-red-500/20 text-red-300 border-red-400/40", label: "✕ 실패" }
+              : job.status === "cancelled" ? { color: "bg-gray-500/20 text-gray-400 border-gray-400/40", label: "취소됨" }
+              : null;  // done은 뱃지 없음
+            return (
+              <button
+                key={s.id}
+                onClick={() => { switchSession(s.id); setSessionMenuOpen(false); }}
+                className={`w-full text-left px-2 py-1.5 rounded hover:bg-[#1a1a2e] ${s.id === activeSessionId ? "bg-[#1a1a2e] border border-yellow-400/30" : ""}`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="truncate text-gray-200 flex items-center gap-1">
+                    {s.resumable && <span title="이전 대화 이어할 수 있음">🔗</span>}
+                    {s.title}
+                  </span>
+                  <span className="text-[13px] text-gray-500 shrink-0">{s.messageCount}</span>
+                </div>
+                <div className="flex items-center gap-1 mt-0.5">
+                  {jobBadge && (
+                    <span className={`text-[9px] font-bold px-1.5 py-[1px] rounded border ${jobBadge.color}`}>{jobBadge.label}</span>
+                  )}
+                  <span className="text-[13px] text-gray-600">{new Date(s.updatedAt).toLocaleString("ko-KR", { hour12: false, year: "2-digit", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+                </div>
+              </button>
+            );
+          })}
           <button
             onClick={() => { createSession(); setSessionMenuOpen(false); }}
             className="w-full text-left px-2 py-1.5 mt-1 rounded border border-yellow-500/40 bg-yellow-500/10 text-yellow-300 hover:bg-yellow-500/20"
@@ -684,7 +710,7 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
                   })()
                 : msg.type === "handoff" && msg.handoff
                 ? <AgentHandoffCard
-                    fromTo="CPO → 팀들"
+                    fromTo={`🧠 CPO → ${msg.handoff.steps.map(s => `${s.emoji} ${s.team_name}`).join(", ")} (${msg.handoff.steps.length})`}
                     summary={msg.handoff.steps.map(s => `${s.emoji} ${s.team_name}: ${s.prompt}`).join("\n")}
                     artifacts={[]}
                     isPendingReview

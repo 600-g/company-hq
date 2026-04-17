@@ -13,7 +13,7 @@ export interface OfficeGameHandle {
   walkCharToTeam: (fromId: string, toId: string) => void;
   walkCharToSpot: (teamId: string, gx: number, gy: number) => void;
   walkCharHome: (teamId: string) => void;
-  showStatusBadge: (teamId: string, status: "complete" | "error") => void;
+  showStatusBadge: (teamId: string, status: "complete" | "error" | "dispatching") => void;
 }
 
 interface Props {
@@ -69,8 +69,8 @@ const OfficeGame = forwardRef<OfficeGameHandle, Props>(({ onTeamClick }, ref) =>
       const scene = sceneRef.current as { walkCharHome?: (id: string) => void } | null;
       scene?.walkCharHome?.(teamId);
     },
-    showStatusBadge: (teamId: string, status: "complete" | "error") => {
-      const scene = sceneRef.current as { showStatusBadge?: (id: string, s: "complete" | "error") => void } | null;
+    showStatusBadge: (teamId: string, status: "complete" | "error" | "dispatching") => {
+      const scene = sceneRef.current as { showStatusBadge?: (id: string, s: "complete" | "error" | "dispatching") => void } | null;
       scene?.showStatusBadge?.(teamId, status);
     },
     getTeamFloor: (teamId: string) => {

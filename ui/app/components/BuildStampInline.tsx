@@ -7,7 +7,10 @@ interface Props {
 }
 
 const TOAST_KEY = "hq-cache-clear-toast";
+// 지울 localStorage 키 (레이아웃/좌표/히스토리 등 재구축 가능한 것만).
+// hq-auth-token / hq-auth-user / nickname 등 로그인 상태는 절대 건드리지 않음.
 const LS_KEYS = ["hq-build-id", "hq-floor-teams-order", "hq-chat-history", "hq-floor-layout", "hq-arcade-pos", "hq-server-pos"];
+const AUTH_KEEP_KEYS = ["hq-auth-token", "hq-auth-user"];
 
 export default function BuildStampInline({ appVersion, showBrand = false }: Props) {
   const [build, setBuild] = useState<string | null>(null);
@@ -47,7 +50,13 @@ export default function BuildStampInline({ appVersion, showBrand = false }: Prop
     } catch {}
   }, []);
 
-  const buildLabel = !build ? "…" : build === "PLACEHOLDER" ? "dev" : build.split("-")[0];
+  // 형식: <sha8> · <timestamp 뒤 4자리>  → 같은 커밋 재배포도 배포마다 숫자 바뀜
+  const buildLabel = !build ? "…" : build === "PLACEHOLDER" ? "dev" : (() => {
+    const parts = build.split("-");
+    const sha = parts[0];
+    const ts = parts[1] || "";
+    return ts ? `${sha}·${ts.slice(-4)}` : sha;
+  })();
   const tone =
     buildLabel === "dev" ? "text-yellow-500/70"
     : buildLabel === "…" ? "text-gray-700"
@@ -56,8 +65,20 @@ export default function BuildStampInline({ appVersion, showBrand = false }: Prop
   const clearAllCaches = async () => {
     if (clearing) return;
     setClearing(true);
-    let lsCleared = 0, cachesCleared = 0, swUnreg = 0;
+    let lsCleared = 0, cachesCleared = 0, swUnreg = 0, authKept = 0;
     try {
+      // 1) 로그인 유지: 보존 키 스냅샷
+      const preserved: Record<string, string> = {};
+      try {
+        for (const k of AUTH_KEEP_KEYS) {
+          const v = localStorage.getItem(k);
+          if (v !== null) { preserved[k] = v; authKept++; }
+        }
+      } catch {}
+      setStatus("🔐 로그인 보존");
+      await new Promise(r => setTimeout(r, 150));
+
+      // 2) localStorage 정리 (보존 키 제외)
       try {
         LS_KEYS.forEach(k => {
           if (localStorage.getItem(k) !== null) {
@@ -66,6 +87,10 @@ export default function BuildStampInline({ appVersion, showBrand = false }: Prop
           }
         });
       } catch {}
+      setStatus(`🧹 LocalStorage · ${lsCleared}`);
+      await new Promise(r => setTimeout(r, 200));
+
+      // 3) Cache Storage
       try {
         if ("caches" in window) {
           const ks = await caches.keys();
@@ -73,6 +98,10 @@ export default function BuildStampInline({ appVersion, showBrand = false }: Prop
           await Promise.all(ks.map(k => caches.delete(k)));
         }
       } catch {}
+      setStatus(`💾 Cache Storage · ${cachesCleared}`);
+      await new Promise(r => setTimeout(r, 200));
+
+      // 4) Service Worker
       try {
         if ("serviceWorker" in navigator) {
           const regs = await navigator.serviceWorker.getRegistrations();
@@ -80,11 +109,20 @@ export default function BuildStampInline({ appVersion, showBrand = false }: Prop
           await Promise.all(regs.map(r => r.unregister()));
         }
       } catch {}
-      const summary = `LS:${lsCleared} · Cache:${cachesCleared} · SW:${swUnreg}`;
-      setStatus(summary);
+      setStatus(`⚙️ Service Worker · ${swUnreg}`);
+      await new Promise(r => setTimeout(r, 200));
+
+      // 5) 로그인 복원 (SW unregister가 localStorage 건드릴 수 있어 재기록)
+      try {
+        for (const [k, v] of Object.entries(preserved)) {
+          if (localStorage.getItem(k) !== v) localStorage.setItem(k, v);
+        }
+      } catch {}
+
+      const summary = `로그인 유지:${authKept} · LS:${lsCleared} · Cache:${cachesCleared} · SW:${swUnreg}`;
+      setStatus(`✅ 완료`);
       try { sessionStorage.setItem(TOAST_KEY, `✅ 캐시 정리됨 — ${summary}`); } catch {}
-      // 잠깐 보여준 뒤 리로드
-      await new Promise(r => setTimeout(r, 1200));
+      await new Promise(r => setTimeout(r, 500));
       location.replace(`${location.pathname}?cb=${Date.now()}`);
     } finally {
       setClearing(false);
