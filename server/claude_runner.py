@@ -862,6 +862,22 @@ async def run_claude(
     except Exception as _ctx_err:
         logger.warning(f"[{team_id}] 컨텍스트 주입 실패 (무시): {_ctx_err}")
 
+    # ── Sprint 8: 정책(policies.md) 자동 주입 ──
+    # 에이전트가 회사 정책/코드 규칙/금지사항을 매번 숙지하게 함.
+    try:
+        pol_path = Path(__file__).parent / "policies.md"
+        if pol_path.exists():
+            pol_content = pol_path.read_text(encoding="utf-8")
+            system_prompt = (
+                f"{system_prompt}\n\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"🛡 회사 정책/규칙 (server/policies.md — 작업 전 필독, 위배 금지)\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"{pol_content}"
+            )
+    except Exception as _pol_err:
+        logger.warning(f"[{team_id}] policies.md 로드 실패 (무시): {_pol_err}")
+
     # ── SOP 자동 주입 (단, 단순 인사/한줄 질문은 스킵하여 속도 향상) ──
     _prompt_len = len(prompt.strip())
     _is_simple = _prompt_len < 80 and "\n" not in prompt.strip()
@@ -890,6 +906,52 @@ async def run_claude(
                 )
     except Exception as _sop_err:
         logger.warning(f"[{team_id}] SOP 로드 실패 (무시): {_sop_err}")
+
+    # ── Phase 업그레이드: REFERENCES 자동 주입 (팀메이커 selectReferences 패턴) ──
+    # 프롬프트 키워드에 맞는 레퍼런스 최대 3개를 시스템 프롬프트에 부착.
+    try:
+        if not _is_simple and team_id in ("frontend-team", "backend-team", "design-team"):
+            refs_dir = Path(__file__).parent / "references"
+            picked: list[str] = []
+            prompt_l = prompt.lower()
+            # 항상 프론트엔드 팀엔 Next.js/Tailwind/shadcn 기본
+            if team_id == "frontend-team":
+                for r in ("nextjs-app-router", "tailwind-v4", "shadcn-ui"):
+                    p = refs_dir / f"{r}.md"
+                    if p.exists() and r not in picked:
+                        picked.append(r)
+            # 키워드 매칭 (auth/api/react)
+            kw_map = {
+                "auth-patterns": ("로그인", "인증", "회원가입", "auth", "login", "signup", "session", "jwt"),
+                "api-patterns": ("api", "엔드포인트", "endpoint", "서버", "rest", "crud", "백엔드"),
+                "react-patterns": ("react", "컴포넌트", "component", "state", "훅", "hook"),
+            }
+            for r, kws in kw_map.items():
+                if len(picked) >= 3:
+                    break
+                if any(k in prompt_l for k in kws):
+                    p = refs_dir / f"{r}.md"
+                    if p.exists() and r not in picked:
+                        picked.append(r)
+            picked = picked[:3]
+            if picked:
+                parts = []
+                for r in picked:
+                    try:
+                        parts.append(f"### {r}\n\n" + (refs_dir / f"{r}.md").read_text(encoding="utf-8"))
+                    except Exception:
+                        pass
+                if parts:
+                    system_prompt += (
+                        "\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                        "📚 관련 레퍼런스 (server/references/)\n"
+                        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                        + "\n\n".join(parts)
+                    )
+                    logger.info("[%s] references 주입: %s", team_id, ", ".join(picked))
+    except Exception as _ref_err:
+        logger.warning(f"[{team_id}] references 로드 실패 (무시): {_ref_err}")
+
     cmd.extend(["--append-system-prompt", system_prompt])
 
     # ── 모델 + 프롬프트 + stream-json ──

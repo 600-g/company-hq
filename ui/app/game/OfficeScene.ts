@@ -336,6 +336,12 @@ export default class OfficeScene extends Phaser.Scene {
     if (this.dragTarget) return;
     // 편집 중(Undo/Redo/Import/Export/Reset 직후)엔 폴링 스킵
     if (typeof window !== "undefined" && (window.__hqEditingUntil ?? 0) > Date.now()) return;
+    // 걷기 중인 캐릭이 있으면 rebuild 스킵 — "덜덜떨면서 날라감" 방지
+    for (const [, tg] of this.teamGroups) {
+      for (const m of tg.members) {
+        if (m.char?.getData("walking") || m.char?.getData("walkout")) return;
+      }
+    }
     try {
       const resp = await fetch(`${this.apiBase}/api/layout/positions`).then(r => r.json());
       if (!resp.ok || !resp.positions) return;
@@ -358,16 +364,29 @@ export default class OfficeScene extends Phaser.Scene {
       tg.members.forEach(m => {
         this.tweens.killTweensOf(m.char);
         if (m.bubble) { m.bubble.destroy(); m.bubble = undefined; }
-        // walkout=true (walkCharToSpot으로 외출)인 캐릭만 명시적 destroy.
-        // 신규 팀/아직 container.add 전인 char를 잘못 destroy하는 부작용 방지.
-        if (m.char.getData && m.char.getData("walkout") === true && !m.char.parentContainer) {
-          try { m.char.destroy(); } catch {}
+        // walkout OR walking 중이던 캐릭 전부 destroy (잔상/할루시네이션 방지).
+        // 컨테이너 안이든 밖이든 무조건 명시적 제거.
+        if (m.char?.getData) {
+          const walkout = m.char.getData("walkout") === true;
+          const walking = m.char.getData("walking") === true;
+          if (walkout || walking) {
+            try { m.char.destroy(); } catch {}
+          }
         }
       });
       if (tg.workGlow) { this.tweens.killTweensOf(tg.workGlow); }
       tg.container.destroy();
     });
     this.teamGroups.clear();
+    // 추가 안전망: 씬에 남아있는 orphan 캐릭 스프라이트 전부 제거 (parentContainer null + walking/walkout flag)
+    this.children.getChildren().slice().forEach(obj => {
+      const anyObj = obj as Phaser.GameObjects.GameObject & { getData?: (k: string) => unknown; parentContainer?: unknown };
+      if (!anyObj.getData) return;
+      const isOrphan = anyObj.getData("walkout") === true || anyObj.getData("walking") === true;
+      if (isOrphan && !anyObj.parentContainer) {
+        try { (obj as Phaser.GameObjects.GameObject).destroy(); } catch {}
+      }
+    });
 
     // 그리드 초기화
     this.grid = Array.from({ length: ROWS }, () => Array(COLS).fill(false));
@@ -487,6 +506,10 @@ export default class OfficeScene extends Phaser.Scene {
   private renderUserLayout() {
     this.userFurnitureObjs.forEach(o => o.destroy());
     this.userFurnitureObjs = [];
+    // ★ 핵심 버그 수정: floorMap/blockedByFurn 을 매 렌더마다 리셋.
+    // 리셋 안 하면 이전 렌더의 잔재가 남아 삭제된 타일 셀이 계속 walkable.
+    this.floorMap = Array.from({ length: ROWS }, () => Array(COLS).fill(false));
+    this.blockedByFurn = Array.from({ length: ROWS }, () => Array(COLS).fill(false));
     const layout = this.getUserLayout();
     for (const it of layout.items) {
       let obj: Phaser.GameObjects.GameObject | undefined;
@@ -737,9 +760,13 @@ export default class OfficeScene extends Phaser.Scene {
       }
     }
     // TM WALKABLE_CATEGORIES 룰 — 걸을 수 없는 카테고리는 grid 차단
-    // walkableCells 지정 시 해당 offset은 통과 허용
-    // Y-sort 가구 (쇼파/책상/의자 앞옆/코너/서류) = 전체 통과 허용 → row별 z-sort로 뒤/앞 자연 갈림
-    if (!WALKABLE_CATEGORIES.has(def.category) && !isYSortPiece) {
+    // walkableCells 지정 시 해당 offset은 통과 허용 (L-desk의 꺾인 빈 공간 등)
+    // Y-sort 가구:
+    //  · walkableCells 명시: 해당 셀만 통과 (나머지 차단) — 사용자 원래 요청 "L자 꺾인 부분만"
+    //  · walkableCells 없음: 전체 통과 (쇼파·일반 책상 — row 기반 z-sort로 뒤/앞 갈림)
+    const hasExplicitWalkable = (def.walkableCells?.length ?? 0) > 0;
+    const shouldOccupy = !WALKABLE_CATEGORIES.has(def.category) && (!isYSortPiece || hasExplicitWalkable);
+    if (shouldOccupy) {
       const walkSet = new Set((def.walkableCells || []).map(([x, y]) => `${x},${y}`));
       for (let dx = 0; dx < def.widthCells; dx++) {
         for (let dy = 0; dy < def.heightCells; dy++) {
@@ -2078,11 +2105,16 @@ export default class OfficeScene extends Phaser.Scene {
       this.buildFloor(this.currentFloor);
     };
     // 핸드오프 걷기 애니메이션 — Office.tsx가 dispatch 이어받기 감지 시 발생
+    // 중복 트리거 방지: 이미 걷고 있으면 스킵 (덜덜떨림 방지)
     const handleHandoffWalk = (e: Event) => {
       const d = (e as CustomEvent).detail as { from?: string; to?: string };
       if (!d?.from || !d?.to) return;
+      const fromTg = this.teamGroups.get(d.from);
       const toTg = this.teamGroups.get(d.to);
-      if (!toTg) return;
+      if (!fromTg || !toTg) return;
+      // from 팀 캐릭이 이미 걷기 중 OR 외출 중이면 스킵
+      const fromChar = fromTg.members[0]?.char;
+      if (fromChar?.getData("walking") || fromChar?.getData("walkout")) return;
       // 목적지 = 대상 팀 책상 바로 옆 셀 (1칸 좌측, 없으면 우측)
       const tgx = toTg.gridX - 1 >= 0 ? toTg.gridX - 1 : toTg.gridX + toTg.config.gridW;
       const tgy = toTg.gridY + Math.floor(toTg.config.gridH / 2);
@@ -2611,6 +2643,14 @@ export default class OfficeScene extends Phaser.Scene {
   /** TM 스타일 상태 뱃지 — working=초록 / complete=파랑 / error=빨강 */
   private setStatusBadge(tg: TeamGroup, status: "working" | "dispatching" | "complete" | "error" | null) {
     if (tg.statusBadge) { tg.statusBadge.destroy(); tg.statusBadge = undefined; }
+    // 상태 해제 또는 non-active 상태 → 캐릭 바운스/걷기 애니 정지 + baseY 복귀
+    if (status === null || (status !== "working" && status !== "dispatching")) {
+      for (const m of tg.members) {
+        if (!m?.char || m.char.getData("walkout") || m.char.getData("walking")) continue;
+        this.tweens.killTweensOf(m.char);
+        try { m.char.stop(); m.char.setFrame(0); m.char.setY(m.baseY); } catch {}
+      }
+    }
     if (!status) return;
     // 팀메이커 스타일: 밝은 배경 + 둥근 pill + 흰 글씨 + 얕은 그림자
     const colors = { working: 0x22c55e, dispatching: 0xf59e0b, complete: 0x3b82f6, error: 0xef4444 };
@@ -2643,8 +2683,27 @@ export default class OfficeScene extends Phaser.Scene {
       this.tweens.add({
         targets: c, scale: 1.06, duration: 650, yoyo: true, repeat: -1, ease: "Sine.easeInOut",
       });
+      // 캐릭 액션 — working/dispatching 시 제자리 걷기 애니 + 상하 작은 바운스 (타이핑 느낌)
+      for (const m of tg.members) {
+        if (!m?.char || m.char.getData("walkout")) continue;
+        const anim = `char_${m.charIdx}_walk_down`;
+        try { m.char.play(anim); } catch {}
+        // 기존 바운스 트윈 있으면 정지 후 재시작
+        this.tweens.killTweensOf(m.char);
+        this.tweens.add({
+          targets: m.char,
+          y: m.baseY - 2,  // 2px 위로 살짝 부양
+          duration: 260, yoyo: true, repeat: -1, ease: "Sine.easeInOut",
+        });
+      }
     }
     if (status !== "working" && status !== "dispatching") {
+      // 캐릭 액션 정지 — 바운스 트윈 kill + 정지 프레임
+      for (const m of tg.members) {
+        if (!m?.char || m.char.getData("walkout")) continue;
+        this.tweens.killTweensOf(m.char);
+        try { m.char.stop(); m.char.setFrame(0); m.char.setY(m.baseY); } catch {}
+      }
       // 3초 후 자동 페이드아웃 (완료/에러만)
       this.tweens.add({
         targets: c, alpha: 0, duration: 500, delay: 3000,

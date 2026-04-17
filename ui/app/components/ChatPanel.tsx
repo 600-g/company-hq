@@ -561,18 +561,28 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
   // 현재 세션 메타
   const activeSession = sessions.find(s => s.id === activeSessionId) || null;
 
-  // ── 실패 감지: 이어하기 버튼 표시 조건 ─────────────
-  // 1) 진행 중이 아님 + 2) 마지막 메시지가 user로 끝남 (응답 끊김)
-  //    or 마지막 ai 응답에 "⚠️ ... 타임아웃" / "빈 응답" / "오류" 포함
+  // ── 실패 감지: 이어하기 버튼은 "진짜 실패"일 때만 노출 ─────────────
+  // 조건(엄격): 진행중 아님 + 직전 메시지가 명확한 실패 상태
+  //   a) 마지막이 ai + content 완전 비어있음 (응답 없이 종료)
+  //   b) 마지막이 ai + 맨 앞/전체가 특정 에러 이모지 시작 (⚠️/❌/⏱️)
+  //      · "⚠️ 응답 대기 300초 초과" (timeout)
+  //      · "❌ 오류" / "⚠️ 오류" (subprocess fail)
+  //      · "⏱️ 승인 시간 초과"
+  //   c) 마지막이 user (ai_start 전 끊김) — 방어적
+  // 정상 응답에 우연히 "limit"/"exceeded"/"⚠️" 단어 포함돼도 버튼 안 뜨게 함.
   const lastMsg = messages[messages.length - 1];
+  const isExplicitFailure = (txt: string): boolean => {
+    const trimmed = txt.trim();
+    if (!trimmed) return true;  // 빈 응답
+    // 응답 전체(또는 맨 첫 줄)가 에러 prefix로 시작
+    const firstLine = trimmed.split("\n")[0].trim();
+    if (/^(⚠️|❌|⏱️)\s*(오류|응답 대기|승인 시간|서버|타임아웃|timeout|error|failed|빈 응답)/.test(firstLine)) return true;
+    if (/^✅ 작업 완료 \(응답 없음\)$/.test(trimmed)) return true;
+    return false;
+  };
   const needResume = !streaming && !!lastMsg && (
-    lastMsg.type === "user" ||
-    (lastMsg.type === "ai" && (
-      /⚠️.*(타임아웃|limit|hit your limit|exceeded|reset)/i.test(lastMsg.content) ||
-      /응답이 비어있/.test(lastMsg.content) ||
-      lastMsg.content.trim() === "" ||
-      lastMsg.content.trim() === "✅ 작업 완료 (응답 없음)"
-    ))
+    (lastMsg.type === "user") ||
+    (lastMsg.type === "ai" && isExplicitFailure(lastMsg.content))
   );
 
   const handleResume = useCallback(() => {
@@ -668,6 +678,27 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
             onClick={() => { createSession(); setSessionMenuOpen(false); }}
             className="w-full text-left px-2 py-1.5 mt-1 rounded border border-yellow-500/40 bg-yellow-500/10 text-yellow-300 hover:bg-yellow-500/20"
           >＋ 새 세션</button>
+          {/* Sprint 10: 프로젝트 메타 편집 (workingDirectory / githubRepo) */}
+          {activeSession && (
+            <button
+              onClick={async () => {
+                const dir = prompt("📁 workingDirectory (작업 디렉토리 절대경로):", (activeSession as unknown as { workingDirectory?: string }).workingDirectory || team.localPath || "") || "";
+                const repo = prompt("🐙 githubRepo (owner/name):", (activeSession as unknown as { githubRepo?: string }).githubRepo || team.repo || "") || "";
+                try {
+                  await fetch(`${getApiBase()}/api/sessions/${team.id}/${activeSession.id}`, {
+                    method: "PATCH", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ workingDirectory: dir || undefined, githubRepo: repo || undefined }),
+                  });
+                  window.dispatchEvent(new CustomEvent("hq:toast", { detail: { text: `📁 프로젝트 메타 저장됨`, variant: "success" } }));
+                  setSessionMenuOpen(false);
+                } catch {
+                  window.dispatchEvent(new CustomEvent("hq:toast", { detail: { text: `❌ 저장 실패`, variant: "error" } }));
+                }
+              }}
+              className="w-full text-left px-2 py-1.5 mt-1 rounded border border-cyan-500/40 bg-cyan-500/10 text-cyan-300 hover:bg-cyan-500/20 text-[12px]"
+              title="이 세션의 프로젝트 경로/레포 설정"
+            >📁 프로젝트 메타 편집</button>
+          )}
         </div>
       )}
     </div>
@@ -694,6 +725,54 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
             onClick={() => { setMessages([]); onMessages([]); wsRef.current?.send(JSON.stringify({ action: "clear_history", session_id: activeSessionIdRef.current || undefined })); }}
             className={`text-[13px] text-gray-500 hover:text-gray-300 ${team.id === "trading-bot" && onOpenTradingDash ? "" : "ml-auto"}`}
           >🗑 대화 지우기</button>
+          {/* Sprint 9: GitHub push 버튼 — 팀 프로젝트를 원클릭 배포 */}
+          <button
+            onClick={async () => {
+              const msg = prompt("커밋 메시지 (Enter = 기본):", "chore: update from company-hq");
+              if (msg === null) return;
+              const confirmMsg = `${team.name} 레포에 푸시할까요?\n\n커밋: ${msg || "chore: update from company-hq"}`;
+              if (!window.confirm(confirmMsg)) return;
+              try {
+                window.dispatchEvent(new CustomEvent("hq:toast", { detail: { text: `🚀 ${team.name} push 시작`, variant: "info", center: true } }));
+                const res = await fetch(`${getApiBase()}/api/deploy/project/${team.id}/github`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ message: msg || "chore: update from company-hq" }),
+                });
+                const reader = res.body?.getReader();
+                if (!reader) return;
+                const dec = new TextDecoder();
+                let buf = "";
+                let lastPhase = "";
+                while (true) {
+                  const { done, value } = await reader.read();
+                  if (done) break;
+                  buf += dec.decode(value, { stream: true });
+                  const lines = buf.split("\n");
+                  buf = lines.pop() || "";
+                  for (const line of lines) {
+                    if (!line.startsWith("data: ")) continue;
+                    try {
+                      const d = JSON.parse(line.slice(6));
+                      lastPhase = d.phase || "";
+                      if (d.phase === "error") {
+                        window.dispatchEvent(new CustomEvent("hq:toast", { detail: { text: `❌ ${d.step || "push"} 실패: ${d.message?.slice(0, 120) || "?"}`, variant: "error", center: true } }));
+                      } else if (d.phase === "done") {
+                        window.dispatchEvent(new CustomEvent("hq:toast", { detail: { text: `✅ push 완료 — ${d.remote || ""}`, variant: "success", center: true } }));
+                      }
+                    } catch {}
+                  }
+                }
+                if (lastPhase !== "done" && lastPhase !== "error") {
+                  window.dispatchEvent(new CustomEvent("hq:toast", { detail: { text: `⚠️ 푸시 흐름이 중간에 끊김 (${lastPhase})`, variant: "error", center: true } }));
+                }
+              } catch (e) {
+                window.dispatchEvent(new CustomEvent("hq:toast", { detail: { text: `❌ 푸시 실패: ${e instanceof Error ? e.message : "unknown"}`, variant: "error", center: true } }));
+              }
+            }}
+            className="text-[13px] text-green-400 hover:text-green-300 flex items-center gap-1"
+            title="현재 변경사항을 이 팀의 GitHub 레포에 푸시"
+          >🚀 <span className="hidden sm:inline">GitHub push</span></button>
         </div>
 
         {/* 메시지 — 주의: absolute/sticky 금지 (lessons.md 참고), flex-1로 높이 확보 */}
