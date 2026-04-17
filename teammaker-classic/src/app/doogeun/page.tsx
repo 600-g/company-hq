@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 
-// Phaser는 window 필요 → CSR only
-const OfficeGame = dynamic(() => import("@/components/doogeun/OfficeGame"), { ssr: false });
+// Phaser는 window 필요 → CSR only. ui/ 에서 그대로 이식한 실제 OfficeGame 사용.
+const OfficeGame = dynamic(() => import("@/components/doogeun/game/OfficeGame"), { ssr: false });
 
 /**
  * 두근컴퍼니 픽셀 오피스 (Option B Phase 0 스켈레톤)
@@ -34,7 +34,9 @@ export default function DoogeunPage() {
       <p className="text-sm text-gray-400 max-w-md text-center">
         Option B 이식 진행 중. Phaser 기반 픽셀 오피스가 이 라우트에 탑재될 예정.
       </p>
-      {loaded ? <OfficeGame /> : (
+      {loaded ? (
+        <OfficeGame onTeamClick={(teamId: string) => console.log("[doogeun] team click:", teamId)} />
+      ) : (
         <div className="w-[960px] max-w-full h-[540px] border border-[#2a2a4a] rounded-lg bg-[#06060e] flex items-center justify-center">
           <div className="text-xl text-gray-500">로딩...</div>
         </div>
