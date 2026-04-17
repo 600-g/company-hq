@@ -199,6 +199,10 @@ export default class OfficeScene extends Phaser.Scene {
   } | null = null;
   private overlapRect: Phaser.GameObjects.Rectangle | null = null;
   private grid: boolean[][] = [];
+  /** 바닥 타일이 깔린 셀 (검은 영역 차단용) */
+  private floorMap: boolean[][] = [];
+  /** 벽/비걷기 가구로 차단된 셀 — 검은영역 재계산 시 보존 */
+  private blockedByFurn: boolean[][] = [];
   private currentFloor = 1;
   private floorLabel!: Phaser.GameObjects.Text;
   private envGroup!: Phaser.GameObjects.Group;
@@ -354,6 +358,11 @@ export default class OfficeScene extends Phaser.Scene {
       tg.members.forEach(m => {
         this.tweens.killTweensOf(m.char);
         if (m.bubble) { m.bubble.destroy(); m.bubble = undefined; }
+        // walkout=true (walkCharToSpot으로 외출)인 캐릭만 명시적 destroy.
+        // 신규 팀/아직 container.add 전인 char를 잘못 destroy하는 부작용 방지.
+        if (m.char.getData && m.char.getData("walkout") === true && !m.char.parentContainer) {
+          try { m.char.destroy(); } catch {}
+        }
       });
       if (tg.workGlow) { this.tweens.killTweensOf(tg.workGlow); }
       tg.container.destroy();
@@ -362,6 +371,8 @@ export default class OfficeScene extends Phaser.Scene {
 
     // 그리드 초기화
     this.grid = Array.from({ length: ROWS }, () => Array(COLS).fill(false));
+    this.floorMap = Array.from({ length: ROWS }, () => Array(COLS).fill(false));
+    this.blockedByFurn = Array.from({ length: ROWS }, () => Array(COLS).fill(false));
     for (let x = 0; x < COLS; x++) {
       for (let y = 0; y < WALL_H; y++) this.grid[y][x] = true;
     }
@@ -403,11 +414,9 @@ export default class OfficeScene extends Phaser.Scene {
     this.occupyGrid(cpoConfig.gridX, cpoConfig.gridY, cpoConfig.gridW, cpoConfig.gridH, true);
 
     // 사무실 중앙에 고정 가구 (책상 열 + 의자) — 팀 위치 무관 절대 좌표
-    // renderTMLayoutFull 내부 renderUserLayout 완료 후 복도 grid clear가 되도록 끝에 clear 훅 연결
     this.renderTMLayoutFull();
-    // 첫 렌더는 async — 잠시 후 한 번 더 clear (TM 가구 occupyGrid 반영)
-    this.time.delayedCall(200, () => this._clearCorridorGrid());
-    this._clearCorridorGrid();
+    // 비동기 텍스처 로딩 후 한번 더 검은영역 재계산
+    this.time.delayedCall(500, () => this._applyBlackAreaBlock());
   }
 
   /** 복도(하단 3줄) grid 점유 해제 — 에이전트 통과/배치 허용 */
@@ -437,8 +446,7 @@ export default class OfficeScene extends Phaser.Scene {
       if (!layout) return;
       void layout;
       this.renderUserLayout();
-      // TM/유저 가구가 복도 row 점유했다면 통과 허용 위해 해제
-      this._clearCorridorGrid();
+      // renderUserLayout 내부에서 _applyBlackAreaBlock가 돌며 차단/해제 정리됨
     });
   }
 
@@ -454,10 +462,27 @@ export default class OfficeScene extends Phaser.Scene {
     } catch {}
     return { items: [], removed: [] };
   }
+  private _saveLayoutDebounce: ReturnType<typeof setTimeout> | null = null;
   private saveUserLayout(layout: { items: Array<{ type: string; col: number; row: number; rotation?: number; flipX?: boolean }>; removed: string[] }) {
+    const body = { version: 2, ...layout };
     try {
-      localStorage.setItem("hq-user-layout-v1", JSON.stringify({ version: 2, ...layout }));
+      localStorage.setItem("hq-user-layout-v1", JSON.stringify(body));
     } catch {}
+    // 편집 중 플래그 — OfficeEditor 폴링이 서버로 덮어쓰지 않게
+    if (typeof window !== "undefined") {
+      (window as unknown as { __hqEditingUntil?: number }).__hqEditingUntil = Date.now() + 30_000;
+    }
+    // 서버 PUT (디바운스 600ms) — 새로고침 시 복구 방지 + 다른 기기 반영
+    if (this._saveLayoutDebounce) clearTimeout(this._saveLayoutDebounce);
+    this._saveLayoutDebounce = setTimeout(async () => {
+      try {
+        await fetch(`${this.apiBase}/api/layout/office`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ layout: body }),
+        });
+      } catch {}
+    }, 600);
   }
   private renderUserLayout() {
     this.userFurnitureObjs.forEach(o => o.destroy());
@@ -472,8 +497,35 @@ export default class OfficeScene extends Phaser.Scene {
       }
       if (obj) this.userFurnitureObjs.push(obj);
     }
-    // 렌더 후 복도(하단 3줄) grid 점유 해제 — 가구가 복도 점유했더라도 에이전트 통과 허용
-    this._clearCorridorGrid();
+    // 검은 영역 차단 — floor/가구 없는 셀(검은) 차단, 있는 셀 unblock. 복도도 이 규칙 적용.
+    this._applyBlackAreaBlock();
+  }
+
+  /** 타일 기반 walkability 계산 — 양방향 갱신 (async 재렌더 대응).
+   *  규칙: floor 타일 있는 셀 = walkable, 없으면 차단.
+   *  단, 벽/비걷기 가구(blockedByFurn) + 팀 점유 셀은 보존.
+   *  안전 가드: floor 타일이 너무 적으면 레이아웃 미완 상태로 보고 생략 */
+  private _applyBlackAreaBlock() {
+    let covered = 0;
+    for (let y = WALL_H; y < ROWS; y++)
+      for (let x = 0; x < COLS; x++)
+        if (this.floorMap[y]?.[x]) covered++;
+    if (covered < 50) return;
+    // 팀 점유 셀 수집 (보존)
+    const teamCells = new Set<string>();
+    for (const [, tg] of this.teamGroups) {
+      for (let dy = 0; dy < tg.config.gridH; dy++)
+        for (let dx = 0; dx < tg.config.gridW; dx++)
+          teamCells.add(`${tg.gridX + dx},${tg.gridY + dy}`);
+    }
+    for (let y = WALL_H; y < ROWS; y++) {
+      for (let x = 0; x < COLS; x++) {
+        if (teamCells.has(`${x},${y}`)) continue;       // 팀 셀 건드리지 않음
+        if (this.blockedByFurn[y]?.[x]) { this.grid[y][x] = true; continue; }  // 벽/가구 차단
+        // floor 있으면 walkable, 없으면 차단
+        this.grid[y][x] = !this.floorMap[y]?.[x];
+      }
+    }
   }
 
   /** 포켓몬 가구 배치 (pokemon_furniture/ 에셋) — 이름 기반 z-order 분류 + flipX */
@@ -501,6 +553,10 @@ export default class OfficeScene extends Phaser.Scene {
     const baseZ = isFloor ? -10000 : isWall ? 10000 : isTallStack ? 5500 : isStackable ? 5000 : 0;
     fur.setDepth(baseZ + (row + heightCells) * 100 + col * 0.1);
     this.envGroup.add(fur);
+    // 포켓몬 가구/타일 전부 "배치됨"으로 기록 (검은영역 판정용)
+    if (col >= 0 && col < COLS && row >= 0 && row < ROWS && this.floorMap[row]) {
+      this.floorMap[row][col] = true;
+    }
     return fur;
   }
 
@@ -565,6 +621,10 @@ export default class OfficeScene extends Phaser.Scene {
       img.disableInteractive();
       img.setDepth(-10000 + (row + 1) * 100 + col * 0.1);
       this.envGroup.add(img);
+      // 흰 마블 바닥은 floorMap에도 기록 — 사무실 내부 판정
+      if (col >= 0 && col < COLS && row >= 0 && row < ROWS && this.floorMap[row]) {
+        this.floorMap[row][col] = true;
+      }
       return img;
     }
     const standaloneKey = `tm_${id}`;
@@ -638,43 +698,57 @@ export default class OfficeScene extends Phaser.Scene {
     const isChair = (def.category === "chair" || def.category === "seating" || def.isSeat === true) && !isDeskTop;
     const isStackable = (isDeskTop || labelIsStackable)
       || def.category === "appliance" || def.category === "accessory" || def.category === "board";
-    // 쇼파/코너 컴퓨터/서류 책상: 사람이 앞에 보여야 함 (책상류보다 위)
-    //  - 라벨 "쇼파|sofa|코너|corner|서류" 매칭 또는 특정 id
+    // 쇼파/코너/서류/책상/의자 — Y-sort 통합 (top 1줄만 캐릭을 가리고 나머지는 캐릭이 앞)
+    //  - baseZ=3000 (캐릭과 동일 layer) + 앵커 = top+0.5 또는 top+1.5
+    //  - heightCells=1 (1자 쇼파/의자 앞·옆): 앵커 row+0.5 → 캐릭이 항상 앞
+    //  - heightCells>=2 (2인 쇼파/L쇼파/2행 책상/3행 책상 Side Panel): 앵커 row+1.5 → top 1줄만 가림
     const isSeatedPiece = /쇼파|sofa|코너|corner|서류/i.test(def.label || "")
       || id === "corner_workstation" || id === "floor_cushion_set";
+    const isYSortDesk = /\bdesk\b|책상/i.test(def.label || "") || idLower.startsWith("desk_") || idLower === "l_desk_beige" || idLower === "l_desk_brown";
+    // 의자 앞모습/옆모습 (뒤모습 chair_back 은 아래에서 3500으로 별도)
+    const chairLabel = def.label || "";
+    const chairIsBackView = isChair && (/뒤|back/i.test(chairLabel)) && !/구멍/.test(chairLabel);
+    const isYSortChair = isChair && !chairIsBackView;
+    const isYSortPiece = isSeatedPiece || isYSortDesk || isYSortChair;
     let baseZ: number;
-    if (isSeatedPiece) baseZ = -2000;  // 사람(3000)보다 훨씬 뒤
+    if (isYSortPiece) baseZ = 3000;
     else if (isFloorTile2) baseZ = -10000;
-    else if (isFloorDecor) baseZ = -9000;  // 바닥 타일 위, 바닥 소품(가방) 아래
+    else if (isFloorDecor) baseZ = -9000;
     else if (isFloorItem) baseZ = -8000;
     else if (isWallTile) baseZ = -5000;
     else if (isWallDecor) baseZ = -3000;
-    else if (isChair) {
-      // 의자: 뒷모습만 사람 앞에 렌더 (등받이가 사람 가림).
-      // 앞모습·옆모습은 사람 뒤에 렌더 (사람이 앞에 보임).
-      // 주의: JS `\b`는 한글 단어 경계를 인식 못함 — 순수 substring 매칭 사용
-      const lbl2 = def.label || "";
-      const isBackView = (/뒤|back/i.test(lbl2)) && !/구멍/.test(lbl2);
-      baseZ = isBackView ? 3500 : -1000;
-    }
+    else if (isChair && chairIsBackView) baseZ = 3500;  // 등받이 뒤모습 — 항상 사람 가림
     else if (isDivider) baseZ = 10000;
     else if (isTallStack) baseZ = 5500;
     else if (isStackable) baseZ = 5000;
     else baseZ = 0;
-    const finalDepth = baseZ + (row + def.heightCells) * 100 + col * 0.1;
+    // Y-sort 앵커: top 1줄만 덮도록 — heightCells를 최대 2로 clamp
+    const effectiveH = isYSortPiece ? Math.min(def.heightCells, 2) : def.heightCells;
+    const rowAnchor = isYSortPiece ? (row + effectiveH - 0.5) : (row + def.heightCells);
+    const finalDepth = baseZ + rowAnchor * 100 + col * 0.1;
     fur.setDepth(finalDepth);
-    if (isSeatedPiece) console.info(`[hq-furn] seated: ${id} label="${def.label}" row=${row} col=${col} baseZ=${baseZ} depth=${finalDepth.toFixed(1)}`);
+    if (isYSortPiece) console.info(`[hq-furn] ysort: ${id} label="${def.label}" row=${row} col=${col} H=${def.heightCells} depth=${finalDepth.toFixed(1)}`);
     this.envGroup.add(fur);
+    // floorMap = "뭐라도 배치된 셀" (사용자 규칙: 가구/타일 중 하나라도 있으면 사무실 내부, 아무것도 없으면 검은영역)
+    for (let dx = 0; dx < def.widthCells; dx++) {
+      for (let dy = 0; dy < def.heightCells; dy++) {
+        const gx = col + dx, gy = row + dy;
+        if (gx >= 0 && gx < COLS && gy >= 0 && gy < ROWS) this.floorMap[gy][gx] = true;
+      }
+    }
     // TM WALKABLE_CATEGORIES 룰 — 걸을 수 없는 카테고리는 grid 차단
-    // walkableCells 지정 시 해당 offset은 통과 허용 (L자 책상 안쪽 등)
-    // isBehindChar(쇼파/코너 컴퓨터) = 사람이 그 위로 앉거나 지나갈 수 있어야 하므로 전체 통과 허용
-    if (!WALKABLE_CATEGORIES.has(def.category) && !isSeatedPiece) {
+    // walkableCells 지정 시 해당 offset은 통과 허용
+    // Y-sort 가구 (쇼파/책상/의자 앞옆/코너/서류) = 전체 통과 허용 → row별 z-sort로 뒤/앞 자연 갈림
+    if (!WALKABLE_CATEGORIES.has(def.category) && !isYSortPiece) {
       const walkSet = new Set((def.walkableCells || []).map(([x, y]) => `${x},${y}`));
       for (let dx = 0; dx < def.widthCells; dx++) {
         for (let dy = 0; dy < def.heightCells; dy++) {
           if (walkSet.has(`${dx},${dy}`)) continue;
           const gx = col + dx, gy = row + dy;
-          if (gx >= 0 && gx < COLS && gy >= 0 && gy < ROWS) this.occupyGrid(gx, gy, 1, 1, true);
+          if (gx >= 0 && gx < COLS && gy >= 0 && gy < ROWS) {
+            this.occupyGrid(gx, gy, 1, 1, true);
+            this.blockedByFurn[gy][gx] = true;
+          }
         }
       }
     }
@@ -1454,8 +1528,9 @@ export default class OfficeScene extends Phaser.Scene {
       const ws = workstations[i];
       const { isTopRow } = ws;
 
-      // Depth: 책상 < 캐릭
+      // Depth: 책상 < 의자 < 캐릭 (캐릭이 의자 등받이 위에 앉은 것처럼 보임)
       const deskDepth = isTopRow ? 50 : 55;
+      const chairDepth = isTopRow ? 51 : 56;
       const charDepth = isTopRow ? 52 : 57;
 
       // 책상 (32x56 short wicker, 캐릭별 개별)
@@ -1464,15 +1539,24 @@ export default class OfficeScene extends Phaser.Scene {
         .setDepth(deskDepth);
       container.add(desk);
 
+      // 의자 — 캐릭 뒤에 등받이가 보이도록 (앉은 느낌)
+      // 윗줄(정면 대각): chair_back 등받이가 캐릭 뒤로
+      // 아랫줄(후면 대각): chair_front 등받이가 캐릭 앞쪽(하단)으로
+      const chairKey = isTopRow ? "chair_back" : "chair_front";
+      const chair = this.add.image(ws.charX, ws.charY + 12, chairKey)
+        .setOrigin(0.5, 1)
+        .setDepth(chairDepth);
+      container.add(chair);
 
       // Character facing toward desk (side-view idle frame)
-      const char = this.add.sprite(ws.charX, ws.charY, `char_${charIdx}`, ws.facing)
+      // 의자에 앉은 느낌 — 3px 아래로 (앉은 자세)
+      const char = this.add.sprite(ws.charX, ws.charY + 3, `char_${charIdx}`, ws.facing)
         .setScale(S).setOrigin(0.5, 0.75)
         .setDepth(charDepth)
         .play(`char_${charIdx}_idle`);
       container.add(char);
 
-      members.push({ char, charIdx, baseX: ws.charX, baseY: ws.charY });
+      members.push({ char, charIdx, baseX: ws.charX, baseY: ws.charY + 3 });
     });
 
     // 노트북 — forEach(책상+캐릭) 뒤에 추가 + 높은 depth로 맨 위에 렌더
@@ -1982,29 +2066,50 @@ export default class OfficeScene extends Phaser.Scene {
   }
 
   private setupEditorListeners() {
-    window.addEventListener("hq:edit-mode", (e: Event) => {
+    // E2: 모든 window listener를 명시적 핸들러로 추출 → shutdown 시 일괄 해제
+    const handleEditMode = (e: Event) => {
       const d = (e as CustomEvent).detail as { on: boolean; selectedId: string | null; rotation: 0|1|2|3; flipX?: boolean };
       this.editorState = { on: d.on, selectedId: d.selectedId, rotation: d.rotation, flipX: d.flipX ?? false };
       if (!d.on && this.editorCursor) { this.editorCursor.destroy(); this.editorCursor = undefined; }
       if (d.on) this.showEditorGrid(); else this.hideEditorGrid();
-      // 편집모드 on → 팀 캐릭터 숨김 (가구 배치 시야 방해 방지)
-      this.teamGroups.forEach(tg => {
-        tg.container.setVisible(!d.on);
-      });
-    });
-    window.addEventListener("hq:layout-reload", () => { this.renderUserLayout(); });
-    // 가구 라벨 오버라이드가 서버에서 도착하면 씬 전체 재빌드 (쇼파 등 label 기반 z-layer 재계산)
+      this.teamGroups.forEach(tg => { tg.container.setVisible(!d.on); });
+    };
+    const handleLayoutReload = () => {
+      if (!this.sys?.isActive?.()) return;
+      this.renderUserLayout();
+    };
     const handleOverridesApplied = () => {
-      // 씬이 destroy 중이거나 아직 초기화 전이면 skip (reading 'size'/'add' null 에러 방지)
       if (!this.sys || !this.sys.isActive || !this.sys.isActive()) return;
       if (!this.envGroup || !this.teamGroups) return;
-      console.info("[hq-furn] override event → rebuild floor");
       this.buildFloor(this.currentFloor);
     };
+    // 핸드오프 걷기 애니메이션 — Office.tsx가 dispatch 이어받기 감지 시 발생
+    const handleHandoffWalk = (e: Event) => {
+      const d = (e as CustomEvent).detail as { from?: string; to?: string };
+      if (!d?.from || !d?.to) return;
+      const toTg = this.teamGroups.get(d.to);
+      if (!toTg) return;
+      // 목적지 = 대상 팀 책상 바로 옆 셀 (1칸 좌측, 없으면 우측)
+      const tgx = toTg.gridX - 1 >= 0 ? toTg.gridX - 1 : toTg.gridX + toTg.config.gridW;
+      const tgy = toTg.gridY + Math.floor(toTg.config.gridH / 2);
+      this.walkCharToSpot(d.from, tgx, tgy);
+      // 2.5초 후 복귀
+      this.time.delayedCall(2500, () => this.walkCharHome(d.from!));
+    };
+    window.addEventListener("hq:edit-mode", handleEditMode);
+    window.addEventListener("hq:layout-reload", handleLayoutReload);
     window.addEventListener("hq:furniture-overrides-applied", handleOverridesApplied);
-    // 씬 shutdown 시 리스너 해제 — 중복 등록으로 이전 씬 메서드가 호출되어 null add 에러 방지
+    window.addEventListener("hq:walk", handleHandoffWalk);
+    // 모든 리스너 + timer를 shutdown 시 해제 (메모리 누수 방지)
     this.events.once("shutdown", () => {
+      window.removeEventListener("hq:edit-mode", handleEditMode);
+      window.removeEventListener("hq:layout-reload", handleLayoutReload);
       window.removeEventListener("hq:furniture-overrides-applied", handleOverridesApplied);
+      window.removeEventListener("hq:walk", handleHandoffWalk);
+      // Phaser time events 정리
+      this.time.removeAllEvents();
+      // tweens는 destroy 시 scene이 정리, 남은 tween kill
+      this.tweens.killAll();
     });
     console.info("[hq-furn] scene setup → re-fetch overrides");
     fetchAndApplyFurnitureOverrides();
@@ -2256,9 +2361,9 @@ export default class OfficeScene extends Phaser.Scene {
         if (nx < 0 || nx >= COLS || ny < 0 || ny >= ROWS) continue;
         const nk = key(nx, ny);
         if (visited.has(nk)) continue;
-        // 하단 3줄(복도)은 벽/가구와 무관하게 통과 허용 (에이전트 진입/배치 가능)
-        const isCorridor = ny >= ROWS - 3;
-        if (!isCorridor && this.grid[ny]?.[nx] && !(nx === ex && ny === ey)) continue;
+        // grid 차단 셀은 통과 금지 (복도든 아니든 floor 없으면 차단).
+        // 목적지 셀(ex,ey)은 grid 체크는 외부에서 이미 통과한 것이므로 예외 허용.
+        if (this.grid[ny]?.[nx] && !(nx === ex && ny === ey)) continue;
         visited.add(nk);
         prev.set(nk, key(cur.x, cur.y));
         queue.push({x: nx, y: ny});
@@ -2285,6 +2390,7 @@ export default class OfficeScene extends Phaser.Scene {
       tg.container.remove(char);
       this.add.existing(char);
       char.setPosition(sx, sy).setDepth(300);
+      char.setData("walkout", true);  // 외출 플래그 — buildFloor 재빌드 시 destroy 판단용
     }
     if (path && path.length > 1) {
       let i = 1;
@@ -2293,19 +2399,31 @@ export default class OfficeScene extends Phaser.Scene {
         const p = path[i]; if (!p) { char.setData("walking", false); return; }
         const cx = p.x * TILE + TILE / 2, cy = p.y * TILE + TILE / 2;
         const dx = cx - (char.x as number);
-        const anim = dx > 0 ? `char_${m.charIdx}_walk_right` : dx < 0 ? `char_${m.charIdx}_walk_left` : `char_${m.charIdx}_walk_down`;
+        const dy = cy - (char.y as number);
+        // 방향 우선순위: 수평 이동 > 수직 이동 (수직에선 up/down 구분 필수 — 이전엔 down만 써서 뒤로 걷는 듯 보였음)
+        let anim: string;
+        if (Math.abs(dx) > Math.abs(dy)) {
+          anim = dx > 0 ? `char_${m.charIdx}_walk_right` : `char_${m.charIdx}_walk_left`;
+        } else {
+          anim = dy > 0 ? `char_${m.charIdx}_walk_down` : `char_${m.charIdx}_walk_up`;
+        }
         char.play(anim);
         this.tweens.add({ targets: char, x: cx, y: cy, duration: 180, ease: "Linear", onComplete: () => { i++; stepOne(); } });
       };
       stepOne();
     } else {
-      // 폴백: L자
+      // 폴백: L자 (가로 먼저 → 세로)
       const dx = tx - sx;
+      const dy = ty - sy;
       const speed = 80;
-      char.play(dx > 0 ? `char_${m.charIdx}_walk_right` : `char_${m.charIdx}_walk_left`);
+      char.play(dx > 0 ? `char_${m.charIdx}_walk_right` : dx < 0 ? `char_${m.charIdx}_walk_left` : `char_${m.charIdx}_walk_down`);
       this.tweens.add({ targets: char, x: tx, duration: Math.max(200, Math.abs(dx) * (1000/speed)), ease: "Linear",
-        onComplete: () => this.tweens.add({ targets: char, y: ty, duration: Math.max(200, Math.abs(ty - sy) * (1000/speed)), ease: "Linear",
-          onComplete: () => { char.stop(); char.setFrame(0); char.setData("walking", false); } }) });
+        onComplete: () => {
+          // 세로 이동 방향 애니메이션
+          char.play(dy > 0 ? `char_${m.charIdx}_walk_down` : `char_${m.charIdx}_walk_up`);
+          this.tweens.add({ targets: char, y: ty, duration: Math.max(200, Math.abs(dy) * (1000/speed)), ease: "Linear",
+            onComplete: () => { char.stop(); char.setFrame(0); char.setData("walking", false); } });
+        } });
     }
   }
 
@@ -2327,6 +2445,7 @@ export default class OfficeScene extends Phaser.Scene {
         char.setPosition(m.baseX, m.baseY).setDepth(10);
         char.stop(); char.setFrame(0);
         char.setData("walking", false);
+        char.setData("walkout", false);  // 복귀 완료 — 플래그 해제
       };
       if (path && path.length > 1) {
         char.setData("walking", true);
@@ -2336,7 +2455,13 @@ export default class OfficeScene extends Phaser.Scene {
           const p = path[i]; if (!p) { finish(); return; }
           const cx = p.x * TILE + TILE / 2, cy = p.y * TILE + TILE / 2;
           const dx = cx - (char.x as number);
-          const anim = dx > 0 ? `char_${m.charIdx}_walk_right` : dx < 0 ? `char_${m.charIdx}_walk_left` : `char_${m.charIdx}_walk_down`;
+          const dy = cy - (char.y as number);
+          let anim: string;
+          if (Math.abs(dx) > Math.abs(dy)) {
+            anim = dx > 0 ? `char_${m.charIdx}_walk_right` : `char_${m.charIdx}_walk_left`;
+          } else {
+            anim = dy > 0 ? `char_${m.charIdx}_walk_down` : `char_${m.charIdx}_walk_up`;
+          }
           char.play(anim);
           this.tweens.add({ targets: char, x: cx, y: cy, duration: 180, ease: "Linear", onComplete: () => { i++; stepOne(); } });
         };
@@ -2490,25 +2615,43 @@ export default class OfficeScene extends Phaser.Scene {
   }
 
   /** TM 스타일 상태 뱃지 — working=초록 / complete=파랑 / error=빨강 */
-  private setStatusBadge(tg: TeamGroup, status: "working" | "complete" | "error" | null) {
+  private setStatusBadge(tg: TeamGroup, status: "working" | "dispatching" | "complete" | "error" | null) {
     if (tg.statusBadge) { tg.statusBadge.destroy(); tg.statusBadge = undefined; }
     if (!status) return;
-    const colors = { working: 0x22c55e, complete: 0x3b82f6, error: 0xef4444 };
-    const labels = { working: "작업중", complete: "완료", error: "에러" };
-    const c = this.add.container(0, tg.config.gridH * TILE / 2 + 16).setDepth(250);
+    // 팀메이커 스타일: 밝은 배경 + 둥근 pill + 흰 글씨 + 얕은 그림자
+    const colors = { working: 0x22c55e, dispatching: 0xf59e0b, complete: 0x3b82f6, error: 0xef4444 };
+    const labels = { working: "작업 중", dispatching: "배분 중", complete: "완료", error: "에러" };
+    const textW = labels[status].length * 8 + 16;  // 대략 글자당 8px
+    const W = Math.max(42, textW), H = 16;
+    const c = this.add.container(0, tg.config.gridH * TILE / 2 + 18).setDepth(250);
+    // 그림자
+    const shadow = this.add.graphics();
+    shadow.fillStyle(0x000000, 0.28);
+    shadow.fillRoundedRect(-W / 2, -H / 2 + 1, W, H, 8);
+    c.add(shadow);
+    // 본체
     const bg = this.add.graphics();
     bg.fillStyle(colors[status], 1);
-    bg.fillRoundedRect(-20, -7, 40, 14, 7);
+    bg.fillRoundedRect(-W / 2, -H / 2, W, H, 8);
+    // 상단 하이라이트 (광택)
+    bg.fillStyle(0xffffff, 0.2);
+    bg.fillRoundedRect(-W / 2 + 1, -H / 2 + 1, W - 2, 3, 4);
     c.add(bg);
     const t = this.add.text(0, 0, labels[status], {
-      fontSize: "9px", color: "#ffffff", fontStyle: "700",
-      fontFamily: "system-ui, sans-serif", resolution: 16,
+      fontSize: "10px", color: "#ffffff", fontStyle: "700",
+      fontFamily: "Pretendard Variable, system-ui, sans-serif", resolution: 16,
     }).setOrigin(0.5);
     c.add(t);
     tg.container.add(c);
     tg.statusBadge = c;
-    if (status !== "working") {
-      // 3초 후 자동 페이드아웃
+    // 펄스 애니메이션 (진행 상태)
+    if (status === "working" || status === "dispatching") {
+      this.tweens.add({
+        targets: c, scale: 1.06, duration: 650, yoyo: true, repeat: -1, ease: "Sine.easeInOut",
+      });
+    }
+    if (status !== "working" && status !== "dispatching") {
+      // 3초 후 자동 페이드아웃 (완료/에러만)
       this.tweens.add({
         targets: c, alpha: 0, duration: 500, delay: 3000,
         onComplete: () => { c.destroy(); if (tg.statusBadge === c) tg.statusBadge = undefined; },
@@ -2516,8 +2659,8 @@ export default class OfficeScene extends Phaser.Scene {
     }
   }
 
-  /** 작업 완료 뱃지 (외부 이벤트용) */
-  showStatusBadge(teamId: string, status: "complete" | "error") {
+  /** 작업 완료 뱃지 / 디스패치 상태 (외부 이벤트용) */
+  showStatusBadge(teamId: string, status: "complete" | "error" | "dispatching") {
     const tg = this.teamGroups.get(teamId);
     if (tg) this.setStatusBadge(tg, status);
   }
