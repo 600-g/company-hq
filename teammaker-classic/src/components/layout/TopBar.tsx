@@ -16,6 +16,15 @@ export default function TopBar() {
 
       <div className="ml-auto flex items-center gap-1">
         <Button
+          variant="outline"
+          size="sm"
+          onClick={() => router.push("/doogeun")}
+          className="h-8 text-xs"
+          title="두근컴퍼니 픽셀 오피스 (Option B 통합 홈)"
+        >
+          🏢 두근컴퍼니
+        </Button>
+        <Button
           variant="ghost"
           size="icon"
           onClick={() => setIsHistoryOpen(true)}

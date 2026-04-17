@@ -725,6 +725,24 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
             onClick={() => { setMessages([]); onMessages([]); wsRef.current?.send(JSON.stringify({ action: "clear_history", session_id: activeSessionIdRef.current || undefined })); }}
             className={`text-[13px] text-gray-500 hover:text-gray-300 ${team.id === "trading-bot" && onOpenTradingDash ? "" : "ml-auto"}`}
           >🗑 대화 지우기</button>
+          {/* 산출물 열기 — 팀별 배포본/데모 URL 우선, 없으면 GitHub Pages 기본 추정 */}
+          {team.repo && (
+            <button
+              onClick={() => {
+                const candidateUrls: string[] = [];
+                // 알려진 팀별 데모 URL
+                if (team.id === "date-map") candidateUrls.push("https://600-g.github.io/date-map/");
+                if (team.id === "trading-bot") candidateUrls.push("https://600-g.github.io/upbit-auto-trading-bot/");
+                // 팀 repo 기반 GH Pages 추정
+                candidateUrls.push(`https://600-g.github.io/${team.repo}/`);
+                // localhost dev 서버 (팀별 port 컨벤션 미정 — 일단 GH Pages 기본)
+                const url = candidateUrls[0];
+                window.open(url, "_blank", "noopener,noreferrer");
+              }}
+              className="text-[13px] text-cyan-400 hover:text-cyan-300 flex items-center gap-1"
+              title={`${team.name} 산출물 열기 (베타 데모)`}
+            >🎮 <span className="hidden sm:inline">산출물</span></button>
+          )}
           {/* Sprint 9: GitHub push 버튼 — 팀 프로젝트를 원클릭 배포 */}
           <button
             onClick={async () => {
