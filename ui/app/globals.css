@@ -1,5 +1,21 @@
 @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css');
 @import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+/* ── 팀메이커 참조 — 채팅 색상 토큰 (다크 배경 기반) ── */
+:root {
+  --chat-user-bg: rgba(251, 191, 36, 0.08);        /* yellow 살짝 */
+  --chat-user-border: rgba(251, 191, 36, 0.22);
+  --chat-user-text: #fde68a;
+  --chat-ai-bg: rgba(30, 41, 59, 0.55);            /* slate 900ish */
+  --chat-ai-border: rgba(71, 85, 105, 0.45);
+  --chat-ai-text: #e5e7eb;
+  --chat-system-bg: rgba(56, 189, 248, 0.08);
+  --chat-system-border: rgba(56, 189, 248, 0.25);
+  --chat-system-text: #bae6fd;
+  --chat-muted: #6b7280;
+  --chat-radius: 12px;
+}
 
 /* Pokemon-style pixel fonts (in-game labels) */
 @font-face {

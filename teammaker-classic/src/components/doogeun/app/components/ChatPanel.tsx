@@ -332,7 +332,7 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
             const last = prev[prev.length - 1];
             if (last?.type === "ai" && !last.content.trim()) {
               const u = [...prev];
-              u[u.length - 1] = { ...last, content: "응답 없음" };
+              u[u.length - 1] = { ...last, content: "✅ 작업 완료 (응답 없음)" };
               return u;
             }
             return prev;
@@ -481,7 +481,7 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
       const d0 = await r0.json();
       if (!d0.ok && d0.running) {
         // 진행 중 — 사용자 확인 후 force 삭제
-        if (confirm("작업 중인 세션이에요. 강제로 취소하고 삭제할까요?")) {
+        if (confirm("⚠️ 세션이 작업 중입니다. 강제로 취소하고 삭제할까요?")) {
           await fetch(`${getApiBase()}/api/sessions/${team.id}/${sessionId}?force=true`, { method: "DELETE" });
         } else {
           return;
@@ -724,7 +724,7 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
           <button
             onClick={() => { setMessages([]); onMessages([]); wsRef.current?.send(JSON.stringify({ action: "clear_history", session_id: activeSessionIdRef.current || undefined })); }}
             className={`text-[13px] text-gray-500 hover:text-gray-300 ${team.id === "trading-bot" && onOpenTradingDash ? "" : "ml-auto"}`}
-          >🗑 세션 초기화</button>
+          >🗑 대화 지우기</button>
           {/* 산출물 열기 — 팀별 배포본/데모 URL 우선, 없으면 GitHub Pages 기본 추정 */}
           {team.repo && (
             <button
@@ -794,20 +794,17 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
         </div>
 
         {/* 메시지 — 주의: absolute/sticky 금지 (lessons.md 참고), flex-1로 높이 확보 */}
-          <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto space-y-3 min-h-0 select-text overscroll-contain px-0.5" style={{ WebkitOverflowScrolling: "touch", touchAction: "pan-y" }}>
+          <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto space-y-2 min-h-0 select-text overscroll-contain" style={{ WebkitOverflowScrolling: "touch", touchAction: "pan-y" }}>
           {messages.length === 0 && (
-            <div className="py-10 text-center">
-              <p className="text-[13px] text-gray-500">에이전트에게 시킬 일을 입력해보세요</p>
+            <div className="py-6 text-center">
+              <p className="text-[12px] text-gray-600">명령을 입력하거나 아래 바로가기를 사용하세요</p>
             </div>
           )}
           {messages.map((msg, i) => (
-            <div key={i} className={`group relative flex ${msg.type === "user" ? "justify-end" : "justify-start"}`}>
-            <div className={`text-[13px] max-w-[88%] select-text cursor-text leading-relaxed ${
+            <div key={i} className={`group relative text-sm px-2.5 py-2 rounded select-text cursor-text ${
               msg.type === "user"
-                ? "px-3 py-2 rounded-2xl rounded-br-md bg-[var(--chat-user-bg)] border border-[var(--chat-user-border)] text-[var(--chat-user-text)]"
-                : msg.type === "handoff"
-                ? "w-full"
-                : "px-3 py-2 rounded-2xl rounded-bl-md bg-[var(--chat-ai-bg)] border border-[var(--chat-ai-border)] text-[var(--chat-ai-text)]"
+                ? "bg-blue-600/15 text-blue-200 border-l-2 border-blue-500"
+                : "bg-[#1a2a1a] text-green-300 border-l-2 border-green-600"
             }`}>
               {/* 타임스탬프 */}
               {msg.timestamp && (
@@ -907,23 +904,24 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
                   )}
                 </>
               )}
-              <div className="flex items-center justify-between mt-1 gap-2">
+              <div className="flex items-center justify-between mt-0.5">
                 {msg.type === "user" && !streaming && (
-                  <span className="text-[11px] text-gray-500">
-                    {msg.cancelled ? "✕ 취소됨" : "✓"}
+                  <span className="text-[13px]">
+                    <span className="text-blue-400/50">✓ 읽음</span>
+                    {msg.cancelled && <span className="text-red-400/70 ml-1">· ✕ 취소됨</span>}
                   </span>
                 )}
                 {msg.type === "ai" && !streaming && <span />}
                 {msg.content && !streaming && (
                   <button
                     onClick={() => navigator.clipboard.writeText(msg.content)}
-                    className="opacity-0 group-hover:opacity-100 text-[11px] text-gray-500 hover:text-gray-300 transition-opacity ml-auto"
+                    className="opacity-0 group-hover:opacity-100 text-[13px] px-1.5 py-0.5
+                               bg-[#2a2a4a] text-gray-400 rounded hover:text-white transition-opacity"
                   >
                     복사
                   </button>
                 )}
               </div>
-            </div>
             </div>
           ))}
           {/* 터미널 작업 로그 */}
@@ -938,7 +936,7 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
                 </div>
                 <button onClick={cancelWork}
                   className="bg-red-500/90 hover:bg-red-500 text-white text-[13px] font-bold px-2.5 py-0.5 rounded transition-colors">
-                  취소
+                  ■ 취소
                 </button>
               </div>
               {/* 로그 영역 */}
@@ -991,7 +989,7 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
           <div className="flex justify-center py-1 shrink-0">
             <button onClick={handleResume}
               className="bg-yellow-500/15 border border-yellow-500/50 text-yellow-300 text-[12px] px-3 py-1 rounded-full hover:bg-yellow-500/25 transition-colors flex items-center gap-1">
-              이어서 진행
+              ⟳ 직전 작업 이어하기
             </button>
           </div>
         )}
@@ -1082,7 +1080,7 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
                 });
               }
             }}
-            placeholder={streaming ? "작업 중 · 추가 입력 가능" : isMobile ? "에이전트에게 시킬 일을 입력하세요" : "에이전트에게 시킬 일을 입력하세요 (⌘+V 이미지 붙여넣기)"}
+            placeholder={streaming ? "작업중... (추가 입력 가능)" : isMobile ? "명령 입력... (전송 버튼으로 보내기)" : "명령 입력... (Ctrl+V 이미지 붙여넣기)"}
             rows={input.includes("\n") ? Math.min(input.split("\n").length, 4) : 1}
             className="flex-1 bg-[#1a1a2e] border border-[#3a3a5a] text-white px-2 py-1.5 text-xs rounded
                        placeholder-gray-600 focus:outline-none focus:border-yellow-400/50 resize-none"
@@ -1154,7 +1152,7 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
                 </div>
                 <button onClick={cancelWork}
                   className="bg-red-500/90 hover:bg-red-500 text-white text-[12px] font-bold px-3 py-1 rounded transition-colors">
-                  취소
+                  ■ 취소
                 </button>
               </div>
             </div>
@@ -1173,7 +1171,7 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
         <div className="border-t border-[#2a2a5a] p-3 flex gap-2 items-end">
           <textarea ref={inputRef} value={input} onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && !isMobile && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(); } }}
-            placeholder={streaming ? "작업 중 · 추가 입력 가능" : "에이전트에게 시킬 일을 입력하세요"}
+            placeholder={streaming ? "작업중... (추가 입력 가능)" : "명령 입력..."}
             rows={input.includes("\n") ? Math.min(input.split("\n").length, 4) : 1}
             className="flex-1 bg-[#1a1a2e] border border-[#3a3a5a] text-white px-3 py-2 text-sm rounded
                        focus:outline-none focus:border-yellow-400/50 resize-none" />

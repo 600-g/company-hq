@@ -10,3 +10,5 @@ server/logs/
 server/auth_data/
 server/team_positions.json
 server/floor_layout.json
+teammaker-classic/public/assets/
+server/skills.bak-*
