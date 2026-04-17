@@ -87,12 +87,20 @@ function getManagerPosition(
   },
   savedManagerPos: { x: number; y: number } | null,
 ) {
-  // 저장된 위치가 FLOOR 가 아니면 무시하고 기본값 계산
+  // 저장된 위치가 FLOOR 이고 가구 위가 아니어야 유효
   const isValidFloor = (x: number, y: number) => {
     const col = Math.round(x / TILE_SIZE);
     const row = Math.round(y / TILE_SIZE);
     if (col < 0 || col >= layout.cols || row < 0 || row >= layout.rows) return false;
-    return (layout.tiles[row * layout.cols + col] ?? 0) >= 2;
+    if ((layout.tiles[row * layout.cols + col] ?? 0) < 2) return false;
+    // 가구 위에 있으면 유효하지 않음 (책상에 갇히는 버그 방지)
+    for (const f of layout.furniture) {
+      const def = getFurnitureDef(f.type);
+      if (!def || def.category === "floor_tile" || def.category === "wall_tile") continue;
+      if (col >= f.col && col < f.col + def.widthCells &&
+          row >= f.row && row < f.row + def.heightCells) return false;
+    }
+    return true;
   };
 
   if (savedManagerPos && isValidFloor(savedManagerPos.x, savedManagerPos.y)) {

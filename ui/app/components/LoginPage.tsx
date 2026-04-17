@@ -77,12 +77,12 @@ export default function LoginPage({ onLogin }: { onLogin: (user: AuthUser) => vo
               onDoubleClick={() => setShowOwnerPopup(true)}>
               (주)두근 컴퍼니
             </h1>
-            <p className="text-[10px] text-white/50 mt-1">초대코드로 입장하세요</p>
+            <p className="text-[12px] text-white/50 mt-1">초대코드로 입장하세요</p>
           </div>
 
           <div className="space-y-3">
             <div>
-              <label className="text-[9px] text-white/40 block mb-1">닉네임</label>
+              <label className="text-[13px] text-white/40 block mb-1">닉네임</label>
               <input autoFocus value={nickname} onChange={e => setNickname(e.target.value)}
                 onKeyDown={e => e.key === "Enter" && !loading && submitInvite()}
                 placeholder="사무실에서 쓸 이름"
@@ -90,21 +90,21 @@ export default function LoginPage({ onLogin }: { onLogin: (user: AuthUser) => vo
                            placeholder-white/25 focus:outline-none focus:border-yellow-400/50" />
             </div>
             <div>
-              <label className="text-[9px] text-white/40 block mb-1">초대코드</label>
+              <label className="text-[13px] text-white/40 block mb-1">초대코드</label>
               <input value={code} onChange={e => setCode(e.target.value.toUpperCase())}
                 onKeyDown={e => e.key === "Enter" && !loading && submitInvite()}
                 placeholder="8자리 코드" maxLength={8}
                 className="w-full bg-white/10 border border-white/15 text-white px-3 py-2 text-xs rounded-lg
                            placeholder-white/25 focus:outline-none focus:border-yellow-400/50 font-mono tracking-widest text-center" />
             </div>
-            {error && <p className="text-[10px] text-red-400 text-center">{error}</p>}
+            {error && <p className="text-[12px] text-red-400 text-center">{error}</p>}
             <button onClick={submitInvite} disabled={loading}
               className="w-full bg-white/90 text-black py-2.5 text-xs font-bold rounded-lg
                          hover:bg-white disabled:opacity-50 transition-colors">
               {loading ? "입장중..." : "입장하기"}
             </button>
           </div>
-          <p className="text-[8px] text-white/20 text-center mt-4">초대코드가 없으면 관리자에게 문의하세요</p>
+          <p className="text-[13px] text-white/20 text-center mt-4">초대코드가 없으면 관리자에게 문의하세요</p>
         </div>
       </div>
 
@@ -130,11 +130,11 @@ export default function LoginPage({ onLogin }: { onLogin: (user: AuthUser) => vo
                 )}
               </button>
               <button onClick={submitOwner} disabled={loading}
-                className="flex-1 bg-white/10 text-white/70 py-1.5 text-[10px] rounded-lg hover:bg-white/20 transition-colors">
+                className="flex-1 bg-white/10 text-white/70 py-1.5 text-[12px] rounded-lg hover:bg-white/20 transition-colors">
                 {loading ? "..." : "확인"}
               </button>
             </div>
-            {error && <p className="text-[9px] text-red-400 text-center mt-1">{error}</p>}
+            {error && <p className="text-[13px] text-red-400 text-center mt-1">{error}</p>}
           </div>
         </div>
       )}

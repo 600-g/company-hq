@@ -147,7 +147,7 @@ export default function TradingDashboard({ onClose }: { onClose: () => void }) {
     return (
       <div className="absolute inset-0 z-50 bg-[#0a0a18]/95 flex flex-col items-center justify-center rounded-lg gap-2">
         <span className="text-gray-500 text-sm">데이터 없음</span>
-        <button onClick={onClose} className="text-[10px] text-gray-600 hover:text-white">닫기</button>
+        <button onClick={onClose} className="text-[12px] text-gray-600 hover:text-white">닫기</button>
       </div>
     );
   }
@@ -155,7 +155,7 @@ export default function TradingDashboard({ onClose }: { onClose: () => void }) {
   const tabBtn = (id: typeof tab, label: string) => (
     <button
       onClick={() => setTab(id)}
-      className={`text-[10px] px-2 py-1 rounded transition-colors ${
+      className={`text-[12px] px-2 py-1 rounded transition-colors ${
         tab === id
           ? "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30"
           : "text-gray-500 hover:text-gray-300"
@@ -171,7 +171,7 @@ export default function TradingDashboard({ onClose }: { onClose: () => void }) {
       <div className="flex items-center justify-between px-3 py-2 border-b border-[#2a2a5a] shrink-0">
         <div className="flex items-center gap-2">
           <span className="text-[12px] font-semibold text-white">📊 매매봇 대시보드</span>
-          <span className={`text-[9px] px-1.5 py-0.5 rounded border ${
+          <span className={`text-[13px] px-1.5 py-0.5 rounded border ${
             data.bot_running
               ? "bg-green-900/30 text-green-400 border-green-800"
               : "bg-red-900/30 text-red-400 border-red-800"
@@ -182,7 +182,7 @@ export default function TradingDashboard({ onClose }: { onClose: () => void }) {
           <button
             onClick={() => switchMode(data.bot_mode !== "real")}
             disabled={switching}
-            className={`text-[9px] px-2 py-0.5 rounded border font-mono transition-colors ${
+            className={`text-[13px] px-2 py-0.5 rounded border font-mono transition-colors ${
               switching ? "opacity-50 cursor-wait" :
               data.bot_mode === "real"
                 ? "bg-red-900/30 text-red-400 border-red-800 hover:bg-red-900/50"
@@ -203,12 +203,12 @@ export default function TradingDashboard({ onClose }: { onClose: () => void }) {
       </div>
 
       {/* 콘텐츠 */}
-      <div className="flex-1 overflow-y-auto px-3 py-2 space-y-3 text-[11px]">
+      <div className="flex-1 overflow-y-auto px-3 py-2 space-y-3 text-[13px]">
         {tab === "overview" && (
           <>
             {/* 총 자산 카드 */}
             <div className="bg-[#12122a] rounded-lg p-3 border border-[#2a2a5a]">
-              <div className="text-gray-500 text-[9px] mb-1">총 자산</div>
+              <div className="text-gray-500 text-[13px] mb-1">총 자산</div>
               <div className="text-[18px] font-bold text-white">{fmt(data.balance)}원</div>
               <div className={`text-[12px] font-mono ${pnlColor(data.total_asset_pnl)}`}>
                 {pnlSign(data.total_asset_pnl)}원
@@ -218,25 +218,25 @@ export default function TradingDashboard({ onClose }: { onClose: () => void }) {
             {/* 오늘 성적 */}
             <div className="grid grid-cols-3 gap-2">
               <div className="bg-[#12122a] rounded-lg p-2 border border-[#1a1a3a] text-center">
-                <div className="text-gray-600 text-[9px]">오늘 손익</div>
+                <div className="text-gray-600 text-[13px]">오늘 손익</div>
                 <div className={`text-[13px] font-mono font-bold ${pnlColor(data.today_pnl)}`}>
                   {pnlSign(data.today_pnl)}
                 </div>
               </div>
               <div className="bg-[#12122a] rounded-lg p-2 border border-[#1a1a3a] text-center">
-                <div className="text-gray-600 text-[9px]">오늘 거래</div>
+                <div className="text-gray-600 text-[13px]">오늘 거래</div>
                 <div className="text-[13px] font-mono font-bold text-white">{data.today_trades}건</div>
               </div>
               <div className="bg-[#12122a] rounded-lg p-2 border border-[#1a1a3a] text-center">
-                <div className="text-gray-600 text-[9px]">오늘 승률</div>
+                <div className="text-gray-600 text-[13px]">오늘 승률</div>
                 <div className="text-[13px] font-mono font-bold text-white">{data.today_wr?.toFixed(0) || 0}%</div>
               </div>
             </div>
 
             {/* 전체 통계 */}
             <div className="bg-[#12122a] rounded-lg p-3 border border-[#1a1a3a]">
-              <div className="text-gray-500 text-[9px] mb-2">전체 성적</div>
-              <div className="grid grid-cols-2 gap-y-1.5 text-[10px]">
+              <div className="text-gray-500 text-[13px] mb-2">전체 성적</div>
+              <div className="grid grid-cols-2 gap-y-1.5 text-[12px]">
                 <div className="text-gray-500">거래 수</div>
                 <div className="text-white text-right font-mono">{data.total_trades}건</div>
                 <div className="text-gray-500">승/패/무</div>
@@ -257,12 +257,12 @@ export default function TradingDashboard({ onClose }: { onClose: () => void }) {
             {/* 시장 상태 */}
             {data.market && (
               <div className="bg-[#12122a] rounded-lg p-3 border border-[#1a1a3a]">
-                <div className="text-gray-500 text-[9px] mb-2">시장 상태</div>
+                <div className="text-gray-500 text-[13px] mb-2">시장 상태</div>
                 <div className="flex items-center gap-2">
                   <span className="text-[14px] font-bold" style={{ color: data.market.color }}>
                     {data.market.grade}
                   </span>
-                  <div className="text-[10px] font-mono ml-auto">
+                  <div className="text-[12px] font-mono ml-auto">
                     <span className="text-gray-500">BTC</span>{" "}
                     <span className={pnlColor(data.market.btc_chg)}>{data.market.btc_chg > 0 ? "+" : ""}{data.market.btc_chg?.toFixed(1)}%</span>
                     <span className="text-gray-700 mx-1">|</span>
@@ -274,7 +274,7 @@ export default function TradingDashboard({ onClose }: { onClose: () => void }) {
             )}
 
             {/* 업데이트 시각 */}
-            <div className="text-[9px] text-gray-600 text-right">갱신: {data.updated}</div>
+            <div className="text-[13px] text-gray-600 text-right">갱신: {data.updated}</div>
           </>
         )}
 
@@ -291,7 +291,7 @@ export default function TradingDashboard({ onClose }: { onClose: () => void }) {
                       {p.profit_rate > 0 ? "+" : ""}{p.profit_rate?.toFixed(2)}%
                     </span>
                   </div>
-                  <div className="grid grid-cols-2 gap-y-1 text-[10px]">
+                  <div className="grid grid-cols-2 gap-y-1 text-[12px]">
                     <div className="text-gray-500">매수가</div>
                     <div className="text-right font-mono text-gray-300">{fmt(p.buy_price)}</div>
                     <div className="text-gray-500">현재가</div>
@@ -318,14 +318,14 @@ export default function TradingDashboard({ onClose }: { onClose: () => void }) {
                 {data.recent.map((t, i) => (
                   <div key={i} className="flex items-center justify-between bg-[#12122a] rounded px-3 py-2 border border-[#1a1a3a]">
                     <div>
-                      <span className="text-white font-mono text-[11px]">{t.coin}</span>
-                      <span className="text-gray-600 text-[9px] ml-1.5">{t.time}</span>
+                      <span className="text-white font-mono text-[13px]">{t.coin}</span>
+                      <span className="text-gray-600 text-[13px] ml-1.5">{t.time}</span>
                     </div>
                     <div className="text-right">
-                      <span className={`font-mono text-[11px] ${pnlColor(t.profit)}`}>
+                      <span className={`font-mono text-[13px] ${pnlColor(t.profit)}`}>
                         {pnlSign(t.profit)}
                       </span>
-                      <span className={`font-mono text-[9px] ml-1 ${pnlColor(t.profit_rate)}`}>
+                      <span className={`font-mono text-[13px] ml-1 ${pnlColor(t.profit_rate)}`}>
                         ({t.profit_rate > 0 ? "+" : ""}{t.profit_rate?.toFixed(1)}%)
                       </span>
                     </div>

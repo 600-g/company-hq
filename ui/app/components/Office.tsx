@@ -9,15 +9,23 @@ import TradingDashboard from "./TradingDashboard";
 import WeatherBoard from "./WeatherBoard";
 import type { OfficeGameHandle } from "../game/OfficeGame";
 import DevTerminal from "./DevTerminal";
+import SystemCheckDialog from "./chat/SystemCheckDialog";
+import AgentHandoffCard from "./chat/AgentHandoffCard";
+import SessionHistoryPanel from "./chat/SessionHistoryPanel";
+import DeployGuideCard from "./chat/DeployGuideCard";
+import ToastContainer from "./Toast";
+import OfficeEditor from "./OfficeEditor";
+import BugReportDialog from "./BugReportDialog";
+import TerminalPanel from "./chat/TerminalPanel";
 import BuildStampInline from "./BuildStampInline";
-import EditorToolbar from "./EditorToolbar";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { gsap } from "gsap";
 
 // ── CPO 주도 스마트 디스패치 ────────────────────────────
 type DispatchStatus = "pending" | "sending" | "working" | "done" | "skipped" | "error";
-type DispatchPhase = "idle" | "routing" | "executing" | "summarizing" | "done";
+type DispatchPhase = "idle" | "routing" | "executing" | "summarizing" | "done"
+  | "analyzing" | "opinions_start" | "opinion_collected" | "synthesizing" | "qa_review" | "final_decision";
 interface DispatchEntry {
   teamId: string; emoji: string; name: string;
   text: string; status: DispatchStatus; routed: boolean;
@@ -56,7 +64,12 @@ function DispatchChat({ teams, onOpenChat }: { teams: Team[]; onOpenChat?: (team
   const [messages, setMessages] = useState<DispatchMessage[]>(loadDispatchHistory);
   const [sending, setSending] = useState(false);
   const [phase, setPhase] = useState<DispatchPhase>("idle");
+  const [discussMode, setDiscussMode] = useState(false);
   const [summaryText, setSummaryText] = useState("");
+  const [pendingHandoff, setPendingHandoff] = useState<{
+    dispatch_id: string;
+    steps: { team: string; team_name: string; emoji: string; prompt: string }[];
+  } | null>(null);
   // 멘션 자동완성
   const [mentionQuery, setMentionQuery] = useState("");
   const [showMentions, setShowMentions] = useState(false);
@@ -124,10 +137,12 @@ function DispatchChat({ teams, onOpenChat }: { teams: Team[]; onOpenChat?: (team
 
     try {
       const apiBase = getApiBase();
-      const res = await fetch(`${apiBase}/api/dispatch/smart`, {
+      const endpoint = discussMode ? "/api/dispatch/discuss" : "/api/dispatch/smart";
+      const payload = discussMode ? { instruction: msg } : { message: msg };
+      const res = await fetch(`${apiBase}${endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: msg }),
+        body: JSON.stringify(payload),
         signal: abort.signal,
       });
 
@@ -151,6 +166,15 @@ function DispatchChat({ teams, onOpenChat }: { teams: Team[]; onOpenChat?: (team
           try {
             const data = JSON.parse(line.slice(6));
 
+            // discuss 모드 phase들 — stepper + 메시지로 추가
+            if (data.phase === "analyzing" || data.phase === "opinions_start" || data.phase === "opinion_collected" ||
+                data.phase === "synthesizing" || data.phase === "qa_review" || data.phase === "final_decision") {
+              setPhase(data.phase as DispatchPhase);
+              setMessages(prev => [...prev, {
+                role: "agent", text: data.message || data.phase,
+                teamId: "cpo-claude", emoji: "💭", name: "CPO 토론",
+              }]);
+            }
             if (data.phase === "routing") {
               setPhase("routing");
             } else if (data.phase === "routed") {
@@ -174,6 +198,35 @@ function DispatchChat({ teams, onOpenChat }: { teams: Team[]; onOpenChat?: (team
                     ? { ...e, status: "working" }
                     : e
               ));
+            } else if (data.phase === "batch_start") {
+              const teamIds = data.teams as string[];
+              const teamNames = teamIds.map(id => teams.find(t => t.id === id)?.name || id).join(", ");
+              setMessages(prev => [...prev, {
+                role: "agent", text: `${data.parallel ? "⚡ 병렬" : "➡️ 이어받기"} — ${teamNames}`,
+                teamId: "cpo-claude", emoji: "🧠", name: "CPO",
+              }]);
+              // 순차(이어받기) 배치 — 이전 배치에서 현재 배치로 캐릭 이동 시각화
+              if (!data.parallel && teamIds.length > 0) {
+                const fromId = (window as unknown as { __hqLastBatchTeam?: string }).__hqLastBatchTeam;
+                if (fromId && fromId !== teamIds[0]) {
+                  window.dispatchEvent(new CustomEvent("hq:walk", { detail: { from: fromId, to: teamIds[0] } }));
+                }
+              }
+              (window as unknown as { __hqLastBatchTeam?: string }).__hqLastBatchTeam = teamIds[teamIds.length - 1];
+            } else if (data.phase === "handoff_request") {
+              setPendingHandoff({ dispatch_id: data.dispatch_id, steps: data.steps || [] });
+            } else if (data.phase === "handoff_approved") {
+              setPendingHandoff(null);
+            } else if (data.phase === "handoff_cancelled") {
+              setPendingHandoff(null);
+              setMessages(prev => [...prev, {
+                role: "agent",
+                text: data.reason === "timeout" ? "⏱️ 승인 시간 초과 — 취소됨" : "❌ 핸드오프 취소됨",
+                teamId: "cpo-claude", emoji: "🧠", name: "CPO",
+              }]);
+              setSending(false);
+              setPhase("idle");
+              setEntries([]);
             } else if (data.phase === "summarizing") {
               setPhase("summarizing");
             } else if (data.phase === "summary_chunk") {
@@ -278,6 +331,19 @@ function DispatchChat({ teams, onOpenChat }: { teams: Team[]; onOpenChat?: (team
     }
   };
 
+  const respondHandoff = async (decision: "approve" | "cancel") => {
+    if (!pendingHandoff) return;
+    const dispatch_id = pendingHandoff.dispatch_id;
+    setPendingHandoff(null);
+    try {
+      await fetch(`${getApiBase()}/api/dispatch/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dispatch_id, decision }),
+      });
+    } catch { /* SSE will surface errors */ }
+  };
+
   const routed = entries.filter(e => e.routed);
   const skipped = entries.filter(e => !e.routed);
 
@@ -286,10 +352,10 @@ function DispatchChat({ teams, onOpenChat }: { teams: Team[]; onOpenChat?: (team
       {/* 히스토리 헤더 */}
       {messages.length > 0 && (
         <div className="flex items-center justify-between px-1">
-          <span className="text-[9px] text-gray-600">{messages.length}개 대화</span>
+          <span className="text-[13px] text-gray-600">{messages.length}개 대화</span>
           <button
             onClick={() => { setMessages([]); localStorage.removeItem(DISPATCH_HISTORY_KEY); }}
-            className="text-[9px] text-gray-600 hover:text-red-400 transition-colors"
+            className="text-[13px] text-gray-600 hover:text-red-400 transition-colors"
           >
             초기화
           </button>
@@ -301,14 +367,14 @@ function DispatchChat({ teams, onOpenChat }: { teams: Team[]; onOpenChat?: (team
           {/* 대화 히스토리 */}
           {messages.map((m, i) => (
             m.role === "user" ? (
-              <div key={i} className="text-[11px] text-yellow-400 bg-yellow-500/5 border border-yellow-500/10 rounded px-2 py-1.5">
+              <div key={i} className="text-[13px] text-yellow-400 bg-yellow-500/5 border border-yellow-500/10 rounded px-2 py-1.5">
                 ▶ {m.text.split(/(@\S+)/g).map((part, j) =>
                   part.startsWith("@") ? <span key={j} className="text-yellow-300 font-bold bg-yellow-500/10 px-0.5 rounded">{part}</span> : part
                 )}
               </div>
             ) : (
               <div key={i}
-                className="text-[11px] p-2 rounded border bg-[#1a1a2e] border-[#2a2a4a] cursor-pointer hover:border-yellow-500/30 transition-colors"
+                className="text-[13px] p-2 rounded border bg-[#1a1a2e] border-[#2a2a4a] cursor-pointer hover:border-yellow-500/30 transition-colors"
                 onClick={() => m.teamId && onOpenChat?.(m.teamId)}
                 title="클릭 → 채팅창 열기"
               >
@@ -316,17 +382,89 @@ function DispatchChat({ teams, onOpenChat }: { teams: Team[]; onOpenChat?: (team
                   <span>{m.emoji}</span>
                   <span className="font-bold text-gray-300">{m.name}</span>
                   {m.tools && m.tools.length > 0 && (
-                    <span className="text-[7px] text-purple-400 ml-auto">{m.tools.length}개 작업</span>
+                    <span className="text-[13px] text-purple-400 ml-auto">{m.tools.length}개 작업</span>
                   )}
                 </div>
-                <div className="text-gray-400 whitespace-pre-wrap text-[10px] line-clamp-3">{m.text.slice(0, 200)}{m.text.length > 200 ? "..." : ""}</div>
+                <div className="text-gray-400 whitespace-pre-wrap text-[12px] line-clamp-3">{m.text.slice(0, 200)}{m.text.length > 200 ? "..." : ""}</div>
               </div>
             )
           ))}
 
+          {/* 파이프라인 진행 단계 표시 — 모드에 따라 다른 스텝 */}
+          {phase !== "idle" && (() => {
+            const steps = discussMode
+              ? [
+                  { key: "analyzing", label: "분석", icon: "🧠" },
+                  { key: "opinions_start", label: "의견수집", icon: "💬" },
+                  { key: "synthesizing", label: "종합", icon: "🔄" },
+                  { key: "qa_review", label: "QA검증", icon: "🔍" },
+                  { key: "final_decision", label: "결정", icon: "⚖️" },
+                  { key: "done", label: "완료", icon: "✅" },
+                ]
+              : [
+                  { key: "routing", label: "분석", icon: "🧠" },
+                  { key: "handoff", label: "승인", icon: "🔀" },
+                  { key: "executing", label: "실행", icon: "⚡" },
+                  { key: "summarizing", label: "통합", icon: "📝" },
+                  { key: "done", label: "완료", icon: "✅" },
+                ];
+            const activeKey: string = pendingHandoff ? "handoff" : phase;
+            const order = steps.map(s => s.key);
+            const activeIdx = order.indexOf(activeKey);
+            return (
+              <div className="flex items-center gap-0.5 px-1 py-1 rounded bg-[#0f0f1f] border border-[#2a2a4a]">
+                {steps.map((s, i) => {
+                  const reached = i <= activeIdx;
+                  const current = i === activeIdx;
+                  return (
+                    <div key={s.key} className="flex items-center gap-0.5 flex-1">
+                      <div className={`flex flex-col items-center flex-1 ${
+                        current ? "text-yellow-300" : reached ? "text-green-400" : "text-gray-600"
+                      }`}>
+                        <span className={`text-[13px] ${current ? "animate-pulse" : ""}`}>{s.icon}</span>
+                        <span className="text-[13px] font-bold">{s.label}</span>
+                      </div>
+                      {i < steps.length - 1 && (
+                        <div className={`h-[1px] flex-1 ${reached && i < activeIdx ? "bg-green-500/50" : "bg-[#2a2a4a]"}`} />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
+
+          {/* TM AgentHandoffCard — 피드백/재작업 지원 */}
+          {pendingHandoff && (
+            <AgentHandoffCard
+              fromTo="CPO → 팀들"
+              summary={pendingHandoff.steps.map(s => `${s.emoji} ${s.team_name}: ${s.prompt}`).join("\n")}
+              artifacts={[]}
+              isPendingReview
+              onApprove={async (feedback) => {
+                const dispatch_id = pendingHandoff.dispatch_id;
+                setPendingHandoff(null);
+                try {
+                  await fetch(`${getApiBase()}/api/dispatch/approve`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ dispatch_id, decision: "approve", feedback }),
+                  });
+                } catch {}
+              }}
+            />
+          )}
+          {pendingHandoff && (
+            <button
+              onClick={() => respondHandoff("cancel")}
+              className="self-end px-2 py-1 text-[12px] rounded bg-red-500/20 border border-red-500/40 text-red-300 hover:bg-red-500/30">
+              ❌ 전체 취소
+            </button>
+          )}
+
           {/* CPO 진행 상태 */}
-          {phase !== "idle" && phase !== "done" && (
-            <div className="text-[11px] px-2 py-1.5 rounded border bg-yellow-500/5 border-yellow-500/20 flex items-center gap-1.5">
+          {phase !== "idle" && phase !== "done" && !pendingHandoff && (
+            <div className="text-[13px] px-2 py-1.5 rounded border bg-yellow-500/5 border-yellow-500/20 flex items-center gap-1.5">
               <span className="w-1.5 h-1.5 bg-yellow-400 rounded-full animate-pulse" />
               <span className="text-yellow-400 font-bold">
                 {phase === "routing" && "🧠 CPO가 관련 팀 분석 중..."}
@@ -338,13 +476,13 @@ function DispatchChat({ teams, onOpenChat }: { teams: Team[]; onOpenChat?: (team
 
           {/* CPO 통합 보고 스트리밍 */}
           {phase === "summarizing" && summaryText && (
-            <div className="text-[11px] p-2 rounded border bg-[#1a1a2e] border-yellow-500/30">
+            <div className="text-[13px] p-2 rounded border bg-[#1a1a2e] border-yellow-500/30">
               <div className="flex items-center gap-1 mb-0.5">
                 <span>🧠</span>
                 <span className="font-bold text-yellow-400">CPO 통합보고</span>
                 <span className="w-1 h-1 bg-yellow-400 rounded-full animate-pulse" />
               </div>
-              <div className="text-gray-300 whitespace-pre-wrap text-[10px]">{summaryText}</div>
+              <div className="text-gray-300 whitespace-pre-wrap text-[12px]">{summaryText}</div>
             </div>
           )}
 
@@ -352,21 +490,21 @@ function DispatchChat({ teams, onOpenChat }: { teams: Team[]; onOpenChat?: (team
           {entries.length > 0 && (
             <>
               {skipped.length > 0 && (
-                <div className="text-[8px] text-gray-600 px-1">⏭ {skipped.map(e => e.emoji).join("")}</div>
+                <div className="text-[13px] text-gray-600 px-1">⏭ {skipped.map(e => e.emoji).join("")}</div>
               )}
               {routed.map(e => (
-                <div key={e.teamId} className={`text-[11px] p-2 rounded border ${statusColor(e.status)}`}>
+                <div key={e.teamId} className={`text-[13px] p-2 rounded border ${statusColor(e.status)}`}>
                   <div className="flex items-center gap-1 mb-0.5">
-                    <span className="text-[8px]">{statusIcon(e.status)}</span>
+                    <span className="text-[13px]">{statusIcon(e.status)}</span>
                     <span>{e.emoji}</span>
                     <span className="font-bold text-gray-300">{e.name}</span>
                     {e.status === "working" && <span className="w-1 h-1 bg-yellow-400 rounded-full animate-pulse" />}
                   </div>
                   {e.status === "working" && e.tools.length > 0 && (
-                    <div className="text-[8px] text-yellow-400/70 truncate">⚡ {e.tools[e.tools.length - 1]}</div>
+                    <div className="text-[13px] text-yellow-400/70 truncate">⚡ {e.tools[e.tools.length - 1]}</div>
                   )}
                   {e.text && (
-                    <div className="text-gray-400 whitespace-pre-wrap text-[10px] max-h-[60px] overflow-y-auto">{e.text}</div>
+                    <div className="text-gray-400 whitespace-pre-wrap text-[12px] max-h-[60px] overflow-y-auto">{e.text}</div>
                   )}
                 </div>
               ))}
@@ -396,16 +534,16 @@ function DispatchChat({ teams, onOpenChat }: { teams: Team[]; onOpenChat?: (team
         <div className="bg-[#0f0f1f] border border-[#3a3a5a] rounded shadow-lg max-h-32 overflow-y-auto">
           {mentionTeams.map((t, i) => (
             <button key={t.id}
-              className={`w-full text-left px-2 py-1 text-[11px] flex items-center gap-1.5 transition-colors ${
+              className={`w-full text-left px-2 py-1 text-[13px] flex items-center gap-1.5 transition-colors ${
                 i === mentionIdx ? "bg-yellow-500/15 text-yellow-300" : "text-gray-300 hover:bg-[#1a1a3a]"
               }`}
               onClick={() => selectMention(t)}>
               <span>{t.emoji}</span>
               <span className={i === mentionIdx ? "text-yellow-300 font-semibold" : ""}>{t.name}</span>
-              <span className="text-[8px] text-gray-600 ml-auto">{t.id}</span>
+              <span className="text-[13px] text-gray-600 ml-auto">{t.id}</span>
             </button>
           ))}
-          <div className="px-2 py-0.5 text-[8px] text-gray-700 border-t border-[#2a2a4a]">↑↓ 이동 · Tab/Enter 선택 · ESC 닫기</div>
+          <div className="px-2 py-0.5 text-[13px] text-gray-700 border-t border-[#2a2a4a]">↑↓ 이동 · Tab/Enter 선택 · ESC 닫기</div>
         </div>
       )}
 
@@ -413,6 +551,9 @@ function DispatchChat({ teams, onOpenChat }: { teams: Team[]; onOpenChat?: (team
       <input ref={dispatchFileRef} type="file" accept="image/*" multiple hidden
         onChange={(e) => { Array.from(e.target.files || []).forEach(f => setPendingImages(prev => [...prev, { file: f }])); e.target.value = ""; }} />
       <form onSubmit={(e) => { e.preventDefault(); dispatch(); }} className="flex gap-1">
+        <button type="button" onClick={() => setDiscussMode(v => !v)}
+          className={`px-1.5 py-1.5 shrink-0 rounded transition-colors ${discussMode ? "text-purple-300 bg-purple-500/20 border border-purple-500/40" : "text-gray-500 hover:text-purple-300"}`}
+          title={discussMode ? "💭 토론 모드 (ON) — 소크라테스식 의견 수렴" : "💭 토론 모드 (OFF) — 클릭해서 켜기"}>💭</button>
         <button type="button" onClick={() => dispatchFileRef.current?.click()}
           className="px-1.5 py-1.5 text-gray-500 hover:text-yellow-400 shrink-0" title="이미지 첨부"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button>
         <textarea
@@ -470,19 +611,19 @@ function DispatchChat({ teams, onOpenChat }: { teams: Team[]; onOpenChat?: (team
         />
         {canUndo ? (
           <button type="button" onClick={undoDispatch}
-            className="px-2 py-1.5 bg-red-500/20 text-red-400 text-[10px] font-bold border border-red-500/30 rounded hover:bg-red-500/30 transition-colors shrink-0 animate-pulse"
+            className="px-2 py-1.5 bg-red-500/20 text-red-400 text-[12px] font-bold border border-red-500/30 rounded hover:bg-red-500/30 transition-colors shrink-0 animate-pulse"
             title="전송 취소">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 12h18"/><path d="M3 6h18"/><path d="M3 18h18"/><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         ) : sending ? (
           <button type="button" onClick={undoDispatch}
-            className="px-2 py-1.5 bg-red-500/20 text-red-400 text-[10px] font-bold border border-red-500/30 rounded hover:bg-red-500/30 transition-colors shrink-0"
+            className="px-2 py-1.5 bg-red-500/20 text-red-400 text-[12px] font-bold border border-red-500/30 rounded hover:bg-red-500/30 transition-colors shrink-0"
             title="중지">
             ■
           </button>
         ) : (
           <button type="submit" disabled={!input.trim() && pendingImages.length === 0}
-            className="px-2 py-1.5 bg-yellow-500/20 text-yellow-400 text-[10px] font-bold border border-yellow-500/30 rounded hover:bg-yellow-500/30 disabled:opacity-30 transition-colors shrink-0">
+            className="px-2 py-1.5 bg-yellow-500/20 text-yellow-400 text-[12px] font-bold border border-yellow-500/30 rounded hover:bg-yellow-500/30 disabled:opacity-30 transition-colors shrink-0">
             ▶
           </button>
         )}
@@ -521,11 +662,13 @@ const PROJECT_TYPE_OPTIONS = [
 ];
 
 function AddTeamModal({ onClose, onCreated }: { onClose: () => void; onCreated: (team: Team) => void }) {
+  const [mode, setMode] = useState<"light" | "project">("light");
   const [displayName, setDisplayName] = useState(""); // 화면 표시용 (한글 OK)
   const [repoName, setRepoName] = useState(""); // GitHub 레포/ID (영문만)
-  const [emoji, setEmoji] = useState("🆕");
+  const [emoji, setEmoji] = useState("🤖");
   const [desc, setDesc] = useState("");
   const [projectType, setProjectType] = useState("general");
+  const [collaborative, setCollaborative] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [step, setStep] = useState("");
@@ -549,7 +692,67 @@ function AddTeamModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
     setRepoName(suggested);
   }, [displayTrimmed, repoTouched]);
 
+  const [reviewing, setReviewing] = useState(false);
+  const [generatedConfig, setGeneratedConfig] = useState<{
+    role: string; description: string; outputHint?: string; steps?: string[]; system_prompt?: string;
+  } | null>(null);
+  const [generating, setGenerating] = useState(false);
+
+  const startReview = async () => {
+    if (mode === "light") {
+      if (!desc.trim()) { setError("설명 한 줄 입력하세요"); return; }
+    } else {
+      if (!displayTrimmed) { setError("표시 이름을 입력하세요"); return; }
+      if (!repoTrimmed) { setError("레포 이름을 입력하세요"); return; }
+      if (repoInvalid || hasHyphenIssue) { setError("레포 이름 형식 확인"); return; }
+    }
+    setError("");
+    setReviewing(true);
+    setGeneratedConfig(null);
+    // TM generateAgentConfig 패턴 — LLM이 역할/스텝 자동 설계
+    setGenerating(true);
+    try {
+      const r = await fetch(`${getApiBase()}/api/agents/generate-config`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: displayTrimmed || "새 에이전트", description: desc.trim() }),
+      });
+      const d = await r.json();
+      if (d.ok) setGeneratedConfig(d);
+    } catch { /* 실패해도 리뷰는 진행 */ } finally { setGenerating(false); }
+  };
+
+  const submitLight = async () => {
+    const description = desc.trim();
+    if (!description) { setError("설명 한 줄 입력하세요"); return; }
+    setLoading(true); setError(""); setStep("경량 에이전트 생성 중...");
+    try {
+      const res = await fetch(`${getApiBase()}/api/teams/light`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: displayTrimmed || undefined,
+          id: repoTrimmed || undefined,
+          emoji, description, collaborative,
+          system_prompt: generatedConfig?.system_prompt,
+        }),
+      });
+      const data = await res.json();
+      if (!data.ok) { setError(data.error || "생성 실패"); setLoading(false); setStep(""); return; }
+      setStep("✅ 완료");
+      await new Promise(r => setTimeout(r, 400));
+      onCreated({
+        id: data.team.id, name: data.team.name, emoji: data.team.emoji,
+        repo: data.team.repo, localPath: data.team.localPath, status: data.team.status,
+      });
+      onClose();
+    } catch {
+      setError("서버 연결 실패"); setLoading(false); setStep("");
+    }
+  };
+
   const submit = async () => {
+    if (mode === "light") { submitLight(); return; }
     if (!displayTrimmed) { setError("표시 이름을 입력하세요"); return; }
     if (!repoTrimmed) { setError("레포 이름을 입력하세요 (영문)"); return; }
     if (!REPO_NAME_RE.test(repoTrimmed)) {
@@ -620,25 +823,41 @@ function AddTeamModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={onClose}>
       <div ref={modalRef} className="bg-[#0f0f1f] border border-[#3a3a5a] rounded-lg p-5 w-[340px] shadow-2xl" onClick={e => e.stopPropagation()}>
-        <h3 className="text-sm font-bold text-yellow-400 mb-3">+ 새 에이전트 추가</h3>
+        <h3 className="text-sm font-bold text-yellow-400 mb-2">+ 새 에이전트 추가</h3>
+        {/* 모드 탭 */}
+        <div className="flex gap-1 mb-3 p-1 bg-[#1a1a2e] rounded border border-[#2a2a4a]">
+          <button onClick={() => setMode("light")} disabled={loading}
+            className={`flex-1 text-[12px] py-1 rounded transition-colors ${
+              mode === "light" ? "bg-yellow-400/20 text-yellow-300 font-bold" : "text-gray-400 hover:text-gray-200"
+            }`}>⚡ 빠르게 만들기</button>
+          <button onClick={() => setMode("project")} disabled={loading}
+            className={`flex-1 text-[12px] py-1 rounded transition-colors ${
+              mode === "project" ? "bg-yellow-400/20 text-yellow-300 font-bold" : "text-gray-400 hover:text-gray-200"
+            }`}>🏗 고도화 에이전트</button>
+        </div>
+        {mode === "light" && (
+          <div className="text-[13px] text-gray-500 mb-2 px-1">
+            이름 + 한 줄 설명 → AI가 역할/단계/프롬프트 자동 설계
+          </div>
+        )}
+        {mode === "project" && (
+          <div className="text-[13px] text-gray-500 mb-2 px-1">
+            GitHub 레포 + 로컬 클론 + CLAUDE.md. 설명란에 시스템 프롬프트 직접 기입
+          </div>
+        )}
         <div className="space-y-2.5">
-          {/* 이모지 + 표시 이름 */}
-          <div className="flex gap-2">
-            <div className="w-16">
-              <label className="text-[9px] text-gray-500 block mb-0.5">이모지</label>
-              <Input value={emoji} onChange={e => setEmoji(e.target.value)} maxLength={4}
-                className="text-center text-lg" />
-            </div>
-            <div className="flex-1">
-              <label className="text-[9px] text-gray-500 block mb-0.5">표시 이름 (한글 OK)</label>
-              <Input autoFocus value={displayName} onChange={e => setDisplayName(e.target.value)}
-                placeholder="예) 회고, 매매봇, 크롤러" />
-            </div>
+          {/* 표시 이름 */}
+          <div>
+            <label className="text-[13px] text-gray-500 block mb-0.5">이름 (한글 OK)</label>
+            <Input autoFocus value={displayName} onChange={e => setDisplayName(e.target.value)}
+              placeholder="예) 회고, 매매봇, 크롤러" />
           </div>
 
-          {/* 레포/ID (영문만) */}
+          {/* 레포/ID (영문만) — 프로젝트 모드만 */}
+          {mode === "project" && (
+          <>
           <div>
-            <label className="text-[9px] text-gray-500 block mb-0.5">레포 이름 — GitHub용 (영문 소문자/숫자/하이픈)</label>
+            <label className="text-[13px] text-gray-500 block mb-0.5">레포 이름 — GitHub용 (영문 소문자/숫자/하이픈)</label>
             <Input value={repoName}
               onChange={e => { setRepoName(e.target.value); setRepoTouched(true); }}
               onKeyDown={e => e.key === "Enter" && !loading && submit()}
@@ -646,22 +865,22 @@ function AddTeamModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
               className="font-mono"
               error={repoInvalid || hasHyphenIssue} />
             {(repoInvalid || hasHyphenIssue) && (
-              <p className="text-[9px] text-red-400 mt-0.5">
+              <p className="text-[13px] text-red-400 mt-0.5">
                 {repoInvalid ? "영문 소문자(a-z), 숫자(0-9), 하이픈(-)만 사용" : "하이픈 시작/종료/연속(--) 불가"}
               </p>
             )}
             {!repoTouched && repoTrimmed && !repoInvalid && !hasHyphenIssue && (
-              <p className="text-[9px] text-gray-600 mt-0.5">표시명에서 자동 생성됨. 수정 가능</p>
+              <p className="text-[13px] text-gray-600 mt-0.5">표시명에서 자동 생성됨. 수정 가능</p>
             )}
           </div>
 
           {/* 프로젝트 타입 선택 */}
           <div>
-            <label className="text-[9px] text-gray-500 block mb-1">프로젝트 타입</label>
+            <label className="text-[13px] text-gray-500 block mb-1">프로젝트 타입</label>
             <div className="grid grid-cols-4 gap-1">
               {PROJECT_TYPE_OPTIONS.map(opt => (
                 <button key={opt.id} onClick={() => setProjectType(opt.id)}
-                  className={`text-[10px] py-1.5 px-1 rounded border transition-colors ${
+                  className={`text-[12px] py-1.5 px-1 rounded border transition-colors ${
                     projectType === opt.id
                       ? "border-yellow-400 bg-yellow-400/10 text-yellow-300"
                       : "border-[#3a3a5a] bg-[#1a1a2e] text-gray-400 hover:border-gray-500"
@@ -671,28 +890,38 @@ function AddTeamModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
                 </button>
               ))}
             </div>
-            <p className="text-[8px] text-gray-600 mt-0.5">
+            <p className="text-[13px] text-gray-600 mt-0.5">
               {PROJECT_TYPE_OPTIONS.find(o => o.id === projectType)?.desc}
             </p>
           </div>
+          </>
+          )}
 
-          {/* 설명 */}
+          {/* 설명 / 프롬프트 */}
           <div>
-            <label className="text-[9px] text-gray-500 block mb-0.5">설명 (Shift+Enter 줄바꿈)</label>
+            <label className="text-[13px] text-gray-500 block mb-0.5">
+              {mode === "light" ? "한 줄 설명 (AI가 확장)" : "시스템 프롬프트 (MD 형식 권장)"}
+            </label>
             <textarea value={desc} onChange={e => setDesc(e.target.value)}
-              onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (!loading) submit(); } }}
-              placeholder={"예) 네이버 뉴스 자동 크롤링 및 요약\n역할, 기능, 목표 등 자유롭게 작성"}
-              rows={desc.includes("\n") ? Math.min(desc.split("\n").length + 1, 5) : 2}
-              className="w-full bg-[#1a1a2e] border border-[#3a3a5a] text-white px-2 py-1.5 text-xs rounded focus:outline-none focus:border-yellow-400/50 resize-none" />
+              onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && mode === "light") { e.preventDefault(); if (!loading) submit(); } }}
+              placeholder={mode === "light"
+                ? "예) 네이버 뉴스 자동 크롤링 및 요약"
+                : "# 역할\n10년차 시니어 개발자. 이 프로젝트를...\n\n# 행동 원칙\n- ...\n\n# 출력 형식\n- ..."}
+              rows={mode === "light" ? 2 : 8}
+              className="w-full bg-[#1a1a2e] border border-[#3a3a5a] text-white px-2 py-1.5 text-xs rounded focus:outline-none focus:border-yellow-400/50 font-mono" />
           </div>
 
-          {error && <p className="text-[10px] text-red-400">{error}</p>}
-          <p className="text-[8px] text-gray-600">자동: GitHub 레포 + 로컬 클론 + CLAUDE.md + 시스템프롬프트</p>
+          {error && <p className="text-[12px] text-red-400">{error}</p>}
+          <p className="text-[13px] text-gray-600">
+            {mode === "light"
+              ? "AI가 역할/단계/페르소나 자동 설계. 필요 시 검토 팝업에서 수정."
+              : "입력한 프롬프트 그대로 CLAUDE.md + system_prompt 등록"}
+          </p>
         </div>
         <div className="flex gap-2 mt-3">
           <Button
-            onClick={submit}
-            disabled={loading || repoInvalid || hasHyphenIssue || !displayTrimmed || !repoTrimmed}
+            onClick={startReview}
+            disabled={loading || reviewing || (mode === "project" && (repoInvalid || hasHyphenIssue || !displayTrimmed || !repoTrimmed)) || (mode === "light" && !desc.trim())}
             className="flex-1 font-bold"
           >
             {loading ? `🔄 ${step}` : "에이전트 생성"}
@@ -700,6 +929,88 @@ function AddTeamModal({ onClose, onCreated }: { onClose: () => void; onCreated: 
           <Button variant="secondary" onClick={onClose} className="flex-1">취소</Button>
         </div>
       </div>
+
+      {/* 검토 팝업 — TM 스타일 생성 전 확인 */}
+      {reviewing && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80" onClick={() => !loading && setReviewing(false)}>
+          <div className="bg-[#0f0f1f] border border-yellow-500/40 rounded-lg p-4 w-[320px] shadow-2xl" onClick={e => e.stopPropagation()}>
+            <h3 className="text-sm font-bold text-yellow-400 mb-2">🔍 이렇게 만들겠습니다</h3>
+            <div className="text-[12px] text-gray-400 mb-3">검토 후 확인하세요</div>
+            <div className="bg-[#1a1a2e] border border-[#3a3a5a] rounded p-3 space-y-1.5 text-[13px]">
+              <div className="flex items-center gap-2">
+                <span className="text-2xl">{emoji}</span>
+                <div>
+                  <div className="text-white font-bold">{displayTrimmed || desc.split(" ")[0] || "agent"}</div>
+                  <div className="text-[13px] text-gray-500 font-mono">{repoTrimmed || "(자동생성)"}</div>
+                </div>
+              </div>
+              <div className="pt-1.5 border-t border-[#2a2a4a] text-gray-300">
+                <div className="text-[13px] text-gray-500 mb-0.5">모드</div>
+                <div>{mode === "light" ? "⚡ 경량 (GitHub 없음)" : "🏗 프로젝트 팀 (GitHub + 로컬 클론)"}</div>
+              </div>
+              {mode === "light" && (
+                <div className="pt-1.5 border-t border-[#2a2a4a] text-gray-300">
+                  <div className="text-[13px] text-gray-500 mb-0.5">협업 여부</div>
+                  <div>{collaborative ? "🤝 협업 가능 (@태그/핸드오프)" : "🔒 단독 실행"}</div>
+                </div>
+              )}
+              {desc.trim() && (
+                <div className="pt-1.5 border-t border-[#2a2a4a] text-gray-300">
+                  <div className="text-[13px] text-gray-500 mb-0.5">입력한 설명</div>
+                  <div className="whitespace-pre-wrap text-[12px]">{desc.trim()}</div>
+                </div>
+              )}
+              {/* LLM이 생성한 역할/스텝 */}
+              {generating && (
+                <div className="pt-1.5 border-t border-[#2a2a4a] text-yellow-300 text-[12px] flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 bg-yellow-400 rounded-full animate-pulse" />
+                  <span>AI가 역할/단계 설계 중...</span>
+                </div>
+              )}
+              {generatedConfig && (
+                <div className="pt-1.5 border-t border-[#2a2a4a] space-y-1">
+                  <div>
+                    <div className="text-[13px] text-gray-500">🎭 역할</div>
+                    <div className="text-[13px] text-yellow-300 font-bold">{generatedConfig.role}</div>
+                  </div>
+                  <div>
+                    <div className="text-[13px] text-gray-500">📋 AI가 제안하는 설명</div>
+                    <div className="text-[12px] text-gray-300">{generatedConfig.description}</div>
+                  </div>
+                  {generatedConfig.outputHint && (
+                    <div>
+                      <div className="text-[13px] text-gray-500">📦 산출물</div>
+                      <div className="text-[12px] text-gray-300">{generatedConfig.outputHint}</div>
+                    </div>
+                  )}
+                  {generatedConfig.steps && generatedConfig.steps.length > 0 && (
+                    <div>
+                      <div className="text-[13px] text-gray-500">🔁 작업 단계</div>
+                      <ol className="text-[12px] text-gray-300 list-decimal pl-4 space-y-0.5">
+                        {generatedConfig.steps.map((s, i) => <li key={i}>{s}</li>)}
+                      </ol>
+                    </div>
+                  )}
+                </div>
+              )}
+              {mode === "project" && (
+                <div className="pt-1.5 border-t border-[#2a2a4a] text-gray-300">
+                  <div className="text-[13px] text-gray-500 mb-0.5">프로젝트 타입</div>
+                  <div>{PROJECT_TYPE_OPTIONS.find(o => o.id === projectType)?.label}</div>
+                </div>
+              )}
+            </div>
+            <div className="flex gap-2 mt-3">
+              <Button onClick={() => { setReviewing(false); submit(); }} disabled={loading} className="flex-1 font-bold">
+                {loading ? `🔄 ${step}` : "✅ 확인하고 만들기"}
+              </Button>
+              <Button variant="secondary" onClick={() => setReviewing(false)} disabled={loading} className="flex-1">
+                ← 수정
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -761,7 +1072,7 @@ function GuideModal({ teamId, onClose }: { teamId: string; onClose: () => void }
           <div className="flex items-center gap-2">
             <span className="text-lg">{data?.emoji || "📋"}</span>
             <span className="text-sm font-bold text-white">{data?.name || teamId}</span>
-            <span className="text-[9px] text-gray-500">에이전트 가이드</span>
+            <span className="text-[13px] text-gray-500">에이전트 가이드</span>
           </div>
           <button onClick={onClose} className="text-gray-500 hover:text-white text-sm">✕</button>
         </div>
@@ -770,7 +1081,7 @@ function GuideModal({ teamId, onClose }: { teamId: string; onClose: () => void }
         <div className="flex border-b border-[#2a2a5a] shrink-0">
           {(["overview", "prompt", "md"] as const).map(t => (
             <button key={t} onClick={() => setTab(t)}
-              className={`flex-1 text-[10px] py-2 transition-colors ${
+              className={`flex-1 text-[12px] py-2 transition-colors ${
                 tab === t ? "text-yellow-400 border-b-2 border-yellow-400" : "text-gray-500 hover:text-gray-300"
               }`}>
               {t === "overview" ? "📋 역할·스펙" : t === "prompt" ? "🧠 시스템프롬프트" : "📄 CLAUDE.md"}
@@ -789,30 +1100,30 @@ function GuideModal({ teamId, onClose }: { teamId: string; onClose: () => void }
               <div className="space-y-3">
                 {promptSections.map((s, i) => (
                   <div key={i} className="bg-[#1a1a2e] border border-[#2a2a4a] rounded p-3">
-                    <h4 className="text-[11px] font-bold text-yellow-400 mb-1.5">{s.title}</h4>
+                    <h4 className="text-[13px] font-bold text-yellow-400 mb-1.5">{s.title}</h4>
                     {s.items.length > 0 ? (
                       <ul className="space-y-0.5">
                         {s.items.map((item, j) => (
-                          <li key={j} className="text-[10px] text-gray-300 flex gap-1.5">
+                          <li key={j} className="text-[12px] text-gray-300 flex gap-1.5">
                             <span className="text-gray-600 shrink-0">•</span>
                             <span>{item}</span>
                           </li>
                         ))}
                       </ul>
                     ) : (
-                      <p className="text-[10px] text-gray-400">{data.system_prompt.split("【" + s.title + "】")[1]?.split("【")[0]?.trim().slice(0, 200) || ""}</p>
+                      <p className="text-[12px] text-gray-400">{data.system_prompt.split("【" + s.title + "】")[1]?.split("【")[0]?.trim().slice(0, 200) || ""}</p>
                     )}
                   </div>
                 ))}
                 {promptSections.length === 0 && (
-                  <p className="text-[10px] text-gray-400 whitespace-pre-wrap">{data.system_prompt}</p>
+                  <p className="text-[12px] text-gray-400 whitespace-pre-wrap">{data.system_prompt}</p>
                 )}
               </div>
             );
           })()}
 
           {data && tab === "prompt" && (
-            <pre className="text-[9px] text-gray-300 whitespace-pre-wrap font-mono bg-[#0a0a1a] p-3 rounded border border-[#1a1a3a]">
+            <pre className="text-[13px] text-gray-300 whitespace-pre-wrap font-mono bg-[#0a0a1a] p-3 rounded border border-[#1a1a3a]">
               {data.system_prompt}
             </pre>
           )}
@@ -822,8 +1133,8 @@ function GuideModal({ teamId, onClose }: { teamId: string; onClose: () => void }
               <div className="space-y-2">
                 {parseMd(data.claude_md).map((s, i) => (
                   <div key={i} className="bg-[#1a1a2e] border border-[#2a2a4a] rounded p-2.5">
-                    <h4 className="text-[10px] font-bold text-blue-400 mb-1">{s.title}</h4>
-                    <p className="text-[9px] text-gray-400 whitespace-pre-wrap">{s.content.slice(0, 500)}</p>
+                    <h4 className="text-[12px] font-bold text-blue-400 mb-1">{s.title}</h4>
+                    <p className="text-[13px] text-gray-400 whitespace-pre-wrap">{s.content.slice(0, 500)}</p>
                   </div>
                 ))}
               </div>
@@ -845,9 +1156,9 @@ export interface AuthUser {
 }
 
 // ── 좌측 슬라이드 메뉴 ──────────────────────────────
-function SideMenu({ user, open, onClose, onLogout, pushEnabled, onTogglePush }: {
+function SideMenu({ user, open, onClose, onLogout, pushEnabled, onTogglePush, onOpenBugReport }: {
   user: AuthUser; open: boolean; onClose: () => void; onLogout: () => void;
-  pushEnabled?: boolean; onTogglePush?: () => void;
+  pushEnabled?: boolean; onTogglePush?: () => void; onOpenBugReport?: () => void;
 }) {
   const [editingName, setEditingName] = useState(false);
   const [newName, setNewName] = useState(user.nickname);
@@ -900,7 +1211,7 @@ function SideMenu({ user, open, onClose, onLogout, pushEnabled, onTogglePush }: 
                   <input value={newName} onChange={e => setNewName(e.target.value)}
                     onKeyDown={e => e.key === "Enter" && saveName()}
                     className="flex-1 bg-[#101828] border border-[#2a3050] text-white px-2 py-0.5 text-xs rounded" autoFocus />
-                  <button onClick={saveName} className="text-[9px] text-yellow-400">저장</button>
+                  <button onClick={saveName} className="text-[13px] text-yellow-400">저장</button>
                 </div>
               ) : (
                 <button onClick={() => setEditingName(true)} className="flex items-center gap-1 group cursor-pointer">
@@ -908,17 +1219,58 @@ function SideMenu({ user, open, onClose, onLogout, pushEnabled, onTogglePush }: 
                   <svg className="w-2.5 h-2.5 text-gray-600 group-hover:text-yellow-400 transition-colors shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
                 </button>
               )}
-              <span className="text-[9px] text-yellow-400/70">{user.permissions.label} (Lv.{user.permissions.level})</span>
+              <span className="text-[13px] text-yellow-400/70">{user.permissions.label} (Lv.{user.permissions.level})</span>
             </div>
           </div>
         </div>
 
         {/* 메뉴 항목 */}
         <div className="flex-1 overflow-y-auto p-2 space-y-1">
+          {/* ── 버그 리포트 (상단) ── */}
+          <button
+            onClick={() => { onClose(); onOpenBugReport?.(); }}
+            className="w-full flex items-center justify-between px-3 py-2 text-[13px] text-red-300 hover:bg-red-900/20 rounded transition-colors"
+            title="현재 화면 이슈 기록 + 최근 로그 자동 첨부 + 스크린샷 붙여넣기"
+          >
+            <span className="flex items-center gap-2">
+              <span className="text-base leading-none">🐛</span>
+              버그 리포트
+            </span>
+            <span className="text-[13px] text-gray-600">스샷 첨부</span>
+          </button>
+          <div className="h-px bg-[#1a2040] my-2" />
+          {/* ── 외부 및 팀메이커 ── */}
+          <div className="px-2 py-1 flex items-center gap-1.5">
+            <h3 className="text-[13px] text-gray-600 uppercase tracking-wider">외부 및 팀메이커</h3>
+            <span className="text-[13px] font-bold px-1 py-[1px] rounded bg-yellow-500/20 border border-yellow-500/40 text-yellow-300 tracking-wider">BETA</span>
+          </div>
+          <button
+            onClick={() => { window.location.href = "/village"; }}
+            className="w-full flex items-center justify-between px-3 py-2 text-[13px] text-green-300 hover:bg-green-900/20 rounded transition-colors"
+            title="두근컴퍼니 마을 — 화면 전환"
+          >
+            <span className="flex items-center gap-2">
+              <span className="text-base leading-none">🏙</span>
+              마을 (외부 뷰)
+            </span>
+            <span className="text-[13px] text-gray-600">→ 전환</span>
+          </button>
+          <button
+            onClick={() => { window.open("http://localhost:4827", "_blank", "noopener"); onClose(); }}
+            className="w-full flex items-center justify-between px-3 py-2 text-[13px] text-cyan-300 hover:bg-cyan-900/20 rounded transition-colors"
+            title="팀메이커 자회사 — 새 탭"
+          >
+            <span className="flex items-center gap-2">
+              <span className="text-base leading-none">🛠</span>
+              팀메이커 자회사
+            </span>
+            <span className="text-[13px] text-gray-600">↗ 새 탭</span>
+          </button>
+          <div className="h-px bg-[#1a2040] my-2" />
           {/* 알림 설정 */}
           {onTogglePush && (
             <button onClick={onTogglePush}
-              className="w-full flex items-center justify-between px-3 py-2 text-[11px] text-gray-400 hover:bg-[#1a2040] rounded transition-colors">
+              className="w-full flex items-center justify-between px-3 py-2 text-[13px] text-gray-400 hover:bg-[#1a2040] rounded transition-colors">
               <span className="flex items-center gap-2">
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
@@ -934,30 +1286,30 @@ function SideMenu({ user, open, onClose, onLogout, pushEnabled, onTogglePush }: 
           {user.permissions.level >= 4 && (
             <>
               <div className="px-2 py-1 mt-3">
-                <h3 className="text-[8px] text-gray-600 uppercase tracking-wider mb-1">관리</h3>
+                <h3 className="text-[13px] text-gray-600 uppercase tracking-wider mb-1">관리</h3>
               </div>
               <button onClick={() => setShowCodeGen(v => !v)}
-                className="w-full text-left px-3 py-2 text-[11px] text-gray-400 hover:bg-[#1a2040] rounded transition-colors">
+                className="w-full text-left px-3 py-2 text-[13px] text-gray-400 hover:bg-[#1a2040] rounded transition-colors">
                 초대코드 생성
               </button>
               {showCodeGen && (
                 <div className="mx-2 p-2 bg-[#101828] rounded border border-[#1a2040] space-y-2">
                   <select value={codeRole} onChange={e => setCodeRole(e.target.value)}
-                    className="w-full bg-[#0a0e1a] border border-[#2a3050] text-white text-[10px] px-2 py-1 rounded">
+                    className="w-full bg-[#0a0e1a] border border-[#2a3050] text-white text-[12px] px-2 py-1 rounded">
                     <option value="admin">관리자 (Lv.4)</option>
                     <option value="manager">매니저 (Lv.3)</option>
                     <option value="member">사원 (Lv.2)</option>
                     <option value="guest">게스트 (Lv.1)</option>
                   </select>
                   <button onClick={generateCode}
-                    className="w-full bg-yellow-500 text-black text-[10px] py-1.5 rounded font-bold hover:bg-yellow-400">
+                    className="w-full bg-yellow-500 text-black text-[12px] py-1.5 rounded font-bold hover:bg-yellow-400">
                     생성
                   </button>
                   {generatedCode && (
                     <div className="flex items-center gap-1">
-                      <span className="text-[11px] font-mono text-yellow-400 tracking-wider flex-1 text-center">{generatedCode}</span>
+                      <span className="text-[13px] font-mono text-yellow-400 tracking-wider flex-1 text-center">{generatedCode}</span>
                       <button onClick={() => { navigator.clipboard.writeText(generatedCode); }}
-                        className="text-[8px] text-gray-500 hover:text-gray-300">복사</button>
+                        className="text-[13px] text-gray-500 hover:text-gray-300">복사</button>
                     </div>
                   )}
                 </div>
@@ -969,7 +1321,7 @@ function SideMenu({ user, open, onClose, onLogout, pushEnabled, onTogglePush }: 
         {/* 하단 */}
         <div className="p-3 border-t border-[#1a2040]">
           <button onClick={onLogout}
-            className="w-full px-3 py-2 text-[11px] text-orange-400/70 hover:text-orange-400 hover:bg-orange-500/10 rounded transition-colors text-left">
+            className="w-full px-3 py-2 text-[13px] text-orange-400/70 hover:text-orange-400 hover:bg-orange-500/10 rounded transition-colors text-left">
             로그아웃
           </button>
         </div>
@@ -1024,8 +1376,18 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
   }, []);
   const [teamInfoMap, setTeamInfoMap] = useState<Record<string, TeamInfo>>({});
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showSysCheck, setShowSysCheck] = useState(false);
+  const [showSessHist, setShowSessHist] = useState(false);
+  const [showDeploy, setShowDeploy] = useState(false);
+  const [terminalState, setTerminalState] = useState<{ open: boolean; cmd: string; cwd: string }>({ open: false, cmd: "", cwd: "" });
   const [guideTeamId, setGuideTeamId] = useState<string | null>(null);
+  const [specPopup, setSpecPopup] = useState<{ teamId: string; x: number; y: number } | null>(null);
+  const [specInfo, setSpecInfo] = useState<{ model: string; session_id: string | null; has_session: boolean; msg_count?: number; last_preview?: string } | null>(null);
+  const [specBusy, setSpecBusy] = useState(false);
+  const [specTest, setSpecTest] = useState<{ state: "idle" | "running" | "pass" | "fail"; message: string; ms?: number }>({ state: "idle", message: "" });
+  const [confirmDialog, setConfirmDialog] = useState<{ message: string; onConfirm: () => void } | null>(null);
   const [showMenu, setShowMenu] = useState(false);
+  const [showBugReport, setShowBugReport] = useState(false);
   const [openWindows, setOpenWindows] = useState<string[]>([]); // 열린 팀 id 목록
   const [focusedWindow, setFocusedWindow] = useState<string>("");
   const [mobileChat, setMobileChat] = useState<string | null>(null); // 모바일 채팅 팀 id
@@ -1266,9 +1628,51 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
   }> | null>(null);
   const gameRef = useRef<OfficeGameHandle>(null);
 
+  // 핸드오프/이어받기 시 캐릭터 워크 애니메이션
+  useEffect(() => {
+    const onWalk = (e: Event) => {
+      const d = (e as CustomEvent).detail as { from: string; to: string } | undefined;
+      if (d?.from && d?.to) gameRef.current?.walkCharToTeam(d.from, d.to);
+    };
+    const onOpenTerm = (e: Event) => {
+      const d = (e as CustomEvent).detail as { command?: string; cwd?: string } | undefined;
+      setTerminalState({ open: true, cmd: d?.command ?? "", cwd: d?.cwd ?? "~/Developer/my-company/company-hq" });
+    };
+    window.addEventListener("hq:walk", onWalk);
+    window.addEventListener("hq:open-terminal", onOpenTerm);
+    // 디버그 — 콘솔에서 __hqTestWalk("from-team-id", "to-team-id") 호출 가능
+    (window as unknown as { __hqTestWalk?: (f: string, t: string) => void }).__hqTestWalk = (f: string, t: string) => {
+      window.dispatchEvent(new CustomEvent("hq:walk", { detail: { from: f, to: t } }));
+    };
+    return () => {
+      window.removeEventListener("hq:walk", onWalk);
+      window.removeEventListener("hq:open-terminal", onOpenTerm);
+    };
+  }, []);
+
   useEffect(() => {
     import("../game/OfficeGame").then((mod) => setGameComponent(() => mod.default));
   }, []);
+
+  // TM walkToManager 패턴 — openWindows 변동에 따라 캐릭 외출/복귀
+  // 매니저 spot: 화면 하단 중앙 (32×23 그리드의 col 12~18, row 20)
+  const prevOpenWindowsRef = useRef<string[]>([]);
+  useEffect(() => {
+    const prev = prevOpenWindowsRef.current;
+    const next = openWindows;
+    const opened = next.filter(id => !prev.includes(id));
+    const closed = prev.filter(id => !next.includes(id));
+    opened.forEach((teamId, i) => {
+      const idx = next.indexOf(teamId);
+      const gx = 13 + (idx % 4) * 2;
+      const gy = 20;
+      gameRef.current?.walkCharToSpot?.(teamId, gx, gy);
+    });
+    closed.forEach(teamId => {
+      gameRef.current?.walkCharHome?.(teamId);
+    });
+    prevOpenWindowsRef.current = next;
+  }, [openWindows]);
 
   const [clickPositions, setClickPositions] = useState<Record<string, { x: number; y: number }>>({});
 
@@ -1510,6 +1914,11 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
       autoMarkTeamRead(teamId);
       return;
     }
+    // Phaser 캐릭터 클릭(screenX 제공) → 스펙 팝업. 사이드바 클릭은 바로 채팅.
+    if (screenX !== undefined && screenY !== undefined) {
+      setSpecPopup({ teamId, x: screenX, y: screenY });
+      return;
+    }
     // 다중 모달: openWindows 배열 토글
     if (openWindows.includes(teamId)) {
       setOpenWindows(prev => prev.filter(id => id !== teamId));
@@ -1525,6 +1934,28 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
   }, [teams, openWindows, showToast, autoMarkTeamRead]);
   handleTeamClickRef.current = handleTeamClick;
 
+  // 스펙 팝업 열릴 때 모델/세션 정보 fetch
+  useEffect(() => {
+    if (!specPopup) { setSpecInfo(null); setSpecTest({ state: "idle", message: "" }); return; }
+    let cancelled = false;
+    Promise.all([
+      fetch(`${getApiBase()}/api/agents/${specPopup.teamId}/info`).then(r => r.json()).catch(() => null),
+      fetch(`${getApiBase()}/api/chat/${specPopup.teamId}/history`).then(r => r.json()).catch(() => null),
+    ]).then(([info, hist]) => {
+      if (cancelled) return;
+      const msgs = hist?.messages || [];
+      const last = msgs[msgs.length - 1];
+      setSpecInfo({
+        model: info?.model ?? "sonnet",
+        session_id: info?.session_id ?? null,
+        has_session: !!info?.has_session,
+        msg_count: msgs.length,
+        last_preview: last?.content?.slice(0, 80),
+      });
+    });
+    return () => { cancelled = true; };
+  }, [specPopup]);
+
   // URL ?team=xxx 파라미터로 팀 채팅 자동 열기 (알림 클릭 시)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -1538,17 +1969,16 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
 
   const handleWorkingChange = useCallback((teamId: string, working: boolean) => {
     gameRef.current?.setWorking(teamId, working);
-    // TeamMaker 스타일 — 작업 시작 시 "로딩" 말풍선, 끝나면 제거
-    if (working) {
-      gameRef.current?.showBubble(teamId, "작업 중…", "loading");
-    } else {
-      gameRef.current?.clearBubble(teamId);
-    }
+    // 작업 완료 시 결과 말풍선은 유지하되, 로딩 중에는 Phaser 네이티브 "..." 말풍선만 사용 (중복 제거)
+    if (!working) gameRef.current?.clearBubble(teamId);
   }, []);
 
   /** 채팅 응답 수신 시 결과 말풍선 — 응답 첫 줄 미리보기 (6초 자동 소멸) */
   const handleChatResponse = useCallback((teamId: string, responseText: string) => {
     if (!responseText) return;
+    // TM 상태 뱃지 — 응답에 ❌ 포함되면 error, 아니면 complete
+    const isErr = responseText.includes("❌") || responseText.toLowerCase().includes("error");
+    gameRef.current?.showStatusBadge(teamId, isErr ? "error" : "complete");
     // 도구 사용 이모지 감지 (claude CLI 결과에 [Read]/[Bash] 같은 마커가 있으면 추출)
     const toolMatch = responseText.match(/\[(Read|Write|Edit|MultiEdit|Bash|Glob|LS|Grep|WebFetch|WebSearch|Task|TodoWrite)\]/);
     if (toolMatch) {
@@ -1581,6 +2011,24 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
       return next;
     });
     gameRef.current?.addTeam(newTeam.id, newTeam.name, newTeam.emoji);
+    window.dispatchEvent(new CustomEvent("hq:toast", { detail: { text: `✨ ${newTeam.emoji} ${newTeam.name} 생성됨 — 자기소개 중...`, variant: "success" } }));
+    // 첫 대화 자동 트리거 — "안녕, 자기소개해줘" (TM UX 패턴)
+    setTimeout(() => {
+      fetch(`${getApiBase()}/api/chat/${newTeam.id}/send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: "안녕! 너가 이 에이전트로 처음 만들어졌어. 짧게 자기소개하고 뭘 도울 수 있는지 알려줘. (3~5줄)" }),
+      }).catch(() => {});
+    }, 800);
+    // 신규 에이전트 생성 직후 채팅창 자동 open (TM UX 패턴)
+    const mobile = typeof window !== "undefined" && window.innerWidth < 768;
+    if (mobile) {
+      setMobileChat(newTeam.id);
+      setMobileSide(true);
+    } else {
+      setOpenWindows(prev => prev.includes(newTeam.id) ? prev : [...prev, newTeam.id]);
+      setFocusedWindow(newTeam.id);
+    }
   }, []);
 
   // 날짜 상대 표시
@@ -1605,8 +2053,190 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
         </div>
       )}
       {showAddModal && <AddTeamModal onClose={() => setShowAddModal(false)} onCreated={handleAddTeam} />}
+      <SystemCheckDialog open={showSysCheck} onClose={() => setShowSysCheck(false)} apiBase={getApiBase()} />
+      {showDeploy && (
+        <div className="fixed inset-0 z-[150] bg-black/70 flex items-center justify-center p-4" onClick={() => setShowDeploy(false)}>
+          <div className="bg-[#0f0f1f] border border-[#3a3a5a] rounded-lg w-full max-w-lg p-3" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-bold text-yellow-400">🚀 배포</h3>
+              <button onClick={() => setShowDeploy(false)} className="text-gray-400 hover:text-white text-lg">✕</button>
+            </div>
+            <DeployGuideCard apiBase={getApiBase()} />
+          </div>
+        </div>
+      )}
+      <ToastContainer />
+      <OfficeEditor apiBase={getApiBase()} isAdmin={(user?.permissions?.level ?? 0) >= 4} />
+      <TerminalPanel
+        open={terminalState.open}
+        onClose={() => setTerminalState(s => ({ ...s, open: false }))}
+        apiBase={getApiBase()}
+        initialCommand={terminalState.cmd}
+        initialCwd={terminalState.cwd}
+      />
+      <SessionHistoryPanel
+        open={showSessHist}
+        onClose={() => setShowSessHist(false)}
+        apiBase={getApiBase()}
+        teams={teams}
+        onSelect={(teamId) => handleTeamClick(teamId)}
+      />
       {guideTeamId && <GuideModal teamId={guideTeamId} onClose={() => setGuideTeamId(null)} />}
-      {user && onLogout && <SideMenu user={user} open={showMenu} onClose={() => setShowMenu(false)} onLogout={onLogout} pushEnabled={pushEnabled} onTogglePush={togglePush} />}
+      {confirmDialog && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={() => setConfirmDialog(null)}>
+          <div className="bg-[#0f0f1f] border border-[#3a3a5a] rounded-lg p-4 w-[320px] shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="text-[12px] text-gray-200 mb-3 whitespace-pre-wrap">{confirmDialog.message}</div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => { const fn = confirmDialog.onConfirm; setConfirmDialog(null); fn(); }}
+                className="flex-1 px-3 py-1.5 text-[13px] rounded bg-yellow-500/20 border border-yellow-500/40 text-yellow-300 hover:bg-yellow-500/30 font-bold">
+                확인
+              </button>
+              <button
+                onClick={() => setConfirmDialog(null)}
+                className="flex-1 px-3 py-1.5 text-[13px] rounded bg-[#1a1a2e] border border-[#3a3a5a] text-gray-300 hover:bg-[#2a2a4a]">
+                취소
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {specPopup && (() => {
+        const t = teams.find(x => x.id === specPopup.teamId);
+        if (!t) return null;
+        const px = Math.min(Math.max(specPopup.x, 16), (typeof window !== "undefined" ? window.innerWidth : 1280) - 240);
+        const py = Math.min(Math.max(specPopup.y - 8, 60), (typeof window !== "undefined" ? window.innerHeight : 720) - 180);
+        return (
+          <>
+            <div className="fixed inset-0 z-[90]" onClick={() => setSpecPopup(null)} />
+            <div
+              className="fixed z-[91] w-[220px] rounded-lg border border-[#3a3a5a] bg-[#0f0f1f]/98 shadow-xl p-2.5 flex flex-col gap-1.5"
+              style={{ left: px, top: py }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center gap-1.5 border-b border-[#2a2a5a] pb-1.5">
+                <span className="text-lg">{t.emoji}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[12px] font-bold text-gray-100 truncate">{t.name}</div>
+                  <div className="text-[13px] text-gray-500 font-mono truncate">{t.id}</div>
+                </div>
+              </div>
+              <div className="flex flex-col gap-0.5 text-[12px] text-gray-400">
+                {t.repo && <div className="flex gap-1"><span className="text-gray-600">repo</span><span className="truncate text-gray-300">{t.repo}</span></div>}
+                {t.status && <div className="flex gap-1"><span className="text-gray-600">상태</span><span className="text-gray-300">{t.status}</span></div>}
+                {typeof specInfo?.msg_count === "number" && (
+                  <div className="flex gap-1"><span className="text-gray-600">대화</span><span className="text-gray-300">{specInfo.msg_count}개</span></div>
+                )}
+                {specInfo?.last_preview && (
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-gray-600">최근</span>
+                    <div className="text-gray-400 text-[13px] break-words line-clamp-2 bg-[#12122a] rounded px-1.5 py-1">{specInfo.last_preview}</div>
+                  </div>
+                )}
+                {specInfo?.session_id && (
+                  <div className="flex gap-1"><span className="text-gray-600">세션</span><span className="truncate text-gray-400 font-mono text-[13px]">{specInfo.session_id.slice(0, 8)}…</span></div>
+                )}
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="text-[13px] text-gray-500">모델</span>
+                <select
+                  value={specInfo?.model ?? "sonnet"}
+                  disabled={!specInfo || specBusy}
+                  onChange={async (e) => {
+                    if (!specPopup) return;
+                    const model = e.target.value;
+                    setSpecBusy(true);
+                    try {
+                      const r = await fetch(`${getApiBase()}/api/agents/${specPopup.teamId}/model`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ model }),
+                      });
+                      const d = await r.json();
+                      if (d.ok) {
+                        setSpecInfo(prev => prev ? { ...prev, model } : prev);
+                        window.dispatchEvent(new CustomEvent("hq:toast", { detail: { text: `모델 변경: ${model}`, variant: "success" } }));
+                      }
+                    } finally { setSpecBusy(false); }
+                  }}
+                  className="flex-1 text-[12px] bg-[#1a1a2e] border border-[#3a3a5a] rounded px-1 py-0.5 text-gray-200">
+                  <option value="haiku">⚡ haiku</option>
+                  <option value="sonnet">🎯 sonnet</option>
+                  <option value="opus">🧠 opus</option>
+                </select>
+              </div>
+              <div className="flex gap-1">
+                <button
+                  disabled={specTest.state === "running"}
+                  onClick={async () => {
+                    if (!specPopup) return;
+                    setSpecTest({ state: "running", message: "테스트 중..." });
+                    try {
+                      const r = await fetch(`${getApiBase()}/api/agents/${specPopup.teamId}/test`, { method: "POST" });
+                      const d = await r.json();
+                      setSpecTest({
+                        state: d.ok ? "pass" : "fail",
+                        message: d.ok ? `응답: ${d.response || "(빈 응답)"}` : `${d.error || "실패"}`,
+                        ms: d.duration_ms,
+                      });
+                    } catch (e) {
+                      setSpecTest({ state: "fail", message: `네트워크 에러: ${e instanceof Error ? e.message : e}` });
+                    }
+                  }}
+                  className="flex-1 text-[12px] rounded bg-purple-900/30 border border-purple-500/40 text-purple-300 px-1 py-0.5 disabled:opacity-40 hover:bg-purple-900/50 font-bold">
+                  {specTest.state === "running" ? "🧪 …" : "🧪 테스트"}
+                </button>
+                <button
+                  disabled={!specInfo?.has_session || specBusy}
+                  onClick={() => {
+                    if (!specPopup) return;
+                    setConfirmDialog({
+                      message: "이 에이전트의 세션을 초기화할까요? (채팅 히스토리는 유지됩니다)",
+                      onConfirm: async () => {
+                        setSpecBusy(true);
+                        try {
+                          await fetch(`${getApiBase()}/api/agents/${specPopup.teamId}/restart`, { method: "POST" });
+                          window.dispatchEvent(new CustomEvent("hq:toast", { detail: { text: "🔄 세션 리셋됨", variant: "info" } }));
+                          setSpecInfo(prev => prev ? { ...prev, session_id: null, has_session: false } : prev);
+                        } finally { setSpecBusy(false); }
+                      },
+                    });
+                  }}
+                  className="flex-1 text-[12px] rounded bg-[#1a1a2e] border border-[#3a3a5a] text-gray-400 px-1 py-0.5 disabled:opacity-40 hover:bg-[#2a2a4a]">
+                  🔄 리셋
+                </button>
+              </div>
+              {specTest.state !== "idle" && (
+                <div className={`text-[13px] rounded px-1.5 py-1 border ${
+                  specTest.state === "pass" ? "bg-green-900/20 border-green-500/40 text-green-300"
+                  : specTest.state === "fail" ? "bg-red-900/20 border-red-500/40 text-red-300"
+                  : "bg-yellow-900/20 border-yellow-500/40 text-yellow-300"
+                }`}>
+                  <div className="font-bold">
+                    {specTest.state === "pass" ? "✅ 작동 확인" : specTest.state === "fail" ? "❌ 실패" : "⏳ 진행 중"}
+                    {specTest.ms != null && <span className="ml-1 text-gray-400 font-normal">({(specTest.ms / 1000).toFixed(1)}s)</span>}
+                  </div>
+                  <div className="text-gray-300 break-words">{specTest.message}</div>
+                </div>
+              )}
+              <div className="flex gap-1 mt-0.5">
+                <button
+                  onClick={() => { setSpecPopup(null); handleTeamClick(t.id); }}
+                  className="flex-1 px-2 py-1 text-[12px] rounded bg-yellow-500/20 border border-yellow-500/40 text-yellow-300 hover:bg-yellow-500/30 font-bold">
+                  💬 채팅
+                </button>
+                <button
+                  onClick={() => { setSpecPopup(null); setGuideTeamId(t.id); }}
+                  className="px-2 py-1 text-[12px] rounded bg-[#1a1a2e] border border-[#3a3a5a] text-gray-300 hover:bg-[#2a2a4a]">
+                  📖
+                </button>
+              </div>
+            </div>
+          </>
+        );
+      })()}
+      {user && onLogout && <SideMenu user={user} open={showMenu} onClose={() => setShowMenu(false)} onLogout={onLogout} pushEnabled={pushEnabled} onTogglePush={togglePush} onOpenBugReport={() => setShowBugReport(true)} />}
+      <BugReportDialog open={showBugReport} onClose={() => setShowBugReport(false)} />
       {/* ── 사무실 영역 ── */}
       <div className="flex-1 flex flex-col min-w-0 min-h-0">
         {/* HUD */}
@@ -1627,14 +2257,20 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
               }}>🏢</span>
             <h1 className="text-xs font-semibold text-yellow-400 cursor-pointer" onClick={() => window.location.reload()}>(주)두근 컴퍼니</h1>
           </div>
-          <div className="flex items-center gap-1.5 text-[9px] text-gray-400">
+          <div className="flex items-center gap-1.5 text-[13px] text-gray-400">
+            {/* 세션 히스토리 */}
+            <button onClick={() => setShowSessHist(true)} className="text-gray-400 hover:text-yellow-400 transition-colors p-1" title="세션 히스토리">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/>
+              </svg>
+            </button>
             {/* 알림 벨 */}
             <button onClick={() => setShowNotifPanel(v => !v)} className="relative text-gray-400 hover:text-yellow-400 transition-colors p-1" title="알림">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
               </svg>
               {unreadCount > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] bg-red-500 text-white text-[8px] font-bold rounded-full flex items-center justify-center px-0.5">
+                <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] bg-red-500 text-white text-[13px] font-bold rounded-full flex items-center justify-center px-0.5">
                   {unreadCount > 99 ? "99+" : unreadCount}
                 </span>
               )}
@@ -1664,7 +2300,7 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
               <div className="flex items-center justify-between px-3 py-2 border-b border-[#2a2a5a]">
                 <span className="text-xs font-bold text-white">알림 {unreadCount > 0 && <span className="text-yellow-400">({unreadCount})</span>}</span>
                 {unreadCount > 0 && (
-                  <button onClick={markAllRead} className="text-[9px] text-yellow-400 hover:text-yellow-300">전체 읽음</button>
+                  <button onClick={markAllRead} className="text-[13px] text-yellow-400 hover:text-yellow-300">전체 읽음</button>
                 )}
               </div>
               {/* 알림 목록 */}
@@ -1681,12 +2317,12 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
                       {!n.read && <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 mt-1.5 shrink-0" />}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between gap-2">
-                          <span className="text-[11px] font-semibold text-white truncate">{n.title}</span>
-                          <span className="text-[8px] text-gray-600 shrink-0">{n.time.split(" ")[1]?.slice(0, 5)}</span>
+                          <span className="text-[13px] font-semibold text-white truncate">{n.title}</span>
+                          <span className="text-[13px] text-gray-600 shrink-0">{n.time.split(" ")[1]?.slice(0, 5)}</span>
                         </div>
-                        <p className="text-[10px] text-gray-400 truncate mt-0.5">{n.body}</p>
+                        <p className="text-[12px] text-gray-400 truncate mt-0.5">{n.body}</p>
                         {n.team_id && (
-                          <span className="text-[8px] text-yellow-400/60 mt-0.5 inline-block">
+                          <span className="text-[13px] text-yellow-400/60 mt-0.5 inline-block">
                             {teams.find(t => t.id === n.team_id)?.emoji} {teams.find(t => t.id === n.team_id)?.name || n.team_id} →
                           </span>
                         )}
@@ -1748,7 +2384,10 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
                     {isTradingDash
                       ? <TradingDashboard onClose={() => setMobileChat(null)} />
                       : isServerMonitor
-                      ? <ServerDashboard onClose={() => setMobileChat(null)} />
+                      ? <ServerDashboard onClose={() => setMobileChat(null)}
+                          onOpenSysCheck={() => setShowSysCheck(true)}
+                          onOpenDeploy={() => setShowDeploy(true)}
+                          onOpenTerminal={() => setTerminalState({ open: true, cmd: "", cwd: "~/Developer/my-company/company-hq" })} />
                       : team && <ChatPanel
                           team={team}
                           onClose={() => setMobileChat(null)}
@@ -1771,7 +2410,7 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
                   <div className="flex items-center gap-2">
                     <button
                       onClick={(e) => { e.stopPropagation(); setMobileSide(false); setShowAddModal(true); }}
-                      className="text-[9px] px-2 py-0.5 bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 rounded active:bg-yellow-500/20"
+                      className="text-[13px] px-2 py-0.5 bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 rounded active:bg-yellow-500/20"
                     >+ 추가</button>
                     <button onClick={(e) => { e.stopPropagation(); setMobileSide(false); }} className="text-gray-500 active:text-white text-xl px-1">✕</button>
                   </div>
@@ -1792,8 +2431,8 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
                       <div className="flex items-center gap-1.5">
                         <span>🖥</span>
                         <span>서버실</span>
-                        <span className="text-[7px] text-gray-600 ml-auto">모니터링</span>
-                        <span className="text-[7px] bg-gray-700 text-gray-500 px-1 rounded">고정</span>
+                        <span className="text-[13px] text-gray-600 ml-auto">모니터링</span>
+                        <span className="text-[13px] bg-gray-700 text-gray-500 px-1 rounded">고정</span>
                       </div>
                     </button>
                     {/* CPO */}
@@ -1812,7 +2451,7 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
                           <div className="flex items-center gap-1.5">
                             <span className="text-base">{cpo.emoji}</span>
                             <span className="font-semibold">{cpo.name}</span>
-                            <span className="text-[7px] bg-yellow-500/20 text-yellow-500 px-1 rounded ml-auto">고정</span>
+                            <span className="text-[13px] bg-yellow-500/20 text-yellow-500 px-1 rounded ml-auto">고정</span>
                           </div>
                         </button>
                       );
@@ -1830,7 +2469,7 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
                               className="w-full text-left px-2.5 py-2 rounded text-[12px] active:bg-[#1a2040] transition-colors">
                               <div className="flex items-center gap-1.5">
                                 <span>{team.emoji} {team.name}</span>
-                                {info?.version && <span className="text-[8px] text-gray-600 font-mono">{info.version}</span>}
+                                {info?.version && <span className="text-[13px] text-gray-600 font-mono">{info.version}</span>}
                               </div>
                             </button>
                           );
@@ -1846,7 +2485,7 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
                               className="flex items-center gap-1.5 py-1.5 mt-1 w-full rounded active:bg-[#1a1a3a] transition-colors group"
                             >
                               <span className="flex-1 h-px bg-[#2a2a5a]" />
-                              <span className="text-[9px] text-gray-600 group-active:text-blue-400 font-semibold tracking-wider whitespace-nowrap">{floor}F</span>
+                              <span className="text-[13px] text-gray-600 group-active:text-blue-400 font-semibold tracking-wider whitespace-nowrap">{floor}F</span>
                               <span className="flex-1 h-px bg-[#2a2a5a]" />
                             </button>
                             {teamIds.map((teamId) => {
@@ -1866,10 +2505,10 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
                                   >
                                     <div className="flex items-center gap-1.5">
                                       <span>{team.emoji} {team.name}</span>
-                                      {info?.version && <span className="text-[8px] text-gray-600 font-mono">{info.version}</span>}
+                                      {info?.version && <span className="text-[13px] text-gray-600 font-mono">{info.version}</span>}
                                     </div>
                                     {info?.last_commit_date && (
-                                      <div className="text-[8px] text-gray-600 mt-0.5 truncate">
+                                      <div className="text-[13px] text-gray-600 mt-0.5 truncate">
                                         {formatRelativeDate(info.last_commit_date)}
                                         {info.last_commit && <span className="text-gray-700"> · {info.last_commit.slice(0, 25)}</span>}
                                       </div>
@@ -1901,7 +2540,7 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
                                               return (
                                                 <button key={f} disabled={isFull || isCurrent}
                                                   onClick={() => { moveToFloor(team.id, f); setFloorDropdownTeam(null); }}
-                                                  className={`w-full text-left text-[10px] px-2 py-1 rounded transition-colors ${
+                                                  className={`w-full text-left text-[12px] px-2 py-1 rounded transition-colors ${
                                                     isCurrent ? "text-yellow-400 bg-yellow-500/10" : isFull ? "text-gray-600 cursor-not-allowed" : "text-gray-300 active:bg-[#2a2a4a]"
                                                   }`}>
                                                   <span className="whitespace-nowrap">{isCurrent ? "●" : "○"} {f}F{isFull ? " 꽉참" : ""}</span>
@@ -1955,12 +2594,15 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
               <div className="flex items-center gap-2">
                 <span className="text-lg">🖥</span>
                 <span className="text-sm font-bold text-white">서버실 모니터링</span>
-                <span className="text-[9px] text-gray-600">server-monitor</span>
+                <span className="text-[13px] text-gray-600">server-monitor</span>
               </div>
               <button onClick={() => setOpenServerDash(false)} className="text-gray-500 hover:text-white text-sm">✕</button>
             </div>
             <div className="flex-1 min-h-0 overflow-hidden">
-              <ServerDashboard onClose={() => setOpenServerDash(false)} />
+              <ServerDashboard onClose={() => setOpenServerDash(false)}
+                onOpenSysCheck={() => setShowSysCheck(true)}
+                onOpenDeploy={() => setShowDeploy(true)}
+                onOpenTerminal={() => setTerminalState({ open: true, cmd: "", cwd: "~/Developer/my-company/company-hq" })} />
             </div>
           </div>
         </div>
@@ -2014,14 +2656,23 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
         {/* 에이전트 목록 */}
         <div className="p-2 border-b border-[#2a2a5a] overflow-y-auto flex-1">
           <div className="flex items-center justify-between mb-1">
-            <h2 className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Agents</h2>
-            <button
-              onClick={() => setShowAddModal(true)}
-              className="text-[9px] px-2 py-0.5 bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 rounded hover:bg-yellow-500/20 transition-colors"
-              title="새 팀 추가"
-            >
-              + 추가
-            </button>
+            <h2 className="text-[12px] font-semibold text-gray-500 uppercase tracking-wider">Agents</h2>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => window.dispatchEvent(new CustomEvent("hq:toggle-editor"))}
+                className="text-[13px] px-1.5 py-0.5 bg-[#1a1a2e] text-gray-400 border border-[#2a2a5a] rounded hover:text-yellow-300 hover:border-yellow-400/40"
+                title="사무실 에디터 (타일/가구 배치)"
+              >
+                ✏️ 편집
+              </button>
+              <button
+                onClick={() => setShowAddModal(true)}
+                className="text-[13px] px-2 py-0.5 bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 rounded hover:bg-yellow-500/20 transition-colors"
+                title="새 팀 추가"
+              >
+                + 추가
+              </button>
+            </div>
           </div>
 
           {/* ── 서버실 + CPO 최상단 고정 섹션 ── */}
@@ -2038,8 +2689,8 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
               <div className="flex items-center gap-1.5">
                 <span>🖥</span>
                 <span>서버실</span>
-                <span className="text-[7px] text-gray-600 ml-auto">모니터링</span>
-                <span className="text-[7px] bg-gray-700 text-gray-500 px-1 rounded">고정</span>
+                <span className="text-[13px] text-gray-600 ml-auto">모니터링</span>
+                <span className="text-[13px] bg-gray-700 text-gray-500 px-1 rounded">고정</span>
               </div>
             </button>
             {/* CPO */}
@@ -2058,7 +2709,7 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
                   <div className="flex items-center gap-1.5">
                     <span className="text-base">{cpo.emoji}</span>
                     <span className="font-semibold">{cpo.name}</span>
-                    <span className="text-[7px] bg-yellow-500/20 text-yellow-500 px-1 rounded ml-auto">고정</span>
+                    <span className="text-[13px] bg-yellow-500/20 text-yellow-500 px-1 rounded ml-auto">고정</span>
                   </div>
                 </button>
               );
@@ -2086,10 +2737,10 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
                           {workingSet.has(team.id) && (
                             <span className="flex items-center gap-1 ml-auto">
                               <span className="w-1.5 h-1.5 bg-yellow-400 rounded-full animate-pulse" />
-                              <span className="text-[8px] text-yellow-400/70">작업중</span>
+                              <span className="text-[13px] text-yellow-400/70">작업중</span>
                             </span>
                           )}
-                          {!workingSet.has(team.id) && info?.version && <span className="text-[8px] text-gray-600 font-mono ml-auto">{info.version}</span>}
+                          {!workingSet.has(team.id) && info?.version && <span className="text-[13px] text-gray-600 font-mono ml-auto">{info.version}</span>}
                         </div>
                       </button>
                     </div>
@@ -2121,7 +2772,7 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
                       title={`${floor}F로 이동 (클릭)`}
                     >
                       <span className="flex-1 h-px bg-[#2a2a5a] group-hover:bg-blue-500/30" />
-                      <span className="text-[9px] text-gray-600 group-hover:text-blue-400 font-semibold tracking-wider whitespace-nowrap">{floor}F</span>
+                      <span className="text-[13px] text-gray-600 group-hover:text-blue-400 font-semibold tracking-wider whitespace-nowrap">{floor}F</span>
                       <span className="flex-1 h-px bg-[#2a2a5a] group-hover:bg-blue-500/30" />
                     </button>
                     {teamIds.map((teamId, idx) => {
@@ -2157,15 +2808,15 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
                                 {workingSet.has(team.id) && (
                                   <span className="flex items-center gap-1 ml-auto">
                                     <span className="w-1.5 h-1.5 bg-yellow-400 rounded-full animate-pulse" />
-                                    <span className="text-[8px] text-yellow-400/70">작업중</span>
+                                    <span className="text-[13px] text-yellow-400/70">작업중</span>
                                   </span>
                                 )}
                                 {!workingSet.has(team.id) && info?.version && (
-                                  <span className="text-[8px] text-gray-600 font-mono">{info.version}</span>
+                                  <span className="text-[13px] text-gray-600 font-mono">{info.version}</span>
                                 )}
                               </div>
                               {info?.last_commit_date && (
-                                <div className="text-[8px] text-gray-600 mt-0.5 truncate">
+                                <div className="text-[13px] text-gray-600 mt-0.5 truncate">
                                   {formatRelativeDate(info.last_commit_date)}
                                   {info.last_commit && <span className="text-gray-700"> · {info.last_commit.slice(0, 30)}</span>}
                                 </div>
@@ -2217,7 +2868,7 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
                                         return (
                                           <button key={f} disabled={isFull || isCurrent}
                                             onClick={() => { moveToFloor(team.id, f); setFloorDropdownTeam(null); }}
-                                            className={`w-full text-left text-[10px] px-2 py-1 rounded transition-colors ${
+                                            className={`w-full text-left text-[12px] px-2 py-1 rounded transition-colors ${
                                               isCurrent ? "text-yellow-400 bg-yellow-500/10" : isFull ? "text-gray-600 cursor-not-allowed" : "text-gray-300 hover:bg-[#2a2a4a]"
                                             }`}>
                                             <span className="whitespace-nowrap">{isCurrent ? "●" : "○"} {f}F{isFull ? " 꽉참" : ""}</span>
@@ -2267,7 +2918,7 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
         {/* 날씨 게시판 — 숨김 (공간 확보) */}
 
         <div
-          className="px-2.5 py-1 border-t border-[#2a2a5a] text-[8px] text-gray-700 text-center select-none cursor-default"
+          className="px-2.5 py-1 border-t border-[#2a2a5a] text-[13px] text-gray-700 text-center select-none cursor-default"
           onDoubleClick={async () => {
             try {
               // 1) Cache Storage (SW 제어) 전체 삭제
@@ -2304,7 +2955,6 @@ export default function Office({ user, onLogout }: { user?: AuthUser; onLogout?:
         >
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <span>Claude Code CLI · $0 · <BuildStampInline appVersion="3.0.0" /></span>
-            <EditorToolbar onApplied={() => {}} />
           </div>
         </div>
       </aside>

@@ -10,6 +10,7 @@ import {
   importLayout,
   resetToDefaults,
   getHistoryStats,
+  markEditing,
 } from "../lib/office-editor";
 
 interface Props {
@@ -57,6 +58,7 @@ export default function EditorToolbar({ onApplied }: Props) {
 
   const onUndo = () => {
     if (!canUndo()) return;
+    markEditing();
     undo();
     showToast("↩ Undo 적용");
     onApplied?.();
@@ -64,6 +66,7 @@ export default function EditorToolbar({ onApplied }: Props) {
   };
   const onRedo = () => {
     if (!canRedo()) return;
+    markEditing();
     redo();
     showToast("↪ Redo 적용");
     onApplied?.();
@@ -115,7 +118,7 @@ export default function EditorToolbar({ onApplied }: Props) {
   const stats = getHistoryStats();
 
   return (
-    <div className="relative flex items-center gap-1 font-mono text-[10px]">
+    <div className="relative flex items-center gap-1 font-mono text-[12px]">
       <Button size="sm" variant="ghost" onClick={onUndo} disabled={!canUndo()} title={`Ctrl+Z (${stats.past})`}>
         ↩
       </Button>
@@ -140,7 +143,7 @@ export default function EditorToolbar({ onApplied }: Props) {
         onChange={onImportFile}
       />
       {toast && (
-        <span className="absolute top-full right-0 mt-1 px-2 py-0.5 rounded bg-[#0f0f1f] border border-yellow-400/40 text-yellow-300 text-[10px] whitespace-nowrap shadow">
+        <span className="absolute top-full right-0 mt-1 px-2 py-0.5 rounded bg-[#0f0f1f] border border-yellow-400/40 text-yellow-300 text-[12px] whitespace-nowrap shadow">
           {toast}
         </span>
       )}

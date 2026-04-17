@@ -1,2 +1,13 @@
 INFO:     Will watch for changes in these directories: ['/Users/600mac/Developer/my-company/company-hq/server']
-ERROR:    [Errno 48] Address already in use
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [917] using WatchFiles
+INFO:     Started server process [931]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     127.0.0.1:49296 - "GET /api/teams HTTP/1.1" 200 OK
+INFO:     125.129.79.39:0 - "GET /api/teams HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [931]
+INFO:     Stopping reloader process [917]

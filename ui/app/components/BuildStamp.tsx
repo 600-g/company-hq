@@ -75,7 +75,7 @@ export default function BuildStamp() {
   };
 
   return (
-    <div className="fixed bottom-1.5 right-1.5 z-[9999] text-[10px] select-none">
+    <div className="fixed bottom-1.5 right-1.5 z-[9999] text-[12px] select-none">
       {open ? (
         <div className={`flex items-center gap-1 px-2 py-1 rounded border ${tone} backdrop-blur bg-[#0f0f1f]/80`}>
           <span className="font-mono opacity-90" title={info?.build}>build: {buildLabel}</span>

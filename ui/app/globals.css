@@ -56,7 +56,7 @@ body {
   color: #e5e7eb;
   font-family: var(--font-main);
   font-weight: 400;
-  font-feature-settings: "kern" 1, "liga" 1, "calt" 1;
+  font-feature-settings: "ss01", "kern" 1, "liga" 1, "calt" 1;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
@@ -69,7 +69,7 @@ body {
   touch-action: manipulation;
   -webkit-touch-callout: none;
   -webkit-tap-highlight-color: transparent;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.005em;
   overscroll-behavior: none;
 }
 
@@ -81,12 +81,7 @@ code, pre, .font-mono {
   font-size: 0.9em;
 }
 
-/* 최소 가독 폰트 크기 보정 — 극소 클래스 업스케일 */
-[class*="text-[7px]"]  { font-size: 12px  !important; }
-[class*="text-[8px]"]  { font-size: 13px  !important; letter-spacing: 0.01em; }
-[class*="text-[9px]"]  { font-size: 13.5px !important; }
-[class*="text-[10px]"] { font-size: 14px   !important; }
-[class*="text-[11px]"] { font-size: 15px   !important; }
+/* 선언 크기 = 렌더링 크기 원칙 — 강제 오버라이드 없음 */
 
 /* ──────────────────────────────────────
    픽셀아트 캔버스: CSS 스케일 시 nearest-neighbor

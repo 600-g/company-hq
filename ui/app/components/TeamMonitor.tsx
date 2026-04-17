@@ -58,7 +58,7 @@ export default function TeamMonitor({ teamId, teamName, teamEmoji, model, siteUr
 
   const tabBtn = (id: typeof tab, label: string) => (
     <button onClick={() => setTab(id)}
-      className={`text-[10px] px-2 py-1 rounded transition-colors ${
+      className={`text-[12px] px-2 py-1 rounded transition-colors ${
         tab === id ? "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30" : "text-gray-500 hover:text-gray-300"
       }`}>{label}</button>
   );
@@ -77,20 +77,20 @@ export default function TeamMonitor({ teamId, teamName, teamEmoji, model, siteUr
       <div className="flex items-center justify-between px-3 py-2 border-b border-[#2a2a5a] shrink-0">
         <div className="flex items-center gap-2">
           <span className="text-[12px] font-semibold text-white">{teamEmoji} {teamName}</span>
-          <span className={`text-[9px] px-1.5 py-0.5 rounded border font-mono ${
+          <span className={`text-[13px] px-1.5 py-0.5 rounded border font-mono ${
             model === "opus" ? "bg-[#2a1a4a] text-[#a080f0] border-[#4a2a7a]" : "bg-[#1a2a3a] text-[#60a0e0] border-[#2a4a6a]"
           }`}>{model || "sonnet"}</span>
-          <span className={`text-[9px] ${statusColor}`}>{statusLabel}</span>
-          {currentTool && <span className="text-[9px] text-gray-500">⚡ {currentTool}</span>}
+          <span className={`text-[13px] ${statusColor}`}>{statusLabel}</span>
+          {currentTool && <span className="text-[13px] text-gray-500">⚡ {currentTool}</span>}
         </div>
         <div className="flex items-center gap-2">
           {siteUrl && (
             <a href={siteUrl} target="_blank" rel="noreferrer"
-              className="text-[9px] px-2 py-0.5 rounded border bg-blue-900/20 text-blue-400 border-blue-800/40 hover:bg-blue-900/40 transition-colors">
+              className="text-[13px] px-2 py-0.5 rounded border bg-blue-900/20 text-blue-400 border-blue-800/40 hover:bg-blue-900/40 transition-colors">
               🔗 사이트
             </a>
           )}
-          <span className="text-[9px] text-gray-600 font-mono">v{evolution.version}</span>
+          <span className="text-[13px] text-gray-600 font-mono">v{evolution.version}</span>
           <button onClick={onClose} className="text-gray-500 hover:text-white text-sm transition-colors">✕</button>
         </div>
       </div>
@@ -102,21 +102,21 @@ export default function TeamMonitor({ teamId, teamName, teamEmoji, model, siteUr
       </div>
 
       {/* 콘텐츠 */}
-      <div className="flex-1 overflow-y-auto px-3 py-2 space-y-3 text-[11px]">
+      <div className="flex-1 overflow-y-auto px-3 py-2 space-y-3 text-[13px]">
         {tab === "activity" && (
           <>
             {/* 최근 커밋 */}
             <div className="bg-[#12122a] rounded-lg p-3 border border-[#2a2a5a]">
-              <div className="text-gray-500 text-[9px] mb-2">최근 커밋</div>
+              <div className="text-gray-500 text-[13px] mb-2">최근 커밋</div>
               {commits.length === 0 ? (
                 <div className="text-gray-600 text-center py-2">커밋 없음</div>
               ) : (
                 <div className="space-y-1.5">
                   {commits.map((c, i) => (
                     <div key={i} className="flex items-start gap-2">
-                      <span className="text-yellow-500/60 font-mono text-[9px] shrink-0 mt-0.5">{c.hash}</span>
+                      <span className="text-yellow-500/60 font-mono text-[13px] shrink-0 mt-0.5">{c.hash}</span>
                       <span className="text-gray-300 flex-1">{c.message}</span>
-                      <span className="text-gray-600 text-[9px] shrink-0">{c.ago}</span>
+                      <span className="text-gray-600 text-[13px] shrink-0">{c.ago}</span>
                     </div>
                   ))}
                 </div>
@@ -125,19 +125,19 @@ export default function TeamMonitor({ teamId, teamName, teamEmoji, model, siteUr
 
             {/* 학습 현황 요약 */}
             <div className="bg-[#12122a] rounded-lg p-3 border border-[#1a1a3a]">
-              <div className="text-gray-500 text-[9px] mb-2">학습 현황</div>
+              <div className="text-gray-500 text-[13px] mb-2">학습 현황</div>
               <div className="grid grid-cols-3 gap-2 text-center">
                 <div>
                   <div className="text-[14px] font-bold text-white">v{evolution.version}</div>
-                  <div className="text-gray-600 text-[9px]">프롬프트 버전</div>
+                  <div className="text-gray-600 text-[13px]">프롬프트 버전</div>
                 </div>
                 <div>
                   <div className="text-[14px] font-bold text-yellow-400">{evolution.history.length}</div>
-                  <div className="text-gray-600 text-[9px]">업그레이드 횟수</div>
+                  <div className="text-gray-600 text-[13px]">업그레이드 횟수</div>
                 </div>
                 <div>
                   <div className="text-[14px] font-bold text-green-400">{evolution.lessons_count}</div>
-                  <div className="text-gray-600 text-[9px]">학습 메모</div>
+                  <div className="text-gray-600 text-[13px]">학습 메모</div>
                 </div>
               </div>
             </div>
@@ -154,7 +154,7 @@ export default function TeamMonitor({ teamId, teamName, teamEmoji, model, siteUr
                   <div key={i} className="bg-[#12122a] rounded-lg p-3 border border-[#1a1a3a]">
                     <div className="flex items-center justify-between mb-1.5">
                       <span className="text-yellow-400 font-mono font-bold">v{e.ver}</span>
-                      <span className="text-gray-600 text-[9px]">{e.date}</span>
+                      <span className="text-gray-600 text-[13px]">{e.date}</span>
                     </div>
                     <ul className="space-y-0.5">
                       {e.changes.map((c, j) => (

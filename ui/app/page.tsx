@@ -3,6 +3,10 @@
 import React, { useState, useEffect } from "react";
 import Office from "./components/Office";
 import LoginPage from "./components/LoginPage";
+import { initDiag } from "./lib/diag";
+
+// 진단 로그 수집 — console.info/warn/error 자동 서버 포워드 (전역 1회)
+if (typeof window !== "undefined") initDiag();
 
 // ── 에러 바운더리 (Office 크래시 시 localStorage 초기화 옵션 제공) ──
 class OfficeBoundary extends React.Component<
@@ -18,7 +22,7 @@ class OfficeBoundary extends React.Component<
           <div className="text-center max-w-sm">
             <span className="text-3xl">⚠️</span>
             <p className="text-sm text-red-400 mt-3 font-bold">화면 로딩 오류</p>
-            <p className="text-[10px] text-gray-500 mt-1 break-all">{this.state.error.message}</p>
+            <p className="text-[12px] text-gray-500 mt-1 break-all">{this.state.error.message}</p>
             <div className="flex gap-2 mt-4 justify-center">
               <button onClick={() => window.location.reload()}
                 className="px-3 py-1.5 bg-[#2a2a4a] text-gray-300 text-xs rounded hover:bg-[#3a3a5a]">

@@ -779,6 +779,11 @@ export default class LoginScene extends Phaser.Scene {
   private enterOffice() {
     this.cameras.main.fadeOut(200, 0, 0, 0);
     this.cameras.main.once("camerafadeoutcomplete", () => {
+      // /village 독립 페이지에서 진입 시 사무실 페이지로 네비게이션
+      if (typeof window !== "undefined" && window.location.pathname.startsWith("/village")) {
+        window.location.href = "/";
+        return;
+      }
       this.notifyOutdoor(false);
       this.scene.stop("LoginScene");
       this.scene.resume("OfficeScene");

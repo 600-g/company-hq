@@ -113,7 +113,7 @@ export default function BuildStampInline({ appVersion, showBrand = false }: Prop
         <span>(주)두근 컴퍼니</span>
       </>)}
       {postClearToast && (
-        <span className="fixed bottom-3 right-3 z-[9999] px-3 py-1.5 rounded-md bg-cyan-500/20 border border-cyan-400/50 text-cyan-200 text-[11px] font-mono shadow-lg animate-fadeIn">
+        <span className="fixed bottom-3 right-3 z-[9999] px-3 py-1.5 rounded-md bg-cyan-500/20 border border-cyan-400/50 text-cyan-200 text-[13px] font-mono shadow-lg animate-fadeIn">
           {postClearToast}
         </span>
       )}

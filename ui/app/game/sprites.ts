@@ -6,6 +6,7 @@
  */
 
 import * as Phaser from "phaser";
+import TM_TILES_LIST from "./tm-tiles.json";
 
 // NPC 풀 크기 (public/assets/npcs/ 내 npc_01.png ~ npc_NN.png)
 // 노년 + 아동 캐릭터 제외 후 30개 유지
@@ -23,6 +24,13 @@ export const PRIMARY_CHAR_POOL_SIZE = 208;
 // ═══════════════════════════════════
 
 export function preloadAssets(scene: Phaser.Scene) {
+  // TeamMaker 전체 사무실 타일 — 레이아웃 렌더링용 (~280개)
+  for (const name of TM_TILES_LIST as string[]) {
+    scene.load.image(`tm_${name}`, `/assets/teammaker/tiles/office/${name}.png`);
+  }
+  // TM 가구 스프라이트시트 — 개별 가구는 이 시트에서 크롭
+  scene.load.image("tm_furniture_sheet", "/assets/teammaker/tiles/office/furniture-sheet.png");
+
   // CPO 캐릭터 (32×48 프레임, 4열×4행)
   scene.load.spritesheet("char_cpo", "/assets/chars/char_cpo.png", {
     frameWidth: 32,

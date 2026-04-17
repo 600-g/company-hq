@@ -10,6 +10,10 @@ export interface OfficeGameHandle {
   getTeamFloor: (teamId: string) => number | null;
   showBubble: (teamId: string, text: string, variant?: "loading" | "result" | "info") => void;
   clearBubble: (teamId: string) => void;
+  walkCharToTeam: (fromId: string, toId: string) => void;
+  walkCharToSpot: (teamId: string, gx: number, gy: number) => void;
+  walkCharHome: (teamId: string) => void;
+  showStatusBadge: (teamId: string, status: "complete" | "error") => void;
 }
 
 interface Props {
@@ -53,6 +57,22 @@ const OfficeGame = forwardRef<OfficeGameHandle, Props>(({ onTeamClick }, ref) =>
       const scene = sceneRef.current as { clearBubble?: (id: string) => void } | null;
       scene?.clearBubble?.(teamId);
     },
+    walkCharToTeam: (fromId: string, toId: string) => {
+      const scene = sceneRef.current as { walkCharToTeam?: (f: string, t: string) => void } | null;
+      scene?.walkCharToTeam?.(fromId, toId);
+    },
+    walkCharToSpot: (teamId: string, gx: number, gy: number) => {
+      const scene = sceneRef.current as { walkCharToSpot?: (id: string, gx: number, gy: number) => void } | null;
+      scene?.walkCharToSpot?.(teamId, gx, gy);
+    },
+    walkCharHome: (teamId: string) => {
+      const scene = sceneRef.current as { walkCharHome?: (id: string) => void } | null;
+      scene?.walkCharHome?.(teamId);
+    },
+    showStatusBadge: (teamId: string, status: "complete" | "error") => {
+      const scene = sceneRef.current as { showStatusBadge?: (id: string, s: "complete" | "error") => void } | null;
+      scene?.showStatusBadge?.(teamId, status);
+    },
     getTeamFloor: (teamId: string) => {
       const scene = sceneRef.current as { getTeamFloor?: (id: string) => number | null } | null;
       return scene?.getTeamFloor?.(teamId) ?? null;
@@ -68,6 +88,7 @@ const OfficeGame = forwardRef<OfficeGameHandle, Props>(({ onTeamClick }, ref) =>
       const { default: OfficeScene } = await import("./OfficeScene");
       const { default: OutdoorScene } = await import("./OutdoorScene");
       const { default: LoginScene } = await import("./LoginScene");
+      const { FortressScene } = await import("./FortressScene");
 
       if (destroyed || !containerRef.current) return;
 
@@ -90,8 +111,8 @@ const OfficeGame = forwardRef<OfficeGameHandle, Props>(({ onTeamClick }, ref) =>
       const game = new Phaser.Game({
         type: Phaser.AUTO,
         parent: containerRef.current,
-        width: 832,
-        height: 576,
+        width: 1024,   // WORLD_W = 32 cols × 32px
+        height: 736,   // WORLD_H = 23 rows × 32px
         pixelArt: true,       // NEAREST 필터 + roundPixels 자동 활성
         antialias: false,
         antialiasGL: false,
@@ -104,7 +125,7 @@ const OfficeGame = forwardRef<OfficeGameHandle, Props>(({ onTeamClick }, ref) =>
           autoCenter: Phaser.Scale.CENTER_BOTH,
           zoom: dpr,
         },
-        scene: [scene, new OutdoorScene(), new LoginScene()],
+        scene: [scene, new OutdoorScene(), new LoginScene(), new FortressScene()],
       });
       // 테스트/디버그용: 전역 게임 참조
       if (typeof window !== "undefined") (window as unknown as { __hqGame?: Phaser.Game }).__hqGame = game;

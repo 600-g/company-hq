@@ -28,6 +28,27 @@ const MAX_HISTORY = 20;
 const LS_OBJECT_KEYS = ["hq-arcade-pos", "hq-server-pos"] as const;
 const LS_FLOOR_TEAMS = "hq-floor-teams-order";
 
+// 편집 중 플래그 (서버 폴링/VersionCheck 리로드 차단용).
+// 값 = 만료 시각(ms). 현재 시각 < 값이면 "편집 중".
+declare global {
+  interface Window {
+    __hqEditingUntil?: number;
+  }
+}
+
+const EDITING_GRACE_MS = 30_000;
+
+export function markEditing(extraMs: number = EDITING_GRACE_MS): void {
+  if (typeof window === "undefined") return;
+  window.__hqEditingUntil = Date.now() + extraMs;
+}
+
+export function isEditing(): boolean {
+  if (typeof window === "undefined") return false;
+  const until = window.__hqEditingUntil ?? 0;
+  return until > Date.now();
+}
+
 // ── 현재 레이아웃 스냅샷 캡처 ──
 
 export function captureSnapshot(label?: string): LayoutSnapshot {
@@ -72,6 +93,7 @@ export function pushHistory(label?: string): void {
     historyState.past.shift();
   }
   historyState.future = []; // redo 체인 끊음
+  markEditing();
 }
 
 export function canUndo(): boolean {

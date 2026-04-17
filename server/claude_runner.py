@@ -87,7 +87,29 @@ _SAVED_PROMPTS: dict[str, str] = _load_prompts()
 
 TEAM_SYSTEM_PROMPTS: dict[str, str] = {
     "cpo-claude": (
-        "너는 두근컴퍼니의 CPO(총괄 비서 / 프로덕트 오너)야.\n\n"
+        "너는 두근컴퍼니의 CPO(총괄 비서 / 프로덕트 오너 / 매니저)야.\n\n"
+        "【핵심 원칙 — 매니저가 기획을 리드한다】\n"
+        "- 유저에게 많이 되묻지 마. 네가 먼저 구체적 계획을 세워서 제시해.\n"
+        "- '계산기 만들어줘' → 기능/타겟/형태를 네가 결정하고 계획안 제시.\n"
+        "- 유저는 '좋네', '이거 빼', '이거 추가' 같은 피드백만 주면 되도록.\n"
+        "- 첫 요청이 이미 매우 구체적이면 바로 실행(ready) 단계로.\n\n"
+        "【프로젝트 타입 자동 판단】\n"
+        "요청 분석해서 타입 결정: web / script / document / other\n"
+        "- web → Next.js 기본 (유저가 다른 FW 지정 시 해당)\n"
+        "- script → CLI/자동화/백엔드\n"
+        "- document → 문서/기획서/보고서\n\n"
+        "【결정 게이트 — 유저 확인 필수】\n"
+        "- 웹 프로젝트 + 데이터 저장 가능성 → DB(Supabase) vs 브라우저 저장 선택\n"
+        "- 인증 필요 시 → 소셜/이메일/비로그인 선택\n"
+        "- 배포 대상 → CF Pages vs Vercel vs 로컬 선택\n"
+        "이 3가지는 코드 구조를 결정하므로 반드시 먼저 확인.\n\n"
+        "【자동 에이전트 생성】\n"
+        "기존 팀으로 커버 안 되는 요청 → 1~4명 신규 에이전트 설계 제안.\n"
+        "- 각 에이전트는 명확히 다른 역할\n"
+        "- role: '~ 담당' (예: '프론트엔드 개발 담당')\n"
+        "- description: 구체적으로 뭘 하는지\n"
+        "- outputHint: 산출물 형식 명시\n"
+        "- 기존 팀 이름/역할이 유사하면 재사용 (create_agents 대신)\n\n"
         "【역할】1. 기획 2. 실행 3. 관리\n\n"
         "【기획】PRD, CLAUDE.md, 프로젝트 구조\n"
         "【실행】코드 수정, 빌드, 배포\n"
@@ -622,6 +644,42 @@ def _parse_status(text: str) -> str | None:
     return f"{emoji} {tool}({args})"
 
 
+def _summarize_tool_input(tool_name: str, tinput: dict) -> str:
+    """stream-json tool_use input을 한 줄 요약으로 변환."""
+    if not isinstance(tinput, dict):
+        return str(tinput)[:80]
+    # 도구별 핵심 필드
+    key_map = {
+        "Read": "file_path",
+        "Write": "file_path",
+        "Edit": "file_path",
+        "NotebookEdit": "notebook_path",
+        "Bash": "command",
+        "Glob": "pattern",
+        "Grep": "pattern",
+        "WebFetch": "url",
+        "WebSearch": "query",
+        "Task": "description",
+        "TaskCreate": "subject",
+        "TaskUpdate": "taskId",
+        "Skill": "skill",
+    }
+    key = key_map.get(tool_name)
+    if key and key in tinput:
+        val = str(tinput[key])
+        if len(val) > 70:
+            val = val[:67] + "..."
+        return val
+    # 폴백: 첫 번째 스칼라 값
+    for v in tinput.values():
+        if isinstance(v, (str, int, float)):
+            s = str(v)
+            if len(s) > 70:
+                s = s[:67] + "..."
+            return s
+    return ""
+
+
 # ── 세션 파일 경로 탐색 ────────────────────────────────
 _SESSION_SIZE_LIMIT = 10 * 1024 * 1024  # 10MB 초과 시 새 세션 (5MB → 10MB로 상향)
 
@@ -683,11 +741,13 @@ async def run_claude(
     project_path: str | None = None,
     team_id: str = "",
     is_auto: bool = False,
+    session_id: str | None = None,
 ):
     """[레거시] Claude Code CLI 실행 — claude -p 방식
 
     is_auto=True : 자동 트리거 → 예산 체크
     is_auto=False: 수동 대화 → 무제한
+    session_id   : 팀 내부 세션 id (sessions_store). 없으면 active 세션 사용.
 
     Yields: dict {"kind": "text"|"status", "content": str}
     """
@@ -715,19 +775,29 @@ async def run_claude(
 
     cmd = ["claude", "--dangerously-skip-permissions"]
 
-    # ── 세션 유지 (파일 존재 + 크기 체크 후 resume) ──
-    session_id = TEAM_SESSIONS.get(team_id)
+    # ── 세션 유지 (sessions_store 기반, 레거시 TEAM_SESSIONS 폴백) ──
+    # 전달받은 session_id로 sessions_store에서 claude_session_id 조회.
+    # 없으면 레거시 TEAM_SESSIONS[team_id] 폴백(기존 단일 세션 팀 호환).
+    import sessions_store
+    hq_session_id = session_id  # 팀 내부 세션 id (UI 드롭다운 선택값)
+    claude_sid: str | None = None
+    if team_id:
+        claude_sid = sessions_store.get_claude_session_id(team_id, hq_session_id)
+        if not claude_sid:
+            claude_sid = TEAM_SESSIONS.get(team_id)
     session_rotated = False
-    if session_id and _session_ok(session_id, project_path):
-        cmd.extend(["--resume", session_id])
+    if claude_sid and _session_ok(claude_sid, project_path):
+        cmd.extend(["--resume", claude_sid])
     else:
-        if session_id:
-            logger.info("[%s] 세션 초기화 (이전: %s)", team_id, session_id)
+        if claude_sid:
+            logger.info("[%s/%s] 세션 초기화 (이전 claude_sid: %s)", team_id, hq_session_id or "default", claude_sid)
             session_rotated = True
             yield {"kind": "status", "content": "🔄 세션 초기화 중..."}
         new_id = str(uuid.uuid4())
-        TEAM_SESSIONS[team_id] = new_id
+        TEAM_SESSIONS[team_id] = new_id  # 레거시 하위호환 유지
         _save_sessions(TEAM_SESSIONS)
+        if team_id:
+            sessions_store.set_claude_session_id(team_id, hq_session_id, new_id)
         cmd.extend(["--session-id", new_id])
 
     # ── 시스템프롬프트 ──
@@ -764,8 +834,9 @@ async def run_claude(
     # ── 모델 + 프롬프트 + stream-json ──
     cmd.extend(["-p", prompt])
     cmd.extend(["--model", TEAM_MODELS.get(team_id, "sonnet")])
-    # 참고: stream-json은 --verbose 필수인데 파일 디스크립터 과다 사용 이슈 있음
-    # 안정성 위해 텍스트 모드 유지, JSON 파싱은 result 모드로 보완
+    # stream-json: 구조화된 이벤트로 tool_use/tool_result/rate_limit 실시간 수신.
+    # readline 기반이므로 FD 과다 이슈 없음.
+    cmd.extend(["--output-format", "stream-json", "--verbose"])
 
     env = os.environ.copy()
     # PATH에 homebrew 경로 보장 (node 등 도구 참조)
@@ -793,40 +864,133 @@ async def run_claude(
     )
     AGENT_PIDS[team_id] = proc.pid
 
-    # ── stdout 텍스트 스트리밍 (안정 모드) ──
-    buf = b""
+    # ── stdout stream-json 라인 파싱 ──
+    # 각 라인이 JSON 이벤트: system/assistant/user/rate_limit_event/result
+    # readline()으로 안전하게 처리 (FD 누수 없음).
+    seen_tool_ids: dict[str, str] = {}  # tool_use_id -> tool_name
+    final_result_text = ""
     while True:
-        chunk = await proc.stdout.read(1024)
-        if not chunk:
-            if buf:
-                text = buf.decode("utf-8", errors="replace")
-                if text.strip():
-                    yield {"kind": "text", "content": text}
+        raw_line = await proc.stdout.readline()
+        if not raw_line:
             break
-        buf += chunk
+        line = raw_line.decode("utf-8", errors="replace").strip()
+        if not line:
+            continue
         try:
-            text = buf.decode("utf-8")
-            buf = b""
-        except UnicodeDecodeError:
+            evt = json.loads(line)
+        except json.JSONDecodeError:
+            # JSON이 아닌 라인은 텍스트로 흘려보냄
+            AGENT_TOKENS[team_id]["chars"] += len(line)
+            yield {"kind": "text", "content": line + "\n"}
             continue
 
-        if not text.strip():
+        etype = evt.get("type")
+
+        if etype == "system":
+            subtype = evt.get("subtype", "")
+            if subtype == "init":
+                # Claude CLI가 실제 생성한 session_id를 sessions_store에 저장
+                real_sid = evt.get("session_id")
+                if real_sid and team_id:
+                    try:
+                        import sessions_store as _ss
+                        _ss.set_claude_session_id(team_id, hq_session_id, real_sid)
+                        TEAM_SESSIONS[team_id] = real_sid
+                        _save_sessions(TEAM_SESSIONS)
+                    except Exception:
+                        pass
             continue
 
-        # 툴 사용 상태 감지
-        status = _parse_status(text)
-        if status:
-            logger.info("[%s] 도구: %s", team_id, status)
-            yield {"kind": "status", "content": status}
+        if etype == "assistant":
+            message = evt.get("message", {}) or {}
+            for block in message.get("content", []) or []:
+                btype = block.get("type")
+                if btype == "text":
+                    text = block.get("text", "")
+                    if text:
+                        AGENT_TOKENS[team_id]["chars"] += len(text)
+                        yield {"kind": "text", "content": text}
+                elif btype == "thinking":
+                    # thinking은 진행 상태로만 표시 (text에는 안 넣음)
+                    thought = block.get("thinking", "")
+                    if thought:
+                        preview = thought.strip().split("\n")[0][:80]
+                        yield {"kind": "status", "content": f"💭 {preview}"}
+                elif btype == "tool_use":
+                    tname = block.get("name", "?")
+                    tid = block.get("id", "")
+                    tinput = block.get("input", {}) or {}
+                    seen_tool_ids[tid] = tname
+                    emoji = _TOOL_EMOJI.get(tname, "⚙️")
+                    # input 요약 (길면 자름)
+                    _input_summary = _summarize_tool_input(tname, tinput)
+                    yield {
+                        "kind": "tool_use",
+                        "tool": tname,
+                        "tool_id": tid,
+                        "input": tinput,
+                        "summary": f"{emoji} {tname}: {_input_summary}",
+                    }
+            continue
 
-        # 에러 패턴 감지
-        _err_patterns = ["errno", "unknown error", "rate limit", "overloaded", "too many"]
-        if any(p in text.lower() for p in _err_patterns) and len(text) < 300:
-            logger.warning("[%s] 에러 감지: %s", team_id, text.strip()[:100])
-            _log_error_lesson(team_id, text.strip())
+        if etype == "user":
+            # tool_result 역전송 (사용자 메시지로 포장되지만 도구 결과)
+            message = evt.get("message", {}) or {}
+            for block in message.get("content", []) or []:
+                if block.get("type") == "tool_result":
+                    tid = block.get("tool_use_id", "")
+                    tname = seen_tool_ids.get(tid, "tool")
+                    content = block.get("content", "")
+                    if isinstance(content, list):
+                        content = "\n".join(
+                            (c.get("text", "") if isinstance(c, dict) else str(c))
+                            for c in content
+                        )
+                    if not isinstance(content, str):
+                        content = str(content)
+                    _preview = content.strip().replace("\n", " ")[:120]
+                    is_err = bool(block.get("is_error"))
+                    yield {
+                        "kind": "tool_result",
+                        "tool": tname,
+                        "tool_id": tid,
+                        "is_error": is_err,
+                        "summary": f"{'❌' if is_err else '✓'} {tname}: {_preview}",
+                    }
+            continue
 
-        AGENT_TOKENS[team_id]["chars"] += len(text)
-        yield {"kind": "text", "content": text}
+        if etype == "rate_limit_event":
+            rl = evt.get("rate_limit_info", {}) or {}
+            status_ = rl.get("status")
+            resets_at = rl.get("resetsAt")
+            if status_ and status_ != "allowed":
+                # 한도 초과/경고 → 사용자에게 안내
+                msg = f"⚠️ Max 플랜 {rl.get('rateLimitType', '')} 한도: {status_}"
+                if resets_at:
+                    try:
+                        from datetime import datetime as _dt
+                        reset_str = _dt.fromtimestamp(resets_at).strftime("%H:%M")
+                        msg += f" (리셋 {reset_str})"
+                    except Exception:
+                        pass
+                yield {"kind": "text", "content": f"\n\n{msg}\n"}
+            continue
+
+        if etype == "result":
+            # 최종 결과 — usage/cost 기록
+            final_result_text = evt.get("result", "") or ""
+            usage = evt.get("usage", {}) or {}
+            cost = evt.get("total_cost_usd", 0)
+            logger.info(
+                "[%s] result: %d turns, in=%d out=%d cached=%d cost=$%.4f",
+                team_id, evt.get("num_turns", 0),
+                usage.get("input_tokens", 0), usage.get("output_tokens", 0),
+                usage.get("cache_read_input_tokens", 0), cost,
+            )
+            continue
+
+    # final_result_text는 assistant text 합과 동일하므로 별도 yield 불필요
+    _ = final_result_text  # silence lint
 
     await proc.wait()
 

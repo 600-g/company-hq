@@ -13,17 +13,17 @@ function ConfirmDialog({
         className="bg-[#0f0f1f] border border-[#3a3a5a] rounded-lg p-4 w-64 shadow-2xl"
         onClick={e => e.stopPropagation()}
       >
-        <p className="text-[11px] text-gray-300 mb-4 leading-relaxed">{message}</p>
+        <p className="text-[13px] text-gray-300 mb-4 leading-relaxed">{message}</p>
         <div className="flex gap-2">
           <button
             onClick={onConfirm}
-            className="flex-1 bg-red-500/80 hover:bg-red-500 text-white py-1.5 text-[10px] font-bold rounded transition-colors"
+            className="flex-1 bg-red-500/80 hover:bg-red-500 text-white py-1.5 text-[12px] font-bold rounded transition-colors"
           >
             초기화
           </button>
           <button
             onClick={onCancel}
-            className="flex-1 bg-[#2a2a3a] hover:bg-[#3a3a4a] text-gray-400 py-1.5 text-[10px] rounded transition-colors"
+            className="flex-1 bg-[#2a2a3a] hover:bg-[#3a3a4a] text-gray-400 py-1.5 text-[12px] rounded transition-colors"
           >
             취소
           </button>
@@ -156,29 +156,29 @@ function AgentCard({ agent, onRestart }: { agent: AgentInfo; onRestart: (id: str
       <div className="flex items-center justify-between mb-1">
         <div className="flex items-center gap-1.5 min-w-0">
           <span className="text-sm shrink-0">{agent.emoji}</span>
-          <span className="text-[10px] font-semibold text-gray-300 truncate">{agent.name}</span>
+          <span className="text-[12px] font-semibold text-gray-300 truncate">{agent.name}</span>
         </div>
         <div className="flex items-center gap-1 shrink-0">
           {agent.working ? (
             <span className="flex items-center gap-0.5">
               <span className="w-1.5 h-1.5 bg-yellow-400 rounded-full animate-pulse" />
-              <span className="text-[8px] text-yellow-400 font-bold">작업중</span>
+              <span className="text-[13px] text-yellow-400 font-bold">작업중</span>
             </span>
           ) : agent.pid ? (
             <span className="flex items-center gap-0.5">
               <span className="w-1.5 h-1.5 bg-green-400 rounded-full" />
-              <span className="text-[8px] text-green-400">대기</span>
+              <span className="text-[13px] text-green-400">대기</span>
             </span>
           ) : (
             <span className="flex items-center gap-0.5">
               <span className="w-1.5 h-1.5 bg-gray-500 rounded-full" />
-              <span className="text-[8px] text-gray-500">대기</span>
+              <span className="text-[13px] text-gray-500">대기</span>
             </span>
           )}
           <button
             onClick={() => setConfirming(true)}
             disabled={restarting}
-            className="text-[8px] px-1.5 py-0.5 bg-[#2a2a3a] border border-[#3a3a5a] text-gray-500 rounded
+            className="text-[13px] px-1.5 py-0.5 bg-[#2a2a3a] border border-[#3a3a5a] text-gray-500 rounded
                        hover:text-red-400 hover:border-red-500/40 disabled:opacity-30 transition-colors ml-1"
             title="세션 초기화"
           >
@@ -189,7 +189,7 @@ function AgentCard({ agent, onRestart }: { agent: AgentInfo; onRestart: (id: str
 
       {/* 현재 작업 상태만 표시 */}
       {agent.working && agent.tool ? (
-        <div className="text-[9px] text-yellow-300/80 truncate">⚡ {agent.tool}</div>
+        <div className="text-[13px] text-yellow-300/80 truncate">⚡ {agent.tool}</div>
       ) : null}
 
       {/* 작업중 로딩바 */}
@@ -201,7 +201,7 @@ function AgentCard({ agent, onRestart }: { agent: AgentInfo; onRestart: (id: str
 
       {/* CPU / 메모리 (작업 중일 때만) */}
       {agent.working && (agent.cpu !== null || agent.memory_mb !== null) && (
-        <div className="mt-1.5 flex gap-2 text-[8px] text-gray-600">
+        <div className="mt-1.5 flex gap-2 text-[13px] text-gray-600">
           {agent.cpu !== null && (
             <span>CPU <span className="text-yellow-400">{agent.cpu}%</span></span>
           )}
@@ -212,7 +212,7 @@ function AgentCard({ agent, onRestart }: { agent: AgentInfo; onRestart: (id: str
       )}
 
       {/* 모델 + 세션 상태 */}
-      <div className="mt-1 flex items-center gap-2 text-[8px] text-gray-600">
+      <div className="mt-1 flex items-center gap-2 text-[13px] text-gray-600">
         <span>{agent.model_key}</span>
         {agent.tokens && agent.tokens.prompts > 0 && (
           <span>· {agent.tokens.prompts}회</span>
@@ -227,7 +227,7 @@ function AgentCard({ agent, onRestart }: { agent: AgentInfo; onRestart: (id: str
 function ServiceStatus({ services }: { services: ServiceInfo[] }) {
   return (
     <div className="space-y-1">
-      <div className="text-[9px] text-gray-500 font-bold mb-1">🌐 서비스 상태</div>
+      <div className="text-[13px] text-gray-500 font-bold mb-1">🌐 서비스 상태</div>
       {services.map(svc => (
         <div key={svc.name} className="flex items-center justify-between py-0.5">
           <div className="flex items-center gap-1.5 min-w-0">
@@ -235,9 +235,9 @@ function ServiceStatus({ services }: { services: ServiceInfo[] }) {
               svc.status === "ok" ? "bg-green-400" :
               svc.status === "warn" ? "bg-yellow-400" : "bg-red-500 animate-pulse"
             }`} />
-            <span className="text-[9px] text-gray-400 truncate">{svc.name}</span>
+            <span className="text-[13px] text-gray-400 truncate">{svc.name}</span>
           </div>
-          <span className={`text-[8px] shrink-0 ${
+          <span className={`text-[13px] shrink-0 ${
             svc.status === "ok" ? "text-green-400" :
             svc.status === "warn" ? "text-yellow-400" : "text-red-400"
           }`}>
@@ -324,20 +324,20 @@ function TokenUsagePanel({ data }: { data: TokenUsageData }) {
         <div className="flex items-center gap-3">
           <CircleGauge pct={usagePct} size={72} />
           <div className="flex-1 min-w-0 space-y-1">
-            <div className="text-[9px] text-gray-500 font-bold">오늘 사용량</div>
+            <div className="text-[13px] text-gray-500 font-bold">오늘 사용량</div>
             <div className="flex items-baseline gap-1">
               <span className={`text-[13px] font-mono font-bold ${dangerColor(usagePct).text}`}>
                 {fmtTokens(daily.total)}
               </span>
-              <span className="text-[8px] text-gray-600">/ {fmtTokens(data.daily_limit)}</span>
+              <span className="text-[13px] text-gray-600">/ {fmtTokens(data.daily_limit)}</span>
             </div>
-            <div className="grid grid-cols-2 gap-x-2 text-[8px]">
+            <div className="grid grid-cols-2 gap-x-2 text-[13px]">
               <span className="text-gray-600">입력 <span className="text-blue-400 font-mono">{fmtTokens(daily.input)}</span></span>
               <span className="text-gray-600">출력 <span className="text-green-400 font-mono">{fmtTokens(daily.output)}</span></span>
               <span className="text-gray-600">캐시 <span className="text-yellow-400 font-mono">{fmtTokens(daily.cache_read)}</span></span>
               <span className="text-gray-600">절감 <span className="text-yellow-300 font-mono">{dailyCacheRatio}%</span></span>
             </div>
-            <div className="text-[7px] text-gray-700 pt-0.5">
+            <div className="text-[13px] text-gray-700 pt-0.5">
               * Max 추정 한도 (DAILY_TOKEN_LIMIT 환경변수로 조정)
             </div>
           </div>
@@ -351,7 +351,7 @@ function TokenUsagePanel({ data }: { data: TokenUsageData }) {
       {/* ── 에이전트별 사용량 랭킹 ── */}
       {data.projects.length > 0 && (
         <div className="space-y-1.5">
-          <div className="text-[8px] text-gray-600 font-bold">에이전트별 사용량 (많은 순)</div>
+          <div className="text-[13px] text-gray-600 font-bold">에이전트별 사용량 (많은 순)</div>
           {data.projects.map((p, i) => {
             const barPct = (p.total / maxTotal) * 100;
             const ctxPct = p.context_pct ?? 0;
@@ -361,11 +361,11 @@ function TokenUsagePanel({ data }: { data: TokenUsageData }) {
                 {/* 에이전트 이름 + 순위 + 총 토큰 */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-1 min-w-0">
-                    <span className="text-[9px] text-gray-700 font-mono shrink-0 w-3">{i + 1}</span>
-                    <span className="text-[9px] shrink-0">{p.emoji}</span>
-                    <span className="text-[9px] text-gray-300 truncate font-medium">{p.label}</span>
+                    <span className="text-[13px] text-gray-700 font-mono shrink-0 w-3">{i + 1}</span>
+                    <span className="text-[13px] shrink-0">{p.emoji}</span>
+                    <span className="text-[13px] text-gray-300 truncate font-medium">{p.label}</span>
                   </div>
-                  <span className="text-[9px] font-mono text-purple-400 shrink-0 font-bold">
+                  <span className="text-[13px] font-mono text-purple-400 shrink-0 font-bold">
                     {fmtTokens(p.total)}
                   </span>
                 </div>
@@ -384,7 +384,7 @@ function TokenUsagePanel({ data }: { data: TokenUsageData }) {
 
                 {/* 컨텍스트 사용률 */}
                 <div className="flex items-center justify-between">
-                  <span className="text-[7px] text-gray-600">컨텍스트 창</span>
+                  <span className="text-[13px] text-gray-600">컨텍스트 창</span>
                   <div className="flex items-center gap-1">
                     <div className="w-16 h-1 bg-[#2a2a3a] rounded-full overflow-hidden">
                       <div
@@ -392,13 +392,13 @@ function TokenUsagePanel({ data }: { data: TokenUsageData }) {
                         style={{ width: `${ctxPct}%`, transition: "width 0.5s ease" }}
                       />
                     </div>
-                    <span className={`text-[7px] font-mono ${colors.text}`}>{ctxPct.toFixed(0)}%</span>
+                    <span className={`text-[13px] font-mono ${colors.text}`}>{ctxPct.toFixed(0)}%</span>
                   </div>
                 </div>
               </div>
             );
           })}
-          <div className="flex gap-3 text-[7px] text-gray-600">
+          <div className="flex gap-3 text-[13px] text-gray-600">
             <span className="flex items-center gap-0.5"><span className="w-2 h-1 bg-blue-500/70 rounded-sm inline-block"/>입력</span>
             <span className="flex items-center gap-0.5"><span className="w-2 h-1 bg-green-500/70 rounded-sm inline-block"/>출력</span>
             <span className="flex items-center gap-0.5"><span className="w-2 h-1 bg-emerald-500 rounded-sm inline-block"/>컨텍스트 정상</span>
@@ -408,14 +408,21 @@ function TokenUsagePanel({ data }: { data: TokenUsageData }) {
       )}
 
       {data.projects.length === 0 && (
-        <div className="text-[8px] text-gray-600 text-center py-2">오늘 사용 기록 없음</div>
+        <div className="text-[13px] text-gray-600 text-center py-2">오늘 사용 기록 없음</div>
       )}
     </div>
   );
 }
 
 // ── 메인 대시보드 ──────────────────────────────────────
-export default function ServerDashboard({ onClose }: { onClose: () => void }) {
+interface ServerDashboardProps {
+  onClose: () => void;
+  onOpenSysCheck?: () => void;
+  onOpenDeploy?: () => void;
+  onOpenTerminal?: () => void;
+}
+
+export default function ServerDashboard({ onClose, onOpenSysCheck, onOpenDeploy, onOpenTerminal }: ServerDashboardProps) {
   const [data, setData] = useState<DashboardData | null>(null);
   const [tokenData, setTokenData] = useState<TokenUsageData | null>(null);
   const [lastUpdated, setLastUpdated] = useState("");
@@ -477,22 +484,22 @@ export default function ServerDashboard({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 text-[10px]">
+    <div className="flex-1 flex flex-col min-h-0 text-[12px]">
       {/* 헤더 */}
       <div className="flex items-center justify-between mb-2 shrink-0">
         <div className="flex items-center gap-2">
           <div className={`w-1.5 h-1.5 rounded-full ${error ? "bg-red-500" : "bg-green-400 animate-pulse"}`} />
-          <span className="text-gray-500 text-[9px]">{error ? "연결 오류" : `갱신 ${lastUpdated}`}</span>
+          <span className="text-gray-500 text-[13px]">{error ? "연결 오류" : `갱신 ${lastUpdated}`}</span>
         </div>
         <div className="flex items-center gap-1">
           {workingCount > 0 && (
-            <span className="text-[8px] bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 px-1.5 py-0.5 rounded">
+            <span className="text-[13px] bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 px-1.5 py-0.5 rounded">
               {workingCount}개 작업중
             </span>
           )}
           <button
             onClick={handleHardRefresh}
-            className="text-[8px] px-1.5 py-0.5 bg-[#1a1a3a] border border-[#2a2a5a] text-gray-400 rounded
+            className="text-[13px] px-1.5 py-0.5 bg-[#1a1a3a] border border-[#2a2a5a] text-gray-400 rounded
                        hover:text-yellow-400 hover:border-yellow-400/40 transition-colors"
             title="강제 새로고침"
           >
@@ -504,10 +511,29 @@ export default function ServerDashboard({ onClose }: { onClose: () => void }) {
 
       <div className="flex-1 overflow-y-auto space-y-2.5 min-h-0 pr-0.5">
 
+        {/* ── DevOps 통합 (TM 패턴) — 개발자용 툴 ── */}
+        <section>
+          <div className="flex items-center gap-1 text-[13px] text-gray-600">
+            <span className="uppercase tracking-wider">DevOps</span>
+            {onOpenSysCheck && (
+              <button onClick={onOpenSysCheck} title="시스템 체크"
+                className="ml-auto text-[12px] px-1 py-0.5 bg-[#1a1a2e] border border-[#2a2a4a] rounded hover:border-yellow-400/40">🔧</button>
+            )}
+            {onOpenDeploy && (
+              <button onClick={onOpenDeploy} title="배포"
+                className="text-[12px] px-1 py-0.5 bg-[#1a1a2e] border border-[#2a2a4a] rounded hover:border-yellow-400/40">🚀</button>
+            )}
+            {onOpenTerminal && (
+              <button onClick={onOpenTerminal} title="터미널"
+                className="text-[12px] px-1 py-0.5 bg-[#1a1a2e] border border-[#2a2a4a] rounded hover:border-green-400/40">💻</button>
+            )}
+          </div>
+        </section>
+
         {/* ── 시스템 리소스 + 토큰 사용량 ── */}
         {data && (
           <section>
-            <h3 className="text-[9px] text-gray-600 uppercase tracking-wider mb-1.5">시스템 리소스</h3>
+            <h3 className="text-[13px] text-gray-600 uppercase tracking-wider mb-1.5">시스템 리소스</h3>
             <div className="space-y-2 bg-[#1a1a2e] border border-[#2a2a4a] rounded p-2.5">
               {([
                 { label: "CPU",    value: data.system.cpu    },
@@ -516,8 +542,8 @@ export default function ServerDashboard({ onClose }: { onClose: () => void }) {
               ] as { label: string; value: number }[]).map(({ label, value }) => (
                 <div key={label}>
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-[10px] text-gray-400">{label}</span>
-                    <span className={`text-[10px] font-mono font-semibold ${metricText(value)}`}>{value}%</span>
+                    <span className="text-[12px] text-gray-400">{label}</span>
+                    <span className={`text-[12px] font-mono font-semibold ${metricText(value)}`}>{value}%</span>
                   </div>
                   <ProgressBar value={value} color={metricColor(value)} />
                 </div>
@@ -528,8 +554,8 @@ export default function ServerDashboard({ onClose }: { onClose: () => void }) {
                 return (
                   <div>
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-[10px] text-gray-400">🔢 토큰 (오늘)</span>
-                      <span className={`text-[10px] font-mono font-semibold ${metricText(tPct)}`}>{tPct.toFixed(1)}%</span>
+                      <span className="text-[12px] text-gray-400">🔢 토큰 (오늘)</span>
+                      <span className={`text-[12px] font-mono font-semibold ${metricText(tPct)}`}>{tPct.toFixed(1)}%</span>
                     </div>
                     <ProgressBar value={tPct} color={metricColor(tPct)} />
                   </div>
@@ -537,8 +563,8 @@ export default function ServerDashboard({ onClose }: { onClose: () => void }) {
               })()}
               {/* 네트워크 상태 */}
               <div className="flex items-center justify-between">
-                <span className="text-[10px] text-gray-400">네트워크</span>
-                <span className={`text-[10px] font-mono font-semibold ${
+                <span className="text-[12px] text-gray-400">네트워크</span>
+                <span className={`text-[12px] font-mono font-semibold ${
                   data.system.network?.quality === "안정" ? "text-green-400" :
                   data.system.network?.quality === "보통" ? "text-yellow-400" :
                   data.system.network?.quality === "불안" ? "text-red-400" :
@@ -556,7 +582,7 @@ export default function ServerDashboard({ onClose }: { onClose: () => void }) {
         {/* ── 에이전트 현황 ── */}
         {data && (
           <section>
-            <h3 className="text-[9px] text-gray-600 uppercase tracking-wider mb-1.5">
+            <h3 className="text-[13px] text-gray-600 uppercase tracking-wider mb-1.5">
               에이전트 현황 <span className="text-gray-700 normal-case">({data.agents.length}개)</span>
             </h3>
             <div className="grid grid-cols-2 gap-1.5">
@@ -570,9 +596,9 @@ export default function ServerDashboard({ onClose }: { onClose: () => void }) {
         {/* ── 토큰 사용량 상세 ── */}
         {tokenData && (
           <section>
-            <h3 className="text-[9px] text-gray-600 uppercase tracking-wider mb-1.5">
+            <h3 className="text-[13px] text-gray-600 uppercase tracking-wider mb-1.5">
               🔢 토큰 사용량
-              <span className="text-gray-700 normal-case ml-1 text-[8px]">
+              <span className="text-gray-700 normal-case ml-1 text-[13px]">
                 최근 5시간 {tokenData.window_label ? `(${tokenData.window_label})` : ""}
               </span>
             </h3>
@@ -583,7 +609,7 @@ export default function ServerDashboard({ onClose }: { onClose: () => void }) {
         {/* ── 서비스 상태 ── */}
         {data?.services && data.services.length > 0 && (
           <section>
-            <h3 className="text-[9px] text-gray-600 uppercase tracking-wider mb-1.5">
+            <h3 className="text-[13px] text-gray-600 uppercase tracking-wider mb-1.5">
               서비스 상태
               {data.services.some(s => s.status === "down") && (
                 <span className="text-red-400 ml-1 normal-case">⚠ 장애 감지</span>
@@ -598,10 +624,10 @@ export default function ServerDashboard({ onClose }: { onClose: () => void }) {
         {/* ── 최근 활동 ── */}
         {data && data.activity.length > 0 && (
           <section>
-            <h3 className="text-[9px] text-gray-600 uppercase tracking-wider mb-1.5">최근 활동</h3>
+            <h3 className="text-[13px] text-gray-600 uppercase tracking-wider mb-1.5">최근 활동</h3>
             <div className="bg-[#0a0a1a] border border-[#1a1a3a] rounded p-2 space-y-1 max-h-28 overflow-y-auto">
               {data.activity.map((act, i) => (
-                <div key={i} className="flex gap-1.5 text-[8px]">
+                <div key={i} className="flex gap-1.5 text-[13px]">
                   <span className="text-gray-700 shrink-0 font-mono">{act.time}</span>
                   <span className="text-gray-600 shrink-0">[{act.team}]</span>
                   <span className="text-gray-400 truncate">{act.content}</span>
@@ -614,7 +640,7 @@ export default function ServerDashboard({ onClose }: { onClose: () => void }) {
         {/* ── 버전 정보 ── */}
         {data && (
           <section>
-            <h3 className="text-[9px] text-gray-600 uppercase tracking-wider mb-1.5">버전 정보</h3>
+            <h3 className="text-[13px] text-gray-600 uppercase tracking-wider mb-1.5">버전 정보</h3>
             <div className="bg-[#1a1a2e] border border-[#2a2a4a] rounded p-2 space-y-1">
               {([
                 ["서버",       `v${data.version.server}`],
@@ -624,7 +650,7 @@ export default function ServerDashboard({ onClose }: { onClose: () => void }) {
               ] as [string, string][]).map(([k, v]) => (
                 <div key={k} className="flex justify-between">
                   <span className="text-gray-600">{k}</span>
-                  <span className="text-gray-400 font-mono text-[9px]">{v}</span>
+                  <span className="text-gray-400 font-mono text-[13px]">{v}</span>
                 </div>
               ))}
             </div>

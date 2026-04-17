@@ -9,6 +9,7 @@
 import * as Phaser from "phaser";
 import { preloadAssets, registerCharAnims, createCustomFurniture, NPC_POOL_SIZE, PRIMARY_CHAR_POOL_SIZE } from "./sprites";
 import { BubbleManager } from "./bubbles";
+import { getFurnitureDef, WALKABLE_CATEGORIES, fetchAndApplyFurnitureOverrides } from "./tm-furniture-catalog";
 
 // ─────────────────────────────────────────
 // NPC 랜덤 픽 (팀 ID 시드 기반 — 리로드 간 동일 결과)
@@ -48,15 +49,17 @@ function pickNpcs(teamId: string, count: number = 3): string[] {
 
 /** 팀 id + primary 캐릭터 2개 → [primary1, primary2, ...2 random NPCs] */
 function buildTeamChars(teamId: string, primaries: readonly [number, number]): (number | string)[] {
-  return [primaries[0], primaries[1], ...pickNpcs(teamId, 2)];
+  // TeamMaker 스타일 — 시각적으로 1명만 (실제 역량은 4명급)
+  void teamId; void primaries;
+  return [primaries[0]];
 }
 
 const TILE = 32;
-const COLS = 26;
-const ROWS = 18;
-const WORLD_W = COLS * TILE;
-const WORLD_H = ROWS * TILE;
-const WALL_H = 3; // 벽(통창) 높이 — 3칸으로 확장 (96px)
+const COLS = 32;   // TM layout 커버 (default.json 최대 col 30)
+const ROWS = 23;   // TM layout 커버 (default.json 최대 row 22)
+const WORLD_W = COLS * TILE;  // 1024
+const WORLD_H = ROWS * TILE;  // 736
+const WALL_H = 2; // 벽(통창) 높이 — 2칸(64px)로 축소해 바닥 16칸 확보
 const DPR = typeof window !== "undefined" ? Math.min(window.devicePixelRatio || 1, 3) : 2;
 const TEXT_RES = 8; // 텍스트 전용 최고 해상도 (DPR 무관 고정 8x)
 const FONT = "'Pretendard Variable', Pretendard, -apple-system, sans-serif";
@@ -120,15 +123,15 @@ function allocatePrimaryPair(teamId: string): [number, number] {
 }
 
 const TEAM_META: Record<string, Omit<TeamConfig, "id" | "gridX" | "gridY">> = {
-  "trading-bot":   { name: "매매봇",    emoji: "🤖", chars: buildTeamChars("trading-bot",   PRIMARY_CHARS["trading-bot"]!),   gridW: 4, gridH: 4 },
-  "date-map":      { name: "데이트지도", emoji: "🗺️", chars: buildTeamChars("date-map",      PRIMARY_CHARS["date-map"]!),      gridW: 4, gridH: 4 },
-  "claude-biseo":  { name: "클로드비서", emoji: "🤵", chars: buildTeamChars("claude-biseo",  PRIMARY_CHARS["claude-biseo"]!),  gridW: 4, gridH: 4 },
-  "ai900":         { name: "AI900",     emoji: "📚", chars: buildTeamChars("ai900",         PRIMARY_CHARS["ai900"]!),         gridW: 4, gridH: 4 },
-  "design-team":   { name: "디자인팀",  emoji: "🎨", chars: buildTeamChars("design-team",   PRIMARY_CHARS["design-team"]!),   gridW: 4, gridH: 4 },
-  "content-lab":   { name: "콘텐츠랩",  emoji: "🔬", chars: buildTeamChars("content-lab",   PRIMARY_CHARS["content-lab"]!),   gridW: 4, gridH: 4 },
-  "frontend-team": { name: "프론트엔드",emoji: "🖼",  chars: buildTeamChars("frontend-team", PRIMARY_CHARS["frontend-team"]!), gridW: 4, gridH: 4 },
-  "backend-team":  { name: "백엔드",    emoji: "⚙️", chars: buildTeamChars("backend-team",  PRIMARY_CHARS["backend-team"]!),  gridW: 4, gridH: 4 },
-  "qa-agent":      { name: "QA",       emoji: "🔍", chars: buildTeamChars("qa-agent",      PRIMARY_CHARS["qa-agent"]!),      gridW: 4, gridH: 4 },
+  "trading-bot":   { name: "매매봇",    emoji: "🤖", chars: buildTeamChars("trading-bot",   PRIMARY_CHARS["trading-bot"]!),   gridW: 1, gridH: 1 },
+  "date-map":      { name: "데이트지도", emoji: "🗺️", chars: buildTeamChars("date-map",      PRIMARY_CHARS["date-map"]!),      gridW: 1, gridH: 1 },
+  "claude-biseo":  { name: "클로드비서", emoji: "🤵", chars: buildTeamChars("claude-biseo",  PRIMARY_CHARS["claude-biseo"]!),  gridW: 1, gridH: 1 },
+  "ai900":         { name: "AI900",     emoji: "📚", chars: buildTeamChars("ai900",         PRIMARY_CHARS["ai900"]!),         gridW: 1, gridH: 1 },
+  "design-team":   { name: "디자인팀",  emoji: "🎨", chars: buildTeamChars("design-team",   PRIMARY_CHARS["design-team"]!),   gridW: 1, gridH: 1 },
+  "content-lab":   { name: "콘텐츠랩",  emoji: "🔬", chars: buildTeamChars("content-lab",   PRIMARY_CHARS["content-lab"]!),   gridW: 1, gridH: 1 },
+  "frontend-team": { name: "프론트엔드",emoji: "🖼",  chars: buildTeamChars("frontend-team", PRIMARY_CHARS["frontend-team"]!), gridW: 1, gridH: 1 },
+  "backend-team":  { name: "백엔드",    emoji: "⚙️", chars: buildTeamChars("backend-team",  PRIMARY_CHARS["backend-team"]!),  gridW: 1, gridH: 1 },
+  "qa-agent":      { name: "QA",       emoji: "🔍", chars: buildTeamChars("qa-agent",      PRIMARY_CHARS["qa-agent"]!),      gridW: 1, gridH: 1 },
 };
 
 /** 서버에서 받은 팀 정보로 TEAM_META에 없는 팀 자동 등록 */
@@ -140,7 +143,7 @@ function ensureTeamMeta(t: { id: string; name?: string; emoji?: string }) {
       name: t.name || t.id,
       emoji: t.emoji || "🤖",
       chars: buildTeamChars(t.id, pair),
-      gridW: 4, gridH: 4,
+      gridW: 1, gridH: 1,
     };
   }
 }
@@ -149,16 +152,16 @@ function ensureTeamMeta(t: { id: string; name?: string; emoji?: string }) {
 // 실제 배치는 서버 GET /api/layout/floors에서 로드
 let ALL_FLOORS: Record<number, TeamConfig[]> = {
   1: [
-    { id: "claude-biseo",  gridX: 1,  gridY: 4, ...TEAM_META["claude-biseo"]! },
-    { id: "frontend-team", gridX: 6,  gridY: 4, ...TEAM_META["frontend-team"]! },
-    { id: "backend-team",  gridX: 11, gridY: 4, ...TEAM_META["backend-team"]! },
-    { id: "content-lab",   gridX: 16, gridY: 4, ...TEAM_META["content-lab"]! },
+    { id: "claude-biseo",  gridX: 2,  gridY: 5, ...TEAM_META["claude-biseo"]! },
+    { id: "frontend-team", gridX: 7,  gridY: 5, ...TEAM_META["frontend-team"]! },
+    { id: "backend-team",  gridX: 12, gridY: 5, ...TEAM_META["backend-team"]! },
+    { id: "content-lab",   gridX: 17, gridY: 5, ...TEAM_META["content-lab"]! },
   ],
   2: [
-    { id: "trading-bot",   gridX: 1,  gridY: 4, ...TEAM_META["trading-bot"]! },
-    { id: "ai900",         gridX: 6,  gridY: 4, ...TEAM_META["ai900"]! },
-    { id: "design-team",   gridX: 11, gridY: 4, ...TEAM_META["design-team"]! },
-    { id: "date-map",      gridX: 16, gridY: 4, ...TEAM_META["date-map"]! },
+    { id: "trading-bot",   gridX: 2,  gridY: 5, ...TEAM_META["trading-bot"]! },
+    { id: "ai900",         gridX: 7,  gridY: 5, ...TEAM_META["ai900"]! },
+    { id: "design-team",   gridX: 12, gridY: 5, ...TEAM_META["design-team"]! },
+    { id: "date-map",      gridX: 17, gridY: 5, ...TEAM_META["date-map"]! },
   ],
 };
 
@@ -168,6 +171,7 @@ interface TeamGroup {
   label: Phaser.GameObjects.Text; highlight: Phaser.GameObjects.Rectangle;
   config: TeamConfig; gridX: number; gridY: number; prevGridX: number; prevGridY: number;
   workGlow?: Phaser.GameObjects.Graphics;
+  statusBadge?: Phaser.GameObjects.Container;
 }
 
 export default class OfficeScene extends Phaser.Scene {
@@ -237,10 +241,16 @@ export default class OfficeScene extends Phaser.Scene {
         const resp = await fetch(`${this.apiBase}/api/layout/floors`).then(r => r.json());
         if (resp.ok && resp.floors) {
           const serverFloors: Record<number, TeamConfig[]> = {};
+          // 의자 위치에 캐릭이 앉도록 (chair = 걸을 수 있음 = 겹침 허용)
+          // 책상 topDeskRow=7, chair row=9 / botDeskRow=13, chair row=15
+          // 컬럼: 2, 6, 10, 14, 18, 22
           const defaultPositions = [
-            { gridX: 1, gridY: 4 }, { gridX: 6, gridY: 4 },
-            { gridX: 11, gridY: 4 }, { gridX: 16, gridY: 4 },
-            { gridX: 1, gridY: 9 }, { gridX: 6, gridY: 9 },
+            { gridX: 2,  gridY: 9 },  { gridX: 6,  gridY: 9 },
+            { gridX: 10, gridY: 9 },  { gridX: 14, gridY: 9 },
+            { gridX: 18, gridY: 9 },  { gridX: 22, gridY: 9 },
+            { gridX: 2,  gridY: 15 }, { gridX: 6,  gridY: 15 },
+            { gridX: 10, gridY: 15 }, { gridX: 14, gridY: 15 },
+            { gridX: 18, gridY: 15 }, { gridX: 22, gridY: 15 },
           ];
           for (const f of resp.floors) {
             serverFloors[f.floor] = f.teams.map((t: any, i: number) => {
@@ -286,7 +296,7 @@ export default class OfficeScene extends Phaser.Scene {
       .setStrokeStyle(2, 0xff0000, 0.8).setVisible(false).setDepth(100);
 
     // 엘리베이터 (우하단)
-    this.drawElevator();
+    // drawElevator 제거됨 — TM 사무실 전체 채택 (엘베 나중에 다시)
 
     // 말풍선 매니저 (TeamMaker 패턴) — 팀 컨테이너 위 좌표 기준
     this.bubbleManager = new BubbleManager(this, (teamId) => {
@@ -296,18 +306,20 @@ export default class OfficeScene extends Phaser.Scene {
       return { x: tg.container.x, y: tg.container.y - (tg.config.gridH * TILE) / 2 - 8 };
     });
 
-    // 카메라 — roundPixels 명시적 활성화 (서브픽셀 이동 시 픽셀아트 깨짐 방지)
-    this.cameras.main.setBounds(-32, -32, WORLD_W + 64, WORLD_H + 64);
-    this.cameras.main.setBackgroundColor(0x1a1a2e);
+    // 카메라 — 월드 전체가 캔버스에 딱 맞게 (Phaser Scale.FIT가 캔버스 자체 스케일)
+    this.cameras.main.setBounds(0, 0, WORLD_W, WORLD_H);
+    // 배경 투명 — page 배경이 보이도록 (검은 bg 제거)
+    this.cameras.main.setBackgroundColor("rgba(0,0,0,0)");
     this.cameras.main.roundPixels = true;
 
     // 입력
     this.input.on("pointerdown", this.onDown, this);
     this.input.on("pointermove", this.onMove, this);
     this.input.on("pointerup", this.onUp, this);
+    this.setupEditorListeners();
 
     // 랜덤 움직임
-    this.time.addEvent({ delay: 3500, loop: true, callback: () => this.randomMove() });
+    // 랜덤 움직임 제거됨 — 평소엔 정지, 작업/대화 시에만 애니메이션
 
     // 실시간 위치 동기화 — 5초마다 서버 positions 폴링, 변경 시 rebuild
     if (this.apiBase) {
@@ -318,6 +330,8 @@ export default class OfficeScene extends Phaser.Scene {
   private async pollPositions() {
     // 드래그 중엔 폴링 스킵 (내가 움직이는 중에 덮어쓰지 않게)
     if (this.dragTarget) return;
+    // 편집 중(Undo/Redo/Import/Export/Reset 직후)엔 폴링 스킵
+    if (typeof window !== "undefined" && (window.__hqEditingUntil ?? 0) > Date.now()) return;
     try {
       const resp = await fetch(`${this.apiBase}/api/layout/positions`).then(r => r.json());
       if (!resp.ok || !resp.positions) return;
@@ -352,58 +366,15 @@ export default class OfficeScene extends Phaser.Scene {
       for (let y = 0; y < WALL_H; y++) this.grid[y][x] = true;
     }
 
-    // ── 사무실 바닥 (깨끗한 화이트/라이트 마블 타일) ──
-    const fy = WALL_H * TILE;
-    const fh = (ROWS - WALL_H) * TILE;
-    const tileSize = 32;
-    const floorG = this.add.graphics();
-    // 베이스: 밝은 화이트/그레이
-    floorG.fillStyle(0xf0f0f0, 1);
-    floorG.fillRect(0, fy, WORLD_W, fh);
-    // 은은한 줄눈 (그리드)
-    floorG.fillStyle(0x000000, 0.06);
-    for (let x = 0; x <= WORLD_W; x += tileSize) {
-      floorG.fillRect(x, fy, 1, fh);
-    }
-    for (let y = fy; y <= fy + fh; y += tileSize) {
-      floorG.fillRect(0, y, WORLD_W, 1);
-    }
-    // 타일 하이라이트 (밝은 빛 반사)
-    floorG.fillStyle(0xffffff, 0.35);
-    for (let y = fy; y < fy + fh; y += tileSize) {
-      for (let x = 0; x < WORLD_W; x += tileSize) {
-        floorG.fillRect(x + 1, y + 1, 2, 1);
-      }
-    }
-    floorG.setDepth(0);
-    this.envGroup.add(floorG);
+    // ── TM 사무실 전체 렌더 (우리 레거시 드로잉 전부 제거) ──
+    // TM default.json이 바닥/벽/가구 전부 그림 → renderTMLayoutFull에서 처리
+    // 상단 통창만 우리 것 유지
 
-    // ── 통창 ──
     this.drawPanoramaWindow();
+    // drawServerRoom / drawElevator / drawArcade / drawCorridor / drawOfficeDetails 제거됨
+    // TM 우측방 자리에 서버 랙만 별도 오버레이 (placeTMServerOverlay)
 
-    // ── 서버실 ──
-    this.drawServerRoom();
-
-    // ── 하단 복도 ──
-    this.drawCorridor();
-
-    // ── 사무실 디테일 장식 ──
-    this.drawOfficeDetails();
-
-    // ── 구조물/서버실 점유 영역 그리드에 표시 (팀 이동 차단) ──
-    // ※ 팀 기본 위치 (1,4)(6,4)(11,4)(16,4)(1,9)(6,9) — gridW/H=4 — 와 겹치지 않아야 함
-    // 에셋 실제 픽셀 위치 → 그리드 환산 (TILE=32)
-    const STRUCTURE_ZONES: Array<{ x: number; y: number; w: number; h: number }> = [
-      // 좌벽 책장 (x=0 pixel col) — col 0 만 점유
-      { x: 0, y: WALL_H, w: 1, h: 5 },
-      // 서버실 (우상단 x=21~25, y=3~5) — 책상+모니터
-      { x: 21, y: WALL_H, w: 5, h: 3 },
-      // 좌하단 plant_large (col 0~1)
-      { x: 0, y: ROWS - 4, w: 2, h: 1 },
-      // 우하단 plant_1 (col 23)
-      { x: 23, y: ROWS - 4, w: 2, h: 1 },
-    ];
-    STRUCTURE_ZONES.forEach(z => this.occupyGrid(z.x, z.y, z.w, z.h, true));
+    // 구조물 점유 영역 제거 — TM 레이아웃이 자체 벽/가구 포함
 
     // 팀 배치 (저장된 위치 있으면 사용)
     const teams = ALL_FLOORS[floor] || [];
@@ -412,7 +383,7 @@ export default class OfficeScene extends Phaser.Scene {
       if (saved && saved[t.id]) {
         // 저장 위치가 벽/복도 영역에 걸치지 않도록 clamp
         t.gridX = Math.max(0, Math.min(COLS - t.gridW, saved[t.id].gx));
-        t.gridY = Math.max(WALL_H, Math.min(ROWS - t.gridH - 3, saved[t.id].gy));
+        t.gridY = Math.max(WALL_H, Math.min(ROWS - t.gridH, saved[t.id].gy));
       }
       this.createTeamGroup(t);
       this.occupyGrid(t.gridX, t.gridY, t.gridW, t.gridH, true);
@@ -421,16 +392,295 @@ export default class OfficeScene extends Phaser.Scene {
     // ── CPO: 모든 층에 공용 배치 (엘리베이터 근처 복도 위) ──
     const cpoConfig: TeamConfig = {
       id: "cpo-claude", name: "CPO", emoji: "🧠",
-      chars: ["cpo"], gridX: 22, gridY: 11, gridW: 2, gridH: 2,
+      chars: ["cpo"], gridX: 22, gridY: 11, gridW: 1, gridH: 1,
     };
     if (saved && saved[cpoConfig.id]) {
       // CPO 저장 위치도 벽/복도 밖으로 clamp (벽 안쪽으로 들어간 경우 복구)
       cpoConfig.gridX = Math.max(0, Math.min(COLS - cpoConfig.gridW, saved[cpoConfig.id].gx));
-      cpoConfig.gridY = Math.max(WALL_H, Math.min(ROWS - cpoConfig.gridH - 3, saved[cpoConfig.id].gy));
+      cpoConfig.gridY = Math.max(WALL_H, Math.min(ROWS - cpoConfig.gridH, saved[cpoConfig.id].gy));
     }
     this.createTeamGroup(cpoConfig);
     this.occupyGrid(cpoConfig.gridX, cpoConfig.gridY, cpoConfig.gridW, cpoConfig.gridH, true);
+
+    // 사무실 중앙에 고정 가구 (책상 열 + 의자) — 팀 위치 무관 절대 좌표
+    // renderTMLayoutFull 내부 renderUserLayout 완료 후 복도 grid clear가 되도록 끝에 clear 훅 연결
+    this.renderTMLayoutFull();
+    // 첫 렌더는 async — 잠시 후 한 번 더 clear (TM 가구 occupyGrid 반영)
+    this.time.delayedCall(200, () => this._clearCorridorGrid());
+    this._clearCorridorGrid();
   }
+
+  /** 복도(하단 3줄) grid 점유 해제 — 에이전트 통과/배치 허용 */
+  private _clearCorridorGrid() {
+    for (let y = ROWS - 3; y < ROWS; y++) {
+      for (let x = 0; x < COLS; x++) {
+        if (this.grid[y]) this.grid[y][x] = false;
+      }
+    }
+    // 전역에 grid 덤프 함수 노출 (콘솔에서 __hqGrid() 호출해 복도 상태 확인)
+    if (typeof window !== "undefined") {
+      (window as unknown as { __hqGrid?: () => void }).__hqGrid = () => {
+        console.info("[hq-grid] corridor rows (복도):");
+        for (let y = ROWS - 3; y < ROWS; y++) {
+          const row = (this.grid[y] || []).map(v => v ? "#" : ".").join("");
+          console.info(`  row ${y}:`, row);
+        }
+      };
+    }
+  }
+
+  /** TM default.json 전체를 그대로 렌더 (크롭: cols 20..45 rows 3..20 → 우리 0..25, 3..20) */
+  private renderTMLayoutFull() {
+    // TM default.json 1:1 렌더 — 원본 col/row 그대로 + 상단만 WALL_H만큼 아래로 밀어서 통창 자리 확보
+    this.ensureTMLayout().then(() => {
+      const layout = this.tmLayout;
+      if (!layout) return;
+      void layout;
+      this.renderUserLayout();
+      // TM/유저 가구가 복도 row 점유했다면 통과 허용 위해 해제
+      this._clearCorridorGrid();
+    });
+  }
+
+  /** 유저 레이아웃 (localStorage) 렌더 + 그리드 업데이트 */
+  private userFurnitureObjs: Phaser.GameObjects.GameObject[] = [];
+  private getUserLayout(): { items: Array<{ type: string; col: number; row: number; rotation?: number; flipX?: boolean }>; removed: string[] } {
+    try {
+      const raw = localStorage.getItem("hq-user-layout-v1");
+      if (raw) {
+        const p = JSON.parse(raw);
+        return { items: p.items || [], removed: p.removed || [] };
+      }
+    } catch {}
+    return { items: [], removed: [] };
+  }
+  private saveUserLayout(layout: { items: Array<{ type: string; col: number; row: number; rotation?: number; flipX?: boolean }>; removed: string[] }) {
+    try {
+      localStorage.setItem("hq-user-layout-v1", JSON.stringify({ version: 2, ...layout }));
+    } catch {}
+  }
+  private renderUserLayout() {
+    this.userFurnitureObjs.forEach(o => o.destroy());
+    this.userFurnitureObjs = [];
+    const layout = this.getUserLayout();
+    for (const it of layout.items) {
+      let obj: Phaser.GameObjects.GameObject | undefined;
+      if (it.type.startsWith("poke:")) {
+        obj = this.placePokemonFurniture(it.type.slice(5), it.col, it.row, !!it.flipX);
+      } else {
+        obj = this.placeFurnitureFromCatalog(it.type, it.col, it.row, it.rotation || 0, !!it.flipX);
+      }
+      if (obj) this.userFurnitureObjs.push(obj);
+    }
+    // 렌더 후 복도(하단 3줄) grid 점유 해제 — 가구가 복도 점유했더라도 에이전트 통과 허용
+    this._clearCorridorGrid();
+  }
+
+  /** 포켓몬 가구 배치 (pokemon_furniture/ 에셋) — 이름 기반 z-order 분류 + flipX */
+  private placePokemonFurniture(name: string, col: number, row: number, flipX: boolean = false): Phaser.GameObjects.GameObject | undefined {
+    const key = `pokeEdit_${name}`;
+    if (!this.textures.exists(key)) {
+      this.load.image(key, `/assets/pokemon_furniture/${name}.png`);
+      this.load.once("complete", () => { this.renderUserLayout(); });
+      this.load.start();
+      return;
+    }
+    const px = col * TILE;
+    const py = row * TILE;
+    const fur = this.add.image(px, py, key).setOrigin(0, 0);
+    if (flipX) fur.setFlipX(true);
+    fur.disableInteractive();
+    const tex = this.textures.get(key);
+    if (tex && tex.source[0]) tex.setFilter(Phaser.Textures.FilterMode.NEAREST);
+    const heightCells = Math.max(1, Math.ceil(fur.height / TILE));
+    // 포켓몬 이름 기반 계층 분류 (scene 공식과 동기화)
+    const isFloor = name.startsWith("floor_");
+    const isWall = /^(wall|door|elevator)/.test(name);
+    const isTallStack = /^(lamp|coat_rack|street)/.test(name) || name.includes("streetlight");
+    const isStackable = /^(monitor|pc|laptop|clock|whiteboard|computer_monitor|computer_mouse|pda|printer|speech_bubble|mailbox)/.test(name);
+    const baseZ = isFloor ? -10000 : isWall ? 10000 : isTallStack ? 5500 : isStackable ? 5000 : 0;
+    fur.setDepth(baseZ + (row + heightCells) * 100 + col * 0.1);
+    this.envGroup.add(fur);
+    return fur;
+  }
+
+  /** TM 우측방 자리에 서버 랙 오버레이 — 클릭 시 ServerDashboard 열림 */
+  private placeTMServerOverlay() {
+    // TM 우측방 = col 25~30, row 3~9 (우리 world에선 row+WALL_H = 5~11)
+    const rackX = (27 * TILE) + TILE / 2;  // 중앙 col 27
+    const rackY = (7 * TILE);               // 중앙 row 7 (WALL_H=2 + 5)
+    const g = this.add.graphics().setDepth(10000 + 7 * 100);  // divider 레벨
+    // 간단 서버 랙 (3대, 어두운 박스 + LED)
+    for (let i = 0; i < 3; i++) {
+      const rx = rackX + (i - 1) * 18;
+      g.fillStyle(0x2a2a3a, 1);
+      g.fillRect(rx - 7, rackY - 22, 14, 44);
+      g.lineStyle(1, 0x4a90d9, 0.8);
+      g.strokeRect(rx - 7, rackY - 22, 14, 44);
+      // LED 점멸 효과
+      for (let ly = 0; ly < 6; ly++) {
+        g.fillStyle(0x22c55e, 0.8);
+        g.fillRect(rx - 4, rackY - 18 + ly * 6, 2, 2);
+      }
+    }
+    // 라벨
+    const label = this.add.text(rackX, rackY - 28, "SERVER", {
+      fontSize: "8px", color: "#4a90d9", fontStyle: "700",
+      fontFamily: "system-ui,sans-serif", resolution: 32,
+    }).setOrigin(0.5, 1).setDepth(10000 + 7 * 100 + 1);
+    // 클릭 영역
+    const hit = this.add.zone(rackX, rackY, 80, 60).setInteractive({ useHandCursor: true }).setDepth(10002);
+    hit.on("pointerup", () => {
+      const cam = this.cameras.main;
+      const rect = this.game.canvas.getBoundingClientRect();
+      const sx = rect.left + (rackX - cam.scrollX) * (rect.width / cam.width);
+      const sy = rect.top + (rackY - cam.scrollY) * (rect.height / cam.height);
+      this.onTeamClick?.("server-monitor", Math.round(sx), Math.round(sy));
+    });
+    this.envGroup.add(g);
+    this.envGroup.add(label);
+    this.envGroup.add(hit);
+  }
+
+  /** TM 가구 렌더 — standalone PNG 우선, 없으면 furniture-sheet 크롭. rotation 0~3 = 0/90/180/270°, flipX = 좌우반전 */
+  private placeFurnitureFromCatalog(id: string, col: number, row: number, rotation: number = 0, flipX: boolean = false) {
+    // 특수 ID — 우리 흰 마블 바닥
+    if (id === "hq_white_marble") {
+      const key = "hq_white_marble_tex";
+      if (!this.textures.exists(key)) {
+        const cv = document.createElement("canvas");
+        cv.width = TILE; cv.height = TILE;
+        const ctx = cv.getContext("2d");
+        if (ctx) {
+          ctx.imageSmoothingEnabled = false;
+          ctx.fillStyle = "#f0f0f0"; ctx.fillRect(0, 0, TILE, TILE);
+          ctx.fillStyle = "rgba(0,0,0,0.06)";
+          ctx.fillRect(0, 0, TILE, 1); ctx.fillRect(0, 0, 1, TILE);
+          ctx.fillStyle = "rgba(255,255,255,0.35)";
+          ctx.fillRect(1, 1, 2, 1);
+          this.textures.addCanvas(key, cv);
+        }
+      }
+      const img = this.add.image(col * TILE, row * TILE, key).setOrigin(0, 0);
+      img.disableInteractive();
+      img.setDepth(-10000 + (row + 1) * 100 + col * 0.1);
+      this.envGroup.add(img);
+      return img;
+    }
+    const standaloneKey = `tm_${id}`;
+    let texKey: string;
+    let def = getFurnitureDef(id);
+
+    if (this.textures.exists(standaloneKey)) {
+      // divider/floor/wall 등 개별 PNG 있는 경우
+      texKey = standaloneKey;
+      if (!def) {
+        // catalog에 없으면 1×1 걸을 수 있는 걸로 간주
+        def = { id, label: id, category: "floor_decor", widthCells: 1, heightCells: 1, sprite: { x: 0, y: 0, w: 32, h: 32 } };
+      }
+    } else if (def && this.textures.exists("tm_furniture_sheet")) {
+      // 카탈로그에 있고 sheet 있으면 크롭
+      texKey = `tmf_${id}`;
+      if (!this.textures.exists(texKey)) {
+        try {
+          const src = this.textures.get("tm_furniture_sheet");
+          const img = src.getSourceImage() as HTMLImageElement;
+          const cv = document.createElement("canvas");
+          cv.width = def.sprite.w; cv.height = def.sprite.h;
+          const ctx = cv.getContext("2d");
+          if (ctx) {
+            ctx.imageSmoothingEnabled = false;
+            ctx.drawImage(img, def.sprite.x, def.sprite.y, def.sprite.w, def.sprite.h, 0, 0, def.sprite.w, def.sprite.h);
+            this.textures.addCanvas(texKey, cv);
+          }
+        } catch {}
+      }
+    } else {
+      return;
+    }
+
+    if (!def || !this.textures.exists(texKey)) return;
+    // rotation 적용 (TM FurnitureLayer.ts 방식)
+    const cellW = def.widthCells * TILE;
+    const cellH = def.heightCells * TILE;
+    const px = col * TILE;
+    const py = row * TILE;
+    const fur = this.add.image(px, py, texKey).setOrigin(0, 0);
+    if (rotation === 1) { fur.setPosition(px + cellH, py); fur.setAngle(90); }
+    else if (rotation === 2) { fur.setPosition(px + cellW, py + cellH); fur.setAngle(180); }
+    else if (rotation === 3) { fur.setPosition(px, py + cellW); fur.setAngle(270); }
+    if (flipX) fur.setFlipX(true);
+    fur.disableInteractive();
+    // Z-order 세분화:
+    //  -10000 바닥 → -9000 바닥장식(카펫) → -8000 바닥소품 → -5000 벽 타일 → -3000 벽 장식
+    //  → 0 기본 가구(책상) → 3000 사람 → 3500 의자(등받이가 사람을 가림) → 5000 책상위 도구
+    //  → 5500 높은 소품(스탠드) → 10000 외벽 가림막
+    // desk_plant_*, potted_plant_round/bushy 는 의자(옆모습)로 재분류됨 — deskTop 제거
+    // floor_lamp, clipboard_ 도 제거 (삭제 또는 재분류됨)
+    const deskTopPrefixes = ["book_", "pen_", "coffee_", "cup_", "mouse_", "keyboard", "desk_lamp",
+      "desk_phone", "laptop_", "desk_divider_", "cup",
+      // 유저 지적 — 카탈로그 라벨과 무관하게 실제 이미지는 모니터/프린터/컴퓨터/모니터암
+      "desk_extension_lavender", "desk_with_pc", "desk_with_monitors",
+      "binder_set", "tall_cabinet_a", "tall_cabinet_b", "workstation_large", "desk_module_a", "desk_module_b", "desk_module_c", "desk_module_d", "desk_module_e", "conference_table_end", "dual_workstation", "globe_on_stand", "coat_rack"];
+    const tallStackPrefixes = ["floor_lamp", "lamp_", "coat_rack", "rack_"];
+    const lbl = (def.label || "").toLowerCase();
+    const idLower = id.toLowerCase();
+    const isDeskTop = deskTopPrefixes.some(p => idLower.startsWith(p));
+    const isTallStack = tallStackPrefixes.some(p => idLower.startsWith(p)) || /\blamp\b|coat rack|coat_rack/.test(lbl);
+    const labelIsStackable = /monitor|printer|laptop|phone|dispenser|keyboard|mouse|speaker|tv|screen/.test(lbl);
+    const labelIsWallDecor = /\b(art|photo|painting|frame|poster|picture|wall[\s_]art)\b/.test(lbl) || idLower.includes("wall_art") || idLower.includes("poster");
+    const isDivider = def.category === "divider" || def.category === "partition";
+    const isWallTile = def.category === "wall_tile";
+    const isWallDecor = def.category === "wall_decor" || labelIsWallDecor;
+    const isFloorTile2 = def.category === "floor_tile";
+    const isFloorDecor = def.category === "floor_decor";  // 바닥 장식 (카펫 등)
+    const isFloorItem = idLower.startsWith("backpack_") || idLower.startsWith("trash_") || idLower.startsWith("suitcase_") || idLower === "briefcase";  // 바닥 소품 (책상 뒤)
+    const isChair = (def.category === "chair" || def.category === "seating" || def.isSeat === true) && !isDeskTop;
+    const isStackable = (isDeskTop || labelIsStackable)
+      || def.category === "appliance" || def.category === "accessory" || def.category === "board";
+    // 쇼파/코너 컴퓨터/서류 책상: 사람이 앞에 보여야 함 (책상류보다 위)
+    //  - 라벨 "쇼파|sofa|코너|corner|서류" 매칭 또는 특정 id
+    const isSeatedPiece = /쇼파|sofa|코너|corner|서류/i.test(def.label || "")
+      || id === "corner_workstation" || id === "floor_cushion_set";
+    let baseZ: number;
+    if (isSeatedPiece) baseZ = -2000;  // 사람(3000)보다 훨씬 뒤
+    else if (isFloorTile2) baseZ = -10000;
+    else if (isFloorDecor) baseZ = -9000;  // 바닥 타일 위, 바닥 소품(가방) 아래
+    else if (isFloorItem) baseZ = -8000;
+    else if (isWallTile) baseZ = -5000;
+    else if (isWallDecor) baseZ = -3000;
+    else if (isChair) {
+      // 의자: 뒷모습만 사람 앞에 렌더 (등받이가 사람 가림).
+      // 앞모습·옆모습은 사람 뒤에 렌더 (사람이 앞에 보임).
+      // 주의: JS `\b`는 한글 단어 경계를 인식 못함 — 순수 substring 매칭 사용
+      const lbl2 = def.label || "";
+      const isBackView = (/뒤|back/i.test(lbl2)) && !/구멍/.test(lbl2);
+      baseZ = isBackView ? 3500 : -1000;
+    }
+    else if (isDivider) baseZ = 10000;
+    else if (isTallStack) baseZ = 5500;
+    else if (isStackable) baseZ = 5000;
+    else baseZ = 0;
+    const finalDepth = baseZ + (row + def.heightCells) * 100 + col * 0.1;
+    fur.setDepth(finalDepth);
+    if (isSeatedPiece) console.info(`[hq-furn] seated: ${id} label="${def.label}" row=${row} col=${col} baseZ=${baseZ} depth=${finalDepth.toFixed(1)}`);
+    this.envGroup.add(fur);
+    // TM WALKABLE_CATEGORIES 룰 — 걸을 수 없는 카테고리는 grid 차단
+    // walkableCells 지정 시 해당 offset은 통과 허용 (L자 책상 안쪽 등)
+    // isBehindChar(쇼파/코너 컴퓨터) = 사람이 그 위로 앉거나 지나갈 수 있어야 하므로 전체 통과 허용
+    if (!WALKABLE_CATEGORIES.has(def.category) && !isSeatedPiece) {
+      const walkSet = new Set((def.walkableCells || []).map(([x, y]) => `${x},${y}`));
+      for (let dx = 0; dx < def.widthCells; dx++) {
+        for (let dy = 0; dy < def.heightCells; dy++) {
+          if (walkSet.has(`${dx},${dy}`)) continue;
+          const gx = col + dx, gy = row + dy;
+          if (gx >= 0 && gx < COLS && gy >= 0 && gy < ROWS) this.occupyGrid(gx, gy, 1, 1, true);
+        }
+      }
+    }
+    return fur;
+  }
+
 
   private drawPanoramaWindow() {
     const g = this.add.graphics();
@@ -685,11 +935,11 @@ export default class OfficeScene extends Phaser.Scene {
     // ══════════════════════════════════════════════════════════
     // 서버실 고도화 v2 — 서버 랙 3대 + LED 점멸 + 케이블 덕트 + 콘솔
     // ══════════════════════════════════════════════════════════
-    const saved = this.loadObjectPos("hq-server-pos");
-    let ox = saved ? saved.x : WORLD_W - 44;
-    let oy = saved ? saved.y : WALL_H * TILE + 4;
+    // 서버실 — 우상단 고정 (드래그/이동 불가, 통창과 붙게)
+    let ox = WORLD_W - 44;
+    let oy = WALL_H * TILE;
 
-    const RW = 80; const RH = 72; // 서버실 전체 영역
+    const RW = 80; const RH = 96; // 서버실 — 높이 확장으로 통창~TM 우측방 사이 검은 영역 제거
     const RACK_W = 18; const RACK_H = 50; const RACK_GAP = 6;
     const totalRackW = 3 * RACK_W + 2 * RACK_GAP; // 66px
 
@@ -843,14 +1093,54 @@ export default class OfficeScene extends Phaser.Scene {
       this.onTeamClick?.("server-monitor", Math.round(sx), Math.round(sy));
     };
 
-    this.attachObjectDrag({
-      id: "server",
-      storageKey: "hq-server-pos",
-      hit,
-      targets: [baseG, ledG, label, hit],
-      getAnchor: () => ({ x: ox, y: oy }),
-      setPos,
-      onClick,
+    // 서버실 클릭만 허용 (드래그 비활성)
+    hit.on("pointerup", onClick);
+  }
+
+  private drawArcadeMachine() {
+    const ax = 1 * TILE + TILE / 2;
+    const ay = (ROWS - 4) * TILE;
+    const g = this.add.graphics().setDepth(50);
+    this.envGroup.add(g);
+
+    // 아케이드 본체
+    g.fillStyle(0x2a2a5a, 1);
+    g.fillRect(ax - 12, ay - 36, 24, 36);
+    // 화면
+    g.fillStyle(0x1a4a1a, 1);
+    g.fillRect(ax - 9, ay - 33, 18, 14);
+    // 화면 밝은 점 (게임 실행 중)
+    g.fillStyle(0x50d070, 1);
+    g.fillRect(ax - 4, ay - 28, 3, 3);
+    g.fillRect(ax + 2, ay - 26, 2, 2);
+    g.fillStyle(0xff6b6b, 1);
+    g.fillRect(ax - 1, ay - 30, 2, 2);
+    // 조이스틱
+    g.fillStyle(0xf5c842, 1);
+    g.fillRect(ax - 2, ay - 16, 4, 6);
+    // 버튼
+    g.fillStyle(0xff4444, 1);
+    g.fillCircle(ax + 6, ay - 14, 2);
+    g.fillStyle(0x4488ff, 1);
+    g.fillCircle(ax - 6, ay - 14, 2);
+    // 다리
+    g.fillStyle(0x222244, 1);
+    g.fillRect(ax - 10, ay, 4, 8);
+    g.fillRect(ax + 6, ay, 4, 8);
+
+    const label = this.add.text(ax, ay - 40, "🎮 FORTRESS", {
+      fontSize: "6px", fontFamily: "Pretendard Variable, sans-serif",
+      color: "#f5c842", resolution: 8,
+      backgroundColor: "#00000088", padding: { x: 2, y: 1 },
+    }).setOrigin(0.5, 1).setDepth(52);
+    this.envGroup.add(label);
+
+    const hit = this.add.zone(ax, ay - 18, 32, 48)
+      .setInteractive({ useHandCursor: true }).setDepth(102);
+    this.envGroup.add(hit);
+
+    hit.on("pointerup", () => {
+      this.scene.start("FortressScene", { multiplayer: false });
     });
   }
 
@@ -934,10 +1224,8 @@ export default class OfficeScene extends Phaser.Scene {
     });
     this.envGroup.add(exitLabel);
 
-    // 복도 점유
-    for (let y = ROWS - 3; y < ROWS; y++)
-      for (let x = 0; x < COLS; x++)
-        this.grid[y][x] = true;
+    // 복도: 편집은 허용하되 캐릭터 이동은 가능해야 하므로 grid 점유하지 않음.
+    // (기존에는 가구 배치 방지용으로 grid=true 설정 → BFS 차단 부작용)
   }
 
   private drawOfficeDetails() {
@@ -1086,7 +1374,10 @@ export default class OfficeScene extends Phaser.Scene {
     const container = this.add.container(cx, cy);
     container.setData("teamId", t.id);
     // Y좌표 기반 depth → 아래쪽(앞쪽) 팀이 위쪽(뒤쪽) 팀 위에 그려짐
-    container.setDepth(t.gridY + 10);
+    // TM 공식 통일 — 캐릭 container depth. -1로 같은 row 가구 뒤에 (의자 등받이가 가리게)
+    const _charDepth = 3000 + (t.gridY + t.gridH) * 100 - 1;
+    container.setDepth(_charDepth);
+    console.info(`[hq-furn] team: ${t.id} gridY=${t.gridY} gridH=${t.gridH} depth=${_charDepth}`);
     const pw = t.gridW * TILE;
     const ph = t.gridH * TILE;
     container.setSize(pw, ph);
@@ -1103,7 +1394,7 @@ export default class OfficeScene extends Phaser.Scene {
     // 윗줄: 캐릭(↓ 정면) 위 + 책상 아래 (캐릭이 책상 앞에 서 있음, 캐릭이 책상보다 위 depth)
     // 아랫줄: 책상 위 + 캐릭(↑ 뒷면) 아래 (책상이 캐릭 앞에 있음, 책상이 캐릭보다 위 depth)
     const members: MemberSprite[] = [];
-    const S = 1.0;   // 32x48 * 1.0 = 32x48 (정수 스케일 = 선명한 픽셀)
+    const S = 1.0;   // TeamMaker 기준 — 32x48 원본 크기 (작게)
 
     const isSolo = t.chars.length === 1;
 
@@ -1152,9 +1443,9 @@ export default class OfficeScene extends Phaser.Scene {
       if (i >= 4) return;
 
       if (isSolo) {
+        // 가구는 팀 컨테이너 밖 (envGroup)에 따로 배치됨 — 캐릭만 움직이게
         const char = this.add.sprite(0, 0, `char_${charIdx}`, 0)
-          .setScale(S).setOrigin(0.5, 0.75)
-          .play(`char_${charIdx}_idle`);
+          .setScale(S).setOrigin(0.5, 0.75);
         container.add(char);
         members.push({ char, charIdx, baseX: 0, baseY: 0 });
         return;
@@ -1188,23 +1479,17 @@ export default class OfficeScene extends Phaser.Scene {
     if (t.chars.length >= 2) drawLaptop(topY, 60);
     if (t.chars.length >= 3) drawLaptop(botY, 65);
 
-    // 화이트보드 명패 — 팀 사각형 내부 아랫쪽에 걸치도록 (이전엔 사각형 밖 아래였음)
-    const nameY = ph / 2 - 14;
-    const nameBg = this.add.graphics();
-    nameBg.fillStyle(0xffffff, 0.95);
-    nameBg.fillRoundedRect(-42, nameY - 10, 84, 18, 2);
-    nameBg.lineStyle(1, 0xcccccc, 0.8);
-    nameBg.strokeRoundedRect(-42, nameY - 10, 84, 18, 2);
-    nameBg.fillStyle(0x4a90d9, 1);
-    nameBg.fillRect(-42, nameY - 10, 84, 2);
-    container.add(nameBg);
-
-    const label = this.add.text(0, nameY, `${t.emoji} ${t.name}`, {
-      fontSize: "14px", fontFamily: POKEMON_FONT,
-      fontStyle: "600", // semibold — 진하지도 흐리지도 않은 중간 두께
-      color: "#111111", resolution: 32, // 해상도 2배 높여 선명도 향상
+    // 라벨 — TM 스타일 깔끔한 sans-serif
+    const nameY = ph / 2 + 4;
+    const label = this.add.text(0, nameY, t.name, {
+      fontSize: "10px",
+      fontFamily: "system-ui, -apple-system, 'Helvetica Neue', sans-serif",
+      fontStyle: "600",
+      color: "#ffffff", resolution: 16,
+      stroke: "#1a1a2e", strokeThickness: 2,
     }).setOrigin(0.5);
     container.add(label);
+
 
     // 인터랙션
     const hit = this.add.zone(0, 0, pw, ph).setInteractive({ useHandCursor: true });
@@ -1256,13 +1541,13 @@ export default class OfficeScene extends Phaser.Scene {
 
     this.dragTarget.container.setData("dragging", true);
     const t = this.dragTarget;
-    // 드래그 좌표 clamp: 벽/복도 영역 침범 방지
+    // 드래그 좌표 clamp: 상단 벽만 회피, 복도(하단 3줄)는 배치 허용
     const halfW = (t.config.gridW * TILE) / 2;
     const halfH = (t.config.gridH * TILE) / 2;
     const minX = halfW;
     const maxX = WORLD_W - halfW;
     const minY = WALL_H * TILE + halfH; // 벽 아래
-    const maxY = WORLD_H - 3 * TILE - halfH; // 복도 위 (복도 3칸)
+    const maxY = WORLD_H - halfH;        // 월드 바닥까지 (복도 포함)
     t.container.x = Phaser.Math.Clamp(ptr.worldX - this.dragOffX, minX, maxX);
     t.container.y = Phaser.Math.Clamp(ptr.worldY - this.dragOffY, minY, maxY);
 
@@ -1342,7 +1627,7 @@ export default class OfficeScene extends Phaser.Scene {
     }
 
     // Y좌표 기반 depth 복원 (아래쪽 = 앞쪽 = 높은 depth)
-    t.container.setDepth(t.gridY + 10);
+    t.container.setDepth(3000 + (t.gridY + t.config.gridH) * 100 - 1);
     this.overlapRect?.setVisible(false);
     this.dragTarget = null;
   }
@@ -1510,6 +1795,689 @@ export default class OfficeScene extends Phaser.Scene {
   }
 
   /** 팀 머리 위 말풍선 (응답 미리보기/결과 표시) */
+  private tmLayout: { cols: number; rows: number; furniture: Array<{ type: string; col: number; row: number }>; wallSetIds?: string[] } | null = null;
+
+  private async ensureTMLayout() {
+    if (this.tmLayout) return;
+    try {
+      const res = await fetch("/assets/teammaker/layouts/default.json");
+      this.tmLayout = await res.json();
+    } catch { this.tmLayout = null; }
+  }
+
+  private renderTMLayoutCrop(_floor: number) {
+    const fy = WALL_H * TILE;
+    const fh = (ROWS - WALL_H) * TILE;
+    const bg = this.add.graphics();
+    bg.fillStyle(0xebe3f5, 1);
+    bg.fillRect(0, fy, WORLD_W, fh);
+    bg.setDepth(0);
+    this.envGroup.add(bg);
+
+    if (this.textures.exists("tm_floor_lavender_1")) {
+      for (let y = fy; y < fy + fh; y += TILE) {
+        for (let x = 0; x < WORLD_W; x += TILE) {
+          const tile = this.add.image(x, y, "tm_floor_lavender_1").setOrigin(0, 0).setDepth(1);
+          this.envGroup.add(tile);
+        }
+      }
+    }
+
+    // TM 조밀 구역 크롭 (cols 20..45, rows 3..20 → 우리 local 0..25, 3..17)
+    const CROP_COL = 20;
+    const CROP_ROW = 3;
+    this.ensureTMLayout().then(() => {
+      const layout = this.tmLayout;
+      if (!layout) return;
+      for (const f of layout.furniture) {
+        const lc = f.col - CROP_COL;
+        const lr = f.row - CROP_ROW + WALL_H;
+        if (lc < 0 || lc >= COLS) continue;
+        if (lr < WALL_H || lr >= ROWS) continue;
+        const key = `tm_${f.type}`;
+        if (!this.textures.exists(key)) continue;
+        const img = this.add.image(lc * TILE, lr * TILE, key).setOrigin(0, 0).setDepth(5);
+        const tex = this.textures.get(key);
+        if (tex && tex.source[0]) tex.setFilter(Phaser.Textures.FilterMode.NEAREST);
+        this.envGroup.add(img);
+      }
+    });
+  }
+
+  /** 팀 A 캐릭이 팀 B로 걸어갔다가 돌아옴 (핸드오프/@태그 시각화) */
+  // ── 에디터 모드 ───────────────────────────────────
+  private editorState: { on: boolean; selectedId: string | null; rotation: 0|1|2|3; flipX?: boolean } = { on: false, selectedId: null, rotation: 0, flipX: false };
+  /** 이동 모드 — pickup된 가구: 다음 클릭에 drop */
+  private editorPickup: { type: string; origCol: number; origRow: number; rotation: number; flipX: boolean } | null = null;
+  private editorCursor?: Phaser.GameObjects.Graphics;
+  private editorGridOverlay?: Phaser.GameObjects.Graphics;
+  private editorDragCell: string | null = null;
+
+  /** 에디터 한 셀에 배치/삭제 — pointerup + 브러시 양쪽에서 공용 */
+  private editorPlaceAt(col: number, row: number, isDelete: boolean) {
+    const layout = this.getUserLayout();
+    const cellKey = `${col},${row}`;
+    if (isDelete) {
+      const before = layout.items.length;
+      layout.items = layout.items.filter(it => !(it.col === col && it.row === row));
+      if (before === layout.items.length) {
+        if (!layout.removed.includes(cellKey)) layout.removed.push(cellKey);
+      }
+    } else {
+      const selId = this.editorState.selectedId;
+      if (!selId) return;
+      let w = 1, h = 1, isStackable = false;
+      if (selId.startsWith("poke:")) {
+        const pokeName = selId.slice(5);
+        isStackable = /^(monitor|pc|laptop|clock|whiteboard|computer_monitor_only|computer_mouse_only|pda|floor_)/.test(pokeName);
+      } else {
+        const def = getFurnitureDef(selId);
+        if (def) {
+          w = def.widthCells; h = def.heightCells;
+          isStackable = def.category === "appliance" || def.category === "accessory" || def.category === "wall_decor" || def.category === "board";
+        }
+      }
+      const isFloorTile = selId.startsWith("floor_") || selId === "hq_white_marble" || (selId.startsWith("poke:") && selId.slice(5).startsWith("floor_"));
+      if (isFloorTile) isStackable = true;
+      const rot = this.editorState.rotation;
+      const rw = rot % 2 === 1 ? h : w;
+      const rh = rot % 2 === 1 ? w : h;
+      const occupyCells: string[] = [];
+      for (let dx = 0; dx < rw; dx++)
+        for (let dy = 0; dy < rh; dy++)
+          occupyCells.push(`${col + dx},${row + dy}`);
+      // 새 아이템의 레이어 분류 (바닥/벽/가구/스택/캐릭 레이어)
+      type Layer = "floor" | "floor_item" | "wall" | "chair" | "furniture" | "stackable";
+      // desk_plant_*, potted_plant_round/bushy: 의자(옆모습)로 재분류되어 제거
+      // floor_lamp, clipboard_: 삭제됨 / office_stool: accessory / floor_cushion_set: desk
+      const deskTopPrefixes = ["book_", "pen_", "coffee_", "cup_", "mouse_", "keyboard", "desk_lamp", "desk_phone", "laptop_", "desk_divider_",
+        "desk_extension_lavender", "desk_with_pc", "desk_with_monitors", "binder_set", "tall_cabinet_a", "tall_cabinet_b", "workstation_large", "desk_module_a", "desk_module_b", "desk_module_c", "desk_module_d", "desk_module_e", "conference_table_end", "dual_workstation", "globe_on_stand", "coat_rack"];
+      // backpack_*: 듀얼모니터(appliance)로 재분류됨 / briefcase: 전화기(accessory)로 재분류됨
+      const floorItemPrefixes = ["trash_", "suitcase_"];
+      const getLayer = (id: string): Layer => {
+        if (id === "hq_white_marble" || id.startsWith("floor_")) return "floor";
+        if (floorItemPrefixes.some(p => id.startsWith(p))) return "floor_item";
+        if (id.startsWith("poke:")) {
+          const n = id.slice(5);
+          if (n.startsWith("floor_")) return "floor";
+          if (/^(wall|door|elevator)/.test(n)) return "wall";
+          if (/^(monitor|pc|laptop|clock|whiteboard|computer_monitor|computer_mouse|pda|printer)/.test(n)) return "stackable";
+          return "furniture";
+        }
+        if (deskTopPrefixes.some(p => id.startsWith(p))) return "stackable";
+        const def = getFurnitureDef(id);
+        if (!def) {
+          if (id.startsWith("wall_") || id.startsWith("divider_")) return "wall";
+          return "furniture";
+        }
+        const lbl = (def.label || "").toLowerCase();
+        if (/monitor|printer|laptop|phone|dispenser|keyboard|mouse|speaker|tv|screen/.test(lbl)) return "stackable";
+        if (/\bchair\b/.test(lbl)) return "chair";
+        if (def.category === "floor_tile" || def.category === "floor_decor") return "floor";
+        if (def.category === "wall_tile" || def.category === "wall_decor" || def.category === "divider" || def.category === "partition") return "wall";
+        if (def.category === "chair" || def.category === "seating") return "chair";
+        if (def.category === "appliance" || def.category === "accessory" || def.category === "board") return "stackable";
+        return "furniture";
+      };
+      const newLayer = getLayer(selId);
+      // 동급끼리 겹침 금지 — 같은 레이어만 제거, 다른 레이어는 유지 (스택 OK)
+      // 의자끼리도 겹침 금지 (footprint가 닿으면 이전 의자 제거)
+      layout.items = layout.items.filter(it => {
+        const itLayer = getLayer(it.type);
+        if (itLayer !== newLayer) return true;  // 다른 레이어 → 유지
+        // 같은 레이어 → footprint 겹치면 제거
+        const idef = it.type.startsWith("poke:") ? null : getFurnitureDef(it.type);
+        const iw = idef?.widthCells ?? 1;
+        const ih = idef?.heightCells ?? 1;
+        const irot = it.rotation ?? 0;
+        const irw = irot % 2 === 1 ? ih : iw;
+        const irh = irot % 2 === 1 ? iw : ih;
+        for (let dx = 0; dx < irw; dx++)
+          for (let dy = 0; dy < irh; dy++)
+            if (occupyCells.includes(`${it.col + dx},${it.row + dy}`)) return false;
+        return true;
+      });
+      // 가구/스택 배치 시 바닥 자동 채움 (배경 검은색 방지)
+      if (newLayer === "furniture" || newLayer === "stackable") {
+        for (const k of occupyCells) {
+          const [cx, cy] = k.split(",").map(Number);
+          const hasFloor = layout.items.some(it => (it.col === cx && it.row === cy) && getLayer(it.type) === "floor");
+          if (!hasFloor) {
+            layout.items.push({ type: "hq_white_marble", col: cx, row: cy, rotation: 0 });
+          }
+        }
+      }
+      layout.items.push({ type: selId, col, row, rotation: this.editorState.rotation, flipX: !!this.editorState.flipX });
+      // 바닥 아닌 것 배치 시 TM 기본 숨김 (이전 turn 동작 유지)
+      if (newLayer !== "floor") {
+        for (const k of occupyCells) {
+          if (!layout.removed.includes(k)) layout.removed.push(k);
+        }
+      }
+    }
+    this.saveUserLayout(layout);
+    try {
+      window.dispatchEvent(new CustomEvent("hq:toast", { detail: {
+        text: `✅ ${isDelete ? "삭제" : "배치"} · ${layout.items.length}개 배치 / ${layout.removed.length}개 숨김`,
+        variant: "success", ms: 800,
+      }}));
+    } catch {}
+    this.buildFloor(this.currentFloor);
+  }
+
+  private showEditorGrid() {
+    if (this.editorGridOverlay) this.editorGridOverlay.destroy();
+    const g = this.add.graphics().setDepth(19000);
+    // 그리드 전체 월드 커버 (검은 영역 포함 → 어디든 배치 가능 표시)
+    g.lineStyle(1, 0xfbbf24, 0.2);
+    for (let x = 0; x <= COLS; x++) g.lineBetween(x * TILE, 0, x * TILE, ROWS * TILE);
+    for (let y = 0; y <= ROWS; y++) g.lineBetween(0, y * TILE, WORLD_W, y * TILE);
+    // 검은 영역(TM 바닥 없는 곳)도 편집 가능 — 어두운 반투명 오버레이로 표시
+    g.fillStyle(0xfbbf24, 0.02);
+    g.fillRect(0, 0, WORLD_W, ROWS * TILE);
+    this.editorGridOverlay = g;
+  }
+  private hideEditorGrid() {
+    if (this.editorGridOverlay) { this.editorGridOverlay.destroy(); this.editorGridOverlay = undefined; }
+  }
+
+  private setupEditorListeners() {
+    window.addEventListener("hq:edit-mode", (e: Event) => {
+      const d = (e as CustomEvent).detail as { on: boolean; selectedId: string | null; rotation: 0|1|2|3; flipX?: boolean };
+      this.editorState = { on: d.on, selectedId: d.selectedId, rotation: d.rotation, flipX: d.flipX ?? false };
+      if (!d.on && this.editorCursor) { this.editorCursor.destroy(); this.editorCursor = undefined; }
+      if (d.on) this.showEditorGrid(); else this.hideEditorGrid();
+      // 편집모드 on → 팀 캐릭터 숨김 (가구 배치 시야 방해 방지)
+      this.teamGroups.forEach(tg => {
+        tg.container.setVisible(!d.on);
+      });
+    });
+    window.addEventListener("hq:layout-reload", () => { this.renderUserLayout(); });
+    // 가구 라벨 오버라이드가 서버에서 도착하면 씬 전체 재빌드 (쇼파 등 label 기반 z-layer 재계산)
+    const handleOverridesApplied = () => {
+      // 씬이 destroy 중이거나 아직 초기화 전이면 skip (reading 'size'/'add' null 에러 방지)
+      if (!this.sys || !this.sys.isActive || !this.sys.isActive()) return;
+      if (!this.envGroup || !this.teamGroups) return;
+      console.info("[hq-furn] override event → rebuild floor");
+      this.buildFloor(this.currentFloor);
+    };
+    window.addEventListener("hq:furniture-overrides-applied", handleOverridesApplied);
+    // 씬 shutdown 시 리스너 해제 — 중복 등록으로 이전 씬 메서드가 호출되어 null add 에러 방지
+    this.events.once("shutdown", () => {
+      window.removeEventListener("hq:furniture-overrides-applied", handleOverridesApplied);
+    });
+    console.info("[hq-furn] scene setup → re-fetch overrides");
+    fetchAndApplyFurnitureOverrides();
+    // 마우스 이동 → 커서 하이라이트 셀 표시
+    this.input.on("pointermove", (ptr: Phaser.Input.Pointer) => {
+      if (!this.editorState.on) return;
+      const col = Math.floor(ptr.worldX / TILE);
+      const row = Math.floor(ptr.worldY / TILE);
+      if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return;
+      if (!this.editorCursor) {
+        this.editorCursor = this.add.graphics().setDepth(20000);
+      }
+      this.editorCursor.clear();
+      const def = this.editorState.selectedId ? getFurnitureDef(this.editorState.selectedId) : null;
+      const w = (def?.widthCells ?? 1) * TILE;
+      const h = (def?.heightCells ?? 1) * TILE;
+      const rot = this.editorState.rotation;
+      const rw = rot % 2 === 1 ? h : w;
+      const rh = rot % 2 === 1 ? w : h;
+      this.editorCursor.lineStyle(2, 0xfbbf24, 0.9);
+      this.editorCursor.strokeRect(col * TILE, row * TILE, rw, rh);
+      this.editorCursor.fillStyle(0xfbbf24, 0.15);
+      this.editorCursor.fillRect(col * TILE, row * TILE, rw, rh);
+      // 드래그 연속 브러시 — 좌클릭 = 배치, 우클릭 = 연속 삭제
+      if (ptr.isDown) {
+        const lastCell = this.editorDragCell;
+        if (lastCell !== `${col},${row}`) {
+          this.editorDragCell = `${col},${row}`;
+          if (ptr.rightButtonDown()) {
+            this.editorPlaceAt(col, row, true);
+          } else if (this.editorState.selectedId) {
+            this.editorPlaceAt(col, row, false);
+          }
+        }
+      }
+    });
+    // 클릭 → 배치 / 우클릭 → 삭제 (모든 셀, 검은 영역 포함)
+    this.input.on("pointerdown", () => { this.editorDragCell = null; });
+    this.input.on("pointerup", (ptr: Phaser.Input.Pointer) => {
+      this.editorDragCell = null;
+      if (!this.editorState.on) return;
+      if (this.dragTarget || this.objectDrag) return;
+      const col = Math.floor(ptr.worldX / TILE);
+      const row = Math.floor(ptr.worldY / TILE);
+      if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return;
+      const isDel = ptr.rightButtonReleased() || ptr.button === 2;
+
+      // ── 이동 모드: pickup → drop ──
+      if (isDel) {
+        // 우클릭 시 pickup 취소 + 일반 삭제 흐름
+        if (this.editorPickup) {
+          this.editorPickup = null;
+          window.dispatchEvent(new CustomEvent("hq:toast", { detail: { text: "이동 취소됨", variant: "info", center: true, ms: 1500 } }));
+          return;
+        }
+        this.editorPlaceAt(col, row, true);
+        return;
+      }
+
+      // selectedId 있으면 기존 배치 흐름
+      if (this.editorState.selectedId) {
+        this.editorPlaceAt(col, row, false);
+        return;
+      }
+
+      // pickup 상태면 drop
+      if (this.editorPickup) {
+        const pk = this.editorPickup;
+        const layout = this.getUserLayout();
+        // 원래 위치에서 제거
+        layout.items = layout.items.filter(it => !(it.col === pk.origCol && it.row === pk.origRow && it.type === pk.type));
+        // selectedId 임시 설정 후 editorPlaceAt으로 배치 (겹침/바닥 처리 재사용)
+        this.saveUserLayout(layout);
+        const prevSel = this.editorState.selectedId;
+        const prevRot = this.editorState.rotation;
+        const prevFlip = this.editorState.flipX;
+        this.editorState.selectedId = pk.type;
+        this.editorState.rotation = pk.rotation as 0|1|2|3;
+        this.editorState.flipX = pk.flipX;
+        this.editorPlaceAt(col, row, false);
+        this.editorState.selectedId = prevSel;
+        this.editorState.rotation = prevRot;
+        this.editorState.flipX = prevFlip;
+        this.editorPickup = null;
+        return;
+      }
+
+      // 빈 손 + 해당 셀에 가구 있으면 pickup (타일/벽지 제외)
+      const layout = this.getUserLayout();
+      const targetItem = layout.items.find(it => {
+        if (it.type.startsWith("floor_") || it.type === "hq_white_marble") return false;
+        if (it.type.startsWith("poke:") && it.type.slice(5).startsWith("floor_")) return false;
+        const idef = it.type.startsWith("poke:") ? null : getFurnitureDef(it.type);
+        if (idef && (idef.category === "floor_tile" || idef.category === "wall_tile" || idef.category === "floor_decor" || idef.category === "wall_decor")) return false;
+        const iw = idef?.widthCells ?? 1;
+        const ih = idef?.heightCells ?? 1;
+        const irot = it.rotation ?? 0;
+        const irw = irot % 2 === 1 ? ih : iw;
+        const irh = irot % 2 === 1 ? iw : ih;
+        return col >= it.col && col < it.col + irw && row >= it.row && row < it.row + irh;
+      });
+      if (targetItem) {
+        this.editorPickup = {
+          type: targetItem.type,
+          origCol: targetItem.col,
+          origRow: targetItem.row,
+          rotation: targetItem.rotation ?? 0,
+          flipX: !!targetItem.flipX,
+        };
+        window.dispatchEvent(new CustomEvent("hq:toast", { detail: { text: "✋ 가구 들었음 — 다음 클릭에 놓기 (우클릭 취소)", variant: "info", center: true, ms: 2500 } }));
+      }
+    });
+    // 아래 구 버전은 필요 없음
+    this.input.on("pointerup_legacy_disabled", (ptr: Phaser.Input.Pointer) => {
+      if (!this.editorState.on) return;
+      if (this.dragTarget || this.objectDrag) return;
+      const col = Math.floor(ptr.worldX / TILE);
+      const row = Math.floor(ptr.worldY / TILE);
+      if (col < 0 || col >= COLS || row < 0 || row >= ROWS) return;
+      // 편집 모드에선 통창 영역도 배치 허용
+      const layout = this.getUserLayout();
+      const cellKey = `${col},${row}`;
+      if (ptr.rightButtonReleased() || ptr.button === 2) {
+        // 우클릭 — 유저 배치 먼저 제거. 없으면 TM 기본 가구를 removed에 기록
+        const before = layout.items.length;
+        layout.items = layout.items.filter(it => !(it.col === col && it.row === row));
+        if (before === layout.items.length) {
+          // 유저 배치 없음 → TM 기본 제거 목록에 추가
+          if (!layout.removed.includes(cellKey)) layout.removed.push(cellKey);
+          window.dispatchEvent(new CustomEvent("hq:toast", { detail: { text: `🗑 TM 기본 가구 삭제 (${cellKey})`, variant: "info" } }));
+        }
+      } else if (this.editorState.selectedId) {
+        // 좌클릭 — 다중-셀 겹침 방지 (단, stackable 가구는 책상 위에 올림)
+        const selId = this.editorState.selectedId;
+        let w = 1, h = 1;
+        let isStackable = false;  // 모니터/보드/액자/컴퓨터 등 책상 위에 올리는 아이템
+        if (selId.startsWith("poke:")) {
+          const pokeName = selId.slice(5);
+          // 포켓몬 stackable 판정 — 이름 기반
+          isStackable = /^(monitor|pc|laptop|clock|whiteboard|computer_monitor_only|computer_mouse_only|pda)/.test(pokeName);
+          w = 1; h = 1;
+        } else {
+          const def = getFurnitureDef(selId);
+          if (def) {
+            w = def.widthCells; h = def.heightCells;
+            isStackable = def.category === "appliance" || def.category === "accessory" || def.category === "wall_decor" || def.category === "board";
+          }
+        }
+        // 바닥/타일도 stackable (다른 것 위에 덮지 않음, 아래 깔림)
+        const isFloor = selId.startsWith("floor_") || (selId.startsWith("poke:") && selId.slice(5).startsWith("floor_"));
+        if (isFloor) isStackable = true;
+        // 회전 시 w/h 스왑
+        const rot = this.editorState.rotation;
+        const rw = rot % 2 === 1 ? h : w;
+        const rh = rot % 2 === 1 ? w : h;
+        // 점유할 모든 셀 계산
+        const occupyCells: string[] = [];
+        for (let dx = 0; dx < rw; dx++) {
+          for (let dy = 0; dy < rh; dy++) {
+            occupyCells.push(`${col + dx},${row + dy}`);
+          }
+        }
+        // Stackable(모니터/바닥/장식)은 겹침 허용 — 아래 깔리거나 위에 올라감
+        // 일반 가구만 겹치는 것 제거
+        if (!isStackable) {
+          layout.items = layout.items.filter(it => {
+            // 바닥/벽 타일은 항상 유지 (밑에 깔림)
+            if (it.type.startsWith("floor_") || it.type.startsWith("wall_")) return true;
+            const idef = it.type.startsWith("poke:") ? null : getFurnitureDef(it.type);
+            const iw = idef?.widthCells ?? 1;
+            const ih = idef?.heightCells ?? 1;
+            const irot = it.rotation ?? 0;
+            const irw = irot % 2 === 1 ? ih : iw;
+            const irh = irot % 2 === 1 ? iw : ih;
+            // 기존 아이템이 stackable(가전/장식)이면 유지
+            const itIsStackable = idef && (idef.category === "appliance" || idef.category === "accessory" || idef.category === "wall_decor" || idef.category === "board");
+            if (itIsStackable) return true;
+            // 일반 가구끼리만 제거
+            for (let dx = 0; dx < irw; dx++) {
+              for (let dy = 0; dy < irh; dy++) {
+                if (occupyCells.includes(`${it.col + dx},${it.row + dy}`)) return false;
+              }
+            }
+            return true;
+          });
+        }
+        // 바닥/벽이 아닌 가구 배치 시 → 점유 셀에 자동으로 바닥 타일 깔기 (검은 배경 방지)
+        const isTileFill = selId.startsWith("floor_") || selId.startsWith("wall_") || selId.startsWith("divider_");
+        if (!isTileFill) {
+          for (const k of occupyCells) {
+            const [cx, cy] = k.split(",").map(Number);
+            // 이미 해당 셀에 바닥 아이템이 있으면 스킵
+            const hasFloor = layout.items.some(it => it.col === cx && it.row === cy && it.type.startsWith("floor_"));
+            if (!hasFloor) {
+              layout.items.push({ type: "floor_lavender_1", col: cx, row: cy, rotation: 0 });
+            }
+          }
+        }
+        layout.items.push({ type: selId, col, row, rotation: this.editorState.rotation, flipX: !!this.editorState.flipX });
+        // 모든 점유 셀의 TM 기본 숨김
+        for (const k of occupyCells) {
+          if (!layout.removed.includes(k)) layout.removed.push(k);
+        }
+      } else {
+        return;
+      }
+      this.saveUserLayout(layout);
+      // 배치/삭제 확인 토스트
+      const action = (ptr.rightButtonReleased() || ptr.button === 2) ? "삭제" : "배치";
+      try {
+        window.dispatchEvent(new CustomEvent("hq:toast", { detail: {
+          text: `✅ ${action} 완료 · 저장 (${layout.items.length}개 배치, ${layout.removed.length}개 숨김)`,
+          variant: "success", ms: 1200,
+        }}));
+      } catch {}
+      // 전체 재빌드 — TM 기본 가구도 removed 반영
+      this.buildFloor(this.currentFloor);
+    });
+    // 우클릭 컨텍스트 메뉴 차단 (캔버스에서)
+    this.game.canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+  }
+
+  /** BFS 그리드 경로탐색 (TM pathfinding 패턴) — 4방향 */
+  private bfsPath(sx: number, sy: number, ex: number, ey: number): Array<{x: number; y: number}> | null {
+    if (sx === ex && sy === ey) return [{x: sx, y: sy}];
+    const visited = new Set<string>();
+    const prev = new Map<string, string>();
+    const key = (x: number, y: number) => `${x},${y}`;
+    const queue: Array<{x: number; y: number}> = [{x: sx, y: sy}];
+    visited.add(key(sx, sy));
+    const dirs = [{dx: 1, dy: 0}, {dx: -1, dy: 0}, {dx: 0, dy: 1}, {dx: 0, dy: -1}];
+    while (queue.length) {
+      const cur = queue.shift()!;
+      if (cur.x === ex && cur.y === ey) {
+        // reconstruct path
+        const path: Array<{x: number; y: number}> = [];
+        let k = key(ex, ey);
+        while (k) {
+          const [kx, ky] = k.split(",").map(Number);
+          path.unshift({x: kx, y: ky});
+          const p = prev.get(k);
+          if (!p) break;
+          k = p;
+        }
+        return path;
+      }
+      for (const d of dirs) {
+        const nx = cur.x + d.dx, ny = cur.y + d.dy;
+        if (nx < 0 || nx >= COLS || ny < 0 || ny >= ROWS) continue;
+        const nk = key(nx, ny);
+        if (visited.has(nk)) continue;
+        // 하단 3줄(복도)은 벽/가구와 무관하게 통과 허용 (에이전트 진입/배치 가능)
+        const isCorridor = ny >= ROWS - 3;
+        if (!isCorridor && this.grid[ny]?.[nx] && !(nx === ex && ny === ey)) continue;
+        visited.add(nk);
+        prev.set(nk, key(cur.x, cur.y));
+        queue.push({x: nx, y: ny});
+      }
+    }
+    return null;
+  }
+
+  /** TM walkToManager 패턴 — 채팅창이 열릴 때 캐릭터가 지정 셀로 이동 (자동 복귀 없음) */
+  walkCharToSpot(teamId: string, gx: number, gy: number) {
+    const tg = this.teamGroups.get(teamId);
+    if (!tg || !tg.members[0]) return;
+    const m = tg.members[0];
+    const char = m.char;
+    if (char.getData("walking")) return;
+    char.setData("walking", true);
+    // 이미 떨어져 있으면(walkout 중복 호출) 그대로 두기
+    const sx = (char.parentContainer ? tg.container.x : 0) + (char.x as number);
+    const sy = (char.parentContainer ? tg.container.y : 0) + (char.y as number);
+    const tx = gx * TILE + TILE / 2, ty = gy * TILE + TILE / 2;
+    const startGX = Math.floor(sx / TILE), startGY = Math.floor(sy / TILE);
+    const path = this.bfsPath(startGX, startGY, gx, gy);
+    if (char.parentContainer) {
+      tg.container.remove(char);
+      this.add.existing(char);
+      char.setPosition(sx, sy).setDepth(300);
+    }
+    if (path && path.length > 1) {
+      let i = 1;
+      const stepOne = () => {
+        if (i >= path.length) { char.stop(); char.setFrame(0); char.setData("walking", false); return; }
+        const p = path[i]; if (!p) { char.setData("walking", false); return; }
+        const cx = p.x * TILE + TILE / 2, cy = p.y * TILE + TILE / 2;
+        const dx = cx - (char.x as number);
+        const anim = dx > 0 ? `char_${m.charIdx}_walk_right` : dx < 0 ? `char_${m.charIdx}_walk_left` : `char_${m.charIdx}_walk_down`;
+        char.play(anim);
+        this.tweens.add({ targets: char, x: cx, y: cy, duration: 180, ease: "Linear", onComplete: () => { i++; stepOne(); } });
+      };
+      stepOne();
+    } else {
+      // 폴백: L자
+      const dx = tx - sx;
+      const speed = 80;
+      char.play(dx > 0 ? `char_${m.charIdx}_walk_right` : `char_${m.charIdx}_walk_left`);
+      this.tweens.add({ targets: char, x: tx, duration: Math.max(200, Math.abs(dx) * (1000/speed)), ease: "Linear",
+        onComplete: () => this.tweens.add({ targets: char, y: ty, duration: Math.max(200, Math.abs(ty - sy) * (1000/speed)), ease: "Linear",
+          onComplete: () => { char.stop(); char.setFrame(0); char.setData("walking", false); } }) });
+    }
+  }
+
+  /** TM walkFromManager — 채팅창 닫히면 책상으로 복귀 */
+  walkCharHome(teamId: string) {
+    const tg = this.teamGroups.get(teamId);
+    if (!tg || !tg.members[0]) return;
+    const m = tg.members[0];
+    const char = m.char;
+    if (!char.parentContainer) {
+      // 씬 직속(외출 중) → 책상 복귀
+      const tx = tg.container.x + m.baseX, ty = tg.container.y + m.baseY;
+      const startGX = Math.floor((char.x as number) / TILE), startGY = Math.floor((char.y as number) / TILE);
+      const endGX = Math.floor(tx / TILE), endGY = Math.floor(ty / TILE);
+      const path = this.bfsPath(startGX, startGY, endGX, endGY);
+      const finish = () => {
+        this.add.existing(char);
+        tg.container.add(char);
+        char.setPosition(m.baseX, m.baseY).setDepth(10);
+        char.stop(); char.setFrame(0);
+        char.setData("walking", false);
+      };
+      if (path && path.length > 1) {
+        char.setData("walking", true);
+        let i = 1;
+        const stepOne = () => {
+          if (i >= path.length) { finish(); return; }
+          const p = path[i]; if (!p) { finish(); return; }
+          const cx = p.x * TILE + TILE / 2, cy = p.y * TILE + TILE / 2;
+          const dx = cx - (char.x as number);
+          const anim = dx > 0 ? `char_${m.charIdx}_walk_right` : dx < 0 ? `char_${m.charIdx}_walk_left` : `char_${m.charIdx}_walk_down`;
+          char.play(anim);
+          this.tweens.add({ targets: char, x: cx, y: cy, duration: 180, ease: "Linear", onComplete: () => { i++; stepOne(); } });
+        };
+        stepOne();
+      } else {
+        finish();
+      }
+    }
+  }
+
+  walkCharToTeam(fromId: string, toId: string) {
+    const fromTg = this.teamGroups.get(fromId);
+    const toTg = this.teamGroups.get(toId);
+    if (!fromTg || !toTg || !fromTg.members[0]) return;
+    const m = fromTg.members[0];
+    const char = m.char;
+    if (char.getData("walking")) return;
+    char.setData("walking", true);
+
+    // 시작/끝 월드 좌표
+    const sx = fromTg.container.x + m.baseX;
+    const sy = fromTg.container.y + m.baseY;
+    const tx = toTg.container.x;
+    const ty = toTg.container.y + (toTg.config.gridH * TILE) / 2 + 8;
+
+    // 그리드 BFS 경로 시도 (실패 시 L자 폴백)
+    const startGX = Math.floor(sx / TILE), startGY = Math.floor(sy / TILE);
+    const endGX = Math.floor(tx / TILE), endGY = Math.floor(ty / TILE);
+    const path = this.bfsPath(startGX, startGY, endGX, endGY);
+    if (path && path.length > 1) {
+      fromTg.container.remove(char);
+      this.add.existing(char);
+      char.setPosition(sx, sy).setDepth(300);
+      // tile-by-tile 타일 단위 이동 (TM 방식)
+      let i = 1;
+      const stepOne = () => {
+        if (i >= path.length) {
+          // 도착 + ! 알림 + 복귀
+          char.stop(); char.setFrame(0);
+          const alertTxt = this.add.text(toTg.container.x, toTg.container.y - 30, "!", {
+            fontSize: "14px", color: "#fbbf24", fontStyle: "bold", resolution: 8,
+          }).setOrigin(0.5, 1).setDepth(301);
+          this.tweens.add({targets: alertTxt, y: alertTxt.y - 10, alpha: 0, duration: 800, delay: 200, onComplete: () => alertTxt.destroy()});
+          this.time.delayedCall(900, () => {
+            // 복귀 (역순)
+            let j = path.length - 2;
+            const backOne = () => {
+              if (j < 0) {
+                fromTg.container.add(char);
+                char.setPosition(m.baseX, m.baseY).setDepth(10);
+                char.stop(); char.setFrame(0);
+                char.setData("walking", false);
+                return;
+              }
+              const p = path[j];
+              if (!p) { char.setData("walking", false); return; }
+              const cx = p.x * TILE + TILE / 2, cy = p.y * TILE + TILE / 2;
+              const dx = cx - (char.x as number);
+              const anim = dx > 0 ? `char_${m.charIdx}_walk_right` : dx < 0 ? `char_${m.charIdx}_walk_left` : `char_${m.charIdx}_walk_down`;
+              char.play(anim);
+              this.tweens.add({targets: char, x: cx, y: cy, duration: 180, ease: "Linear", onComplete: () => { j--; backOne(); }});
+            };
+            backOne();
+          });
+          return;
+        }
+        const p = path[i];
+        if (!p) { char.setData("walking", false); return; }
+        const cx = p.x * TILE + TILE / 2, cy = p.y * TILE + TILE / 2;
+        const dx = cx - (char.x as number);
+        const anim = dx > 0 ? `char_${m.charIdx}_walk_right` : dx < 0 ? `char_${m.charIdx}_walk_left` : `char_${m.charIdx}_walk_down`;
+        char.play(anim);
+        this.tweens.add({targets: char, x: cx, y: cy, duration: 180, ease: "Linear", onComplete: () => { i++; stepOne(); }});
+      };
+      stepOne();
+      return;
+    }
+    // 폴백: 기존 L자 (경로 없음 시)
+
+    // 부모 변경: 컨테이너에서 빼서 씬에 직접
+    fromTg.container.remove(char);
+    this.add.existing(char);
+    char.setPosition(sx, sy).setDepth(300);
+
+    const dx1 = tx - sx, dy1 = ty - sy;
+    const step = 100; // ms per tile
+    const speed = 80; // px per sec reference
+    const dur1 = Math.max(200, Math.abs(dx1) * (1000 / speed));
+    const dur2 = Math.max(200, Math.abs(dy1) * (1000 / speed));
+
+    const walkAnim = dx1 > 0 ? `char_${m.charIdx}_walk_right` : `char_${m.charIdx}_walk_left`;
+    char.play(walkAnim);
+
+    const comeBack = () => {
+      const dxB = sx - tx, dyB = sy - ty;
+      const animB = dxB > 0 ? `char_${m.charIdx}_walk_right` : `char_${m.charIdx}_walk_left`;
+      char.play(animB);
+      this.tweens.add({
+        targets: char, y: sy, duration: Math.max(200, Math.abs(dyB) * (1000/speed)), ease: "Linear",
+        onComplete: () => {
+          this.tweens.add({
+            targets: char, x: sx, duration: Math.max(200, Math.abs(dxB) * (1000/speed)), ease: "Linear",
+            onComplete: () => {
+              this.add.existing(char); // 유지
+              fromTg.container.add(char);
+              char.setPosition(m.baseX, m.baseY).setDepth(10);
+              char.stop();
+              char.setFrame(0);
+              char.setData("walking", false);
+            },
+          });
+        },
+      });
+    };
+
+    this.tweens.add({
+      targets: char, x: tx, duration: dur1, ease: "Linear",
+      onComplete: () => {
+        char.play(dy1 > 0 ? `char_${m.charIdx}_walk_right` : `char_${m.charIdx}_walk_left`);
+        this.tweens.add({
+          targets: char, y: ty, duration: dur2, ease: "Linear",
+          onComplete: () => {
+            // 도착 시 잠깐 멈춤 (!와 함께)
+            char.stop(); char.setFrame(0);
+            // B 팀 머리 위에 ! 알림
+            const alertTxt = this.add.text(toTg.container.x, toTg.container.y - 30, "!", {
+              fontSize: "14px", color: "#fbbf24", fontStyle: "bold", resolution: 8,
+            }).setOrigin(0.5, 1).setDepth(301);
+            this.tweens.add({
+              targets: alertTxt, y: alertTxt.y - 10, alpha: 0, duration: 800, delay: 200,
+              onComplete: () => alertTxt.destroy(),
+            });
+            this.time.delayedCall(900, comeBack);
+          },
+        });
+      },
+    });
+    // silence unused step warning
+    void step;
+  }
+
   showBubble(teamId: string, text: string, variant: "loading" | "result" | "info" = "result") {
     if (!this.bubbleManager) return;
     const short = text.length > 80 ? text.slice(0, 77) + "…" : text;
@@ -1521,28 +2489,66 @@ export default class OfficeScene extends Phaser.Scene {
     this.bubbleManager?.removeForTeam(teamId);
   }
 
+  /** TM 스타일 상태 뱃지 — working=초록 / complete=파랑 / error=빨강 */
+  private setStatusBadge(tg: TeamGroup, status: "working" | "complete" | "error" | null) {
+    if (tg.statusBadge) { tg.statusBadge.destroy(); tg.statusBadge = undefined; }
+    if (!status) return;
+    const colors = { working: 0x22c55e, complete: 0x3b82f6, error: 0xef4444 };
+    const labels = { working: "작업중", complete: "완료", error: "에러" };
+    const c = this.add.container(0, tg.config.gridH * TILE / 2 + 16).setDepth(250);
+    const bg = this.add.graphics();
+    bg.fillStyle(colors[status], 1);
+    bg.fillRoundedRect(-20, -7, 40, 14, 7);
+    c.add(bg);
+    const t = this.add.text(0, 0, labels[status], {
+      fontSize: "9px", color: "#ffffff", fontStyle: "700",
+      fontFamily: "system-ui, sans-serif", resolution: 16,
+    }).setOrigin(0.5);
+    c.add(t);
+    tg.container.add(c);
+    tg.statusBadge = c;
+    if (status !== "working") {
+      // 3초 후 자동 페이드아웃
+      this.tweens.add({
+        targets: c, alpha: 0, duration: 500, delay: 3000,
+        onComplete: () => { c.destroy(); if (tg.statusBadge === c) tg.statusBadge = undefined; },
+      });
+    }
+  }
+
+  /** 작업 완료 뱃지 (외부 이벤트용) */
+  showStatusBadge(teamId: string, status: "complete" | "error") {
+    const tg = this.teamGroups.get(teamId);
+    if (tg) this.setStatusBadge(tg, status);
+  }
+
   setWorking(teamId: string, working: boolean) {
     const tg = this.teamGroups.get(teamId);
     if (!tg) return;
     if (working) this.workingSet.add(teamId); else this.workingSet.delete(teamId);
+    this.setStatusBadge(tg, working ? "working" : null);
 
-    // 팀 영역 펄스 글로우
+    // 작업 시작 시 캐릭이 매니저 앞으로 나가있으면 책상 복귀
+    // (외출 중인 상태에서 workGlow는 책상 container에 부착되므로 위치 mismatch 방지)
+    if (working) {
+      const m0 = tg.members[0];
+      if (m0 && !m0.char.parentContainer) {
+        this.walkCharHome(teamId);
+      }
+    }
+
+    // TM 스타일 녹색 작업 표시 — 팀 영역 감싸는 녹색 펄스 테두리
     if (working && !tg.workGlow) {
       const pw = tg.config.gridW * TILE;
       const ph = tg.config.gridH * TILE;
       const glow = this.add.graphics().setDepth(9);
-      glow.lineStyle(2, 0xf5c842, 0.7);
-      glow.strokeRoundedRect(-pw / 2 - 3, -ph / 2 - 3, pw + 6, ph + 6, 6);
-      glow.fillStyle(0xf5c842, 0.04);
-      glow.fillRoundedRect(-pw / 2 - 3, -ph / 2 - 3, pw + 6, ph + 6, 6);
-      // index 2에 삽입 → bg(0), highlight(1) 뒤, 모든 캐릭터/가구 앞
-      // (add()로 마지막에 추가하면 캐릭터 위에 렌더되어 잘림 현상 발생)
-      tg.container.addAt(glow, 2);
+      glow.lineStyle(2, 0x22c55e, 0.9);  // TM green
+      glow.strokeRoundedRect(-pw / 2 - 2, -ph / 2 - 2, pw + 4, ph + 4, 4);
+      glow.fillStyle(0x22c55e, 0.08);
+      glow.fillRoundedRect(-pw / 2 - 2, -ph / 2 - 2, pw + 4, ph + 4, 4);
+      tg.container.addAt(glow, 0);
       tg.workGlow = glow;
-      this.tweens.add({
-        targets: glow, alpha: 0.25, duration: 900,
-        yoyo: true, repeat: -1, ease: "Sine.easeInOut",
-      });
+      this.tweens.add({ targets: glow, alpha: 0.3, duration: 800, yoyo: true, repeat: -1, ease: "Sine.easeInOut" });
     } else if (!working && tg.workGlow) {
       this.tweens.killTweensOf(tg.workGlow);
       tg.workGlow.destroy();
@@ -1551,14 +2557,13 @@ export default class OfficeScene extends Phaser.Scene {
 
     tg.members.forEach(m => {
       if (working) {
-        // 오른쪽 책상(baseX>0)=왼쪽 향함 → type_left, 나머지 → type
         const typeAnim = m.baseX > 0 ? `char_${m.charIdx}_type_left` : `char_${m.charIdx}_type`;
         m.char.play(typeAnim);
       } else {
         const SPRITE_C = 4;
-        if (m.baseX < 0) m.char.setFrame(SPRITE_C * 2);   // 왼쪽 책상 → 오른쪽 옆모습 복원
-        else if (m.baseX > 0) m.char.setFrame(SPRITE_C);  // 오른쪽 책상 → 왼쪽 옆모습 복원
-        else m.char.play(`char_${m.charIdx}_idle`);   // 솔로 → 정면
+        if (m.baseX < 0) m.char.setFrame(SPRITE_C * 2);
+        else if (m.baseX > 0) m.char.setFrame(SPRITE_C);
+        else m.char.stop();  // 솔로 — 정지 프레임 (idle anim 루프 안 돎)
       }
 
       // 말풍선 — 캐릭터 머리 위 (scene 레벨 depth 200)
@@ -1692,7 +2697,7 @@ export default class OfficeScene extends Phaser.Scene {
     }
     // 빈 4x4 슬롯 탐색
     let placed = false;
-    for (let gy = WALL_H; gy <= ROWS - teamConfig.gridH - 3; gy++) {
+    for (let gy = WALL_H; gy <= ROWS - teamConfig.gridH; gy++) {
       for (let gx = 0; gx <= COLS - teamConfig.gridW; gx++) {
         let free = true;
         for (let dy = 0; dy < teamConfig.gridH && free; dy++) {

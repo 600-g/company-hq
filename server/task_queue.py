@@ -30,6 +30,7 @@ class Task:
     completed: float = 0.0
     dispatch_id: str = ""      # 파이프라인에 속한 경우
     step_index: int = 0        # 파이프라인 내 순서
+    session_id: str = ""       # 팀 내부 세션 id (sessions_store)
 
     def to_dict(self) -> dict:
         return {
@@ -38,7 +39,7 @@ class Task:
             "result": self.result[:500], "error": self.error,
             "created": self.created, "started": self.started,
             "completed": self.completed, "dispatch_id": self.dispatch_id,
-            "step_index": self.step_index,
+            "step_index": self.step_index, "session_id": self.session_id,
         }
 
 
@@ -91,7 +92,7 @@ class TaskQueue:
 
     async def enqueue(self, team_id: str, prompt: str,
                       priority: int = 0, dispatch_id: str = "",
-                      step_index: int = 0) -> Task:
+                      step_index: int = 0, session_id: str = "") -> Task:
         """작업을 팀 큐에 추가"""
         self._ensure_queue(team_id)
         task = Task(
@@ -101,6 +102,7 @@ class TaskQueue:
             priority=priority,
             dispatch_id=dispatch_id,
             step_index=step_index,
+            session_id=session_id,
         )
         self.all_tasks[task.id] = task
         await self.queues[team_id].put(task)
@@ -136,7 +138,10 @@ class TaskQueue:
                 project_path = self._get_team_path(team_id) if self._get_team_path else None
                 result_text = ""
                 # 큐/파이프라인 실행은 자동 트리거 → is_auto=True (낮은 예산 상한)
-                async for chunk in self._run_claude(task.prompt, project_path, team_id, is_auto=True):
+                async for chunk in self._run_claude(
+                    task.prompt, project_path, team_id,
+                    is_auto=True, session_id=(task.session_id or None),
+                ):
                     if chunk["kind"] == "text":
                         result_text += chunk["content"]
 

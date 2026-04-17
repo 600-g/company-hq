@@ -2,12 +2,21 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Team } from "../config/teams";
+import TMMarkdown from "./chat/MarkdownContent";
+import AgentResultCard from "./chat/AgentResultCard";
+import AgentHandoffCard from "./chat/AgentHandoffCard";
+import DeployGuideCard from "./chat/DeployGuideCard";
+import { parseArtifacts } from "./chat/parse-artifacts";
 
 export interface Message {
-  type: "user" | "ai";
+  type: "user" | "ai" | "handoff";
   content: string;
   cancelled?: boolean;
   timestamp?: string;
+  handoff?: {
+    dispatch_id: string;
+    steps: Array<{ team: string; team_name: string; emoji: string; prompt: string }>;
+  };
 }
 
 interface Props {
@@ -21,71 +30,6 @@ interface Props {
   onAiEnd?: (content: string) => void;
 }
 
-// ── 마크다운 렌더러 ────────────────────────────────────
-function processInline(text: string): React.ReactNode[] {
-  const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*)/g);
-  return parts.map((part, i) => {
-    if (part.startsWith("`") && part.endsWith("`") && part.length > 2)
-      return <code key={i} className="bg-[#2a2a1a] text-yellow-200 px-1 rounded text-[11px] font-mono">{part.slice(1, -1)}</code>;
-    if (part.startsWith("**") && part.endsWith("**"))
-      return <strong key={i} className="text-white font-semibold">{part.slice(2, -2)}</strong>;
-    if (part.startsWith("*") && part.endsWith("*") && part.length > 2)
-      return <em key={i} className="text-gray-300 italic">{part.slice(1, -1)}</em>;
-    return part;
-  });
-}
-
-function MarkdownMessage({ content }: { content: string }) {
-  const lines = content.split("\n");
-  const nodes: React.ReactNode[] = [];
-  let codeLines: string[] = [];
-  let inCode = false;
-  let codeLang = "";
-
-  lines.forEach((line, i) => {
-    if (line.startsWith("```")) {
-      if (inCode) {
-        nodes.push(
-          <pre key={i} className="bg-[#0a0a1a] border border-[#2a2a3a] rounded p-2 my-1 overflow-x-auto">
-            <code className="text-green-200 text-[11px] font-mono">{codeLines.join("\n")}</code>
-          </pre>
-        );
-        codeLines = [];
-        inCode = false;
-        codeLang = "";
-      } else {
-        inCode = true;
-        codeLang = line.slice(3).trim();
-      }
-      return;
-    }
-    if (inCode) { codeLines.push(line); return; }
-
-    if (line.startsWith("### "))
-      return nodes.push(<div key={i} className="font-bold text-yellow-300 text-[11px] mt-2 mb-0.5">{line.slice(4)}</div>);
-    if (line.startsWith("## "))
-      return nodes.push(<div key={i} className="font-bold text-yellow-400 text-[12px] mt-2 mb-0.5">{line.slice(3)}</div>);
-    if (line.startsWith("# "))
-      return nodes.push(<div key={i} className="font-bold text-yellow-500 text-[13px] mt-2 mb-1">{line.slice(2)}</div>);
-
-    if (line.startsWith("- ") || line.startsWith("* "))
-      return nodes.push(<div key={i} className="flex gap-1.5 pl-1"><span className="text-gray-500 shrink-0">•</span><span>{processInline(line.slice(2))}</span></div>);
-
-    const numMatch = line.match(/^(\d+)\.\s/);
-    if (numMatch)
-      return nodes.push(<div key={i} className="flex gap-1.5 pl-1"><span className="text-gray-500 shrink-0">{numMatch[1]}.</span><span>{processInline(line.slice(numMatch[0].length))}</span></div>);
-
-    if (line.startsWith("> "))
-      return nodes.push(<div key={i} className="border-l-2 border-gray-600 pl-2 text-gray-400 italic my-0.5">{processInline(line.slice(2))}</div>);
-
-    if (!line.trim())
-      return nodes.push(<div key={i} className="h-1.5" />);
-
-    nodes.push(<div key={i}>{processInline(line)}</div>);
-  });
-
-  return <div className="space-y-0.5">{nodes}</div>;
-}
 
 // ── API/WebSocket URL ────────────────────────────────
 function getApiBase(): string {
@@ -95,12 +39,13 @@ function getApiBase(): string {
   return isLocal ? `http://${h}:8000` : "https://api.600g.net";
 }
 
-function getWsUrl(teamId: string): string {
+function getWsUrl(teamId: string, sessionId?: string | null): string {
   if (typeof window === "undefined") return "";
   const h = window.location.hostname;
   const isLocal = h === "localhost" || h.startsWith("192.168.");
   const base = isLocal ? `ws://${h}:8000` : `wss://api.600g.net`;
-  return `${base}/ws/chat/${teamId}`;
+  const q = sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : "";
+  return `${base}/ws/chat/${teamId}${q}`;
 }
 
 export function getWsStorageKey() { return "hq-ws-base-url"; }
@@ -127,8 +72,11 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
   }, [draftKey]);
   const [streaming, setStreaming] = useState(false);
   const [connected, setConnected] = useState(false);
+  const [polling, setPolling] = useState(false);
   const [toolStatus, setToolStatus] = useState<string>("");
   // ── 진행 추적 ──
+  interface ToolEntry { tool: string; summary: string; done: boolean; error: boolean; resultSummary?: string }
+  const [activeTools, setActiveTools] = useState<Record<string, ToolEntry>>({});
   const [toolLog, setToolLog] = useState<{time: string; text: string}[]>([]);  // 이번 작업 툴 타임라인
   const [elapsed, setElapsed] = useState(0);                      // 경과 초
   const [lastDone, setLastDone] = useState<{ sec: number; tools: number } | null>(null); // 완료 정보
@@ -147,6 +95,25 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   // history_sync 수신 시 무조건 맨 아래로 스크롤하기 위한 플래그
   const forceScrollRef = useRef(false);
+
+  // ── 세션 관리 상태 ─────────────────────────────────
+  interface SessionMeta { id: string; title: string; createdAt: number; updatedAt: number; messageCount: number; resumable?: boolean }
+  const [sessions, setSessions] = useState<SessionMeta[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [sessionMenuOpen, setSessionMenuOpen] = useState(false);
+  const activeSessionIdRef = useRef<string | null>(null);
+  activeSessionIdRef.current = activeSessionId;
+
+  const refreshSessions = useCallback(async () => {
+    try {
+      const r = await fetch(`${getApiBase()}/api/sessions/${team.id}`);
+      const d = await r.json();
+      if (d.ok) {
+        setSessions(d.sessions || []);
+        if (!activeSessionIdRef.current) setActiveSessionId(d.session_id);
+      }
+    } catch {}
+  }, [team.id]);
   const scrollToBottom = useCallback((smooth?: boolean) => {
     if (scrollRef.current) {
       if (smooth) {
@@ -180,16 +147,41 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     let dead = false;
     let retryDelay = 1000; // 1초부터 시작, 최대 15초
+    let pollTimer: ReturnType<typeof setInterval> | null = null;
+    let wsFailCount = 0;
+
+    // HTTP 폴링 fallback — WS 연결 2회 이상 실패 시 15초마다 히스토리 동기화
+    const startPolling = () => {
+      if (pollTimer) return;
+      setPolling(true);
+      pollTimer = setInterval(async () => {
+        try {
+          const sid = activeSessionIdRef.current;
+          const q = sid ? `?session_id=${encodeURIComponent(sid)}` : "";
+          const r = await fetch(`${getApiBase()}/api/chat/${team.id}/history${q}`);
+          const d = await r.json();
+          if (d.ok && Array.isArray(d.messages)) {
+            setMessages(prev => {
+              if (prev.length === d.messages.length) return prev;
+              return d.messages as Message[];
+            });
+          }
+        } catch {}
+      }, 15000);
+    };
+    const stopPolling = () => { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } setPolling(false); };
 
     const connect = () => {
       if (dead) return;
-      const wsUrl = getWsUrl(team.id);
+      const wsUrl = getWsUrl(team.id, activeSessionIdRef.current);
       ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
       ws.onopen = () => {
         setConnected(true);
         retryDelay = 1000;
+        wsFailCount = 0;
+        stopPolling();
         // 재연결 시 streaming 상태 리셋 (이전 응답 끊긴 경우)
         setStreaming(prev => {
           if (prev) {
@@ -207,6 +199,9 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
         setStreaming(false);
         onWorkingChangeRef.current(false);
         wsRef.current = null;
+        wsFailCount += 1;
+        // 2회 이상 연결 실패 → HTTP 폴링 fallback (CF tunnel WS off 대비)
+        if (wsFailCount >= 2) startPolling();
         // 자동 재연결
         if (!dead) {
           reconnectTimer = setTimeout(() => {
@@ -222,12 +217,17 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
 
       ws.onmessage = (e) => {
         const data = JSON.parse(e.data);
+        // ── 세션 이벤트 ──
+        if (data.type === "sessions_sync") {
+          setSessions(data.sessions || []);
+          if (data.session_id) setActiveSessionId(data.session_id);
+          return;
+        }
         if (data.type === "history_sync") {
+          if (data.session_id) setActiveSessionId(data.session_id);
           const serverMsgs: Message[] = data.messages || [];
-          if (serverMsgs.length > 0) {
-            forceScrollRef.current = true;  // 동기화 후 무조건 맨 아래로
-            setMessages(serverMsgs);
-          }
+          forceScrollRef.current = true;  // 세션 전환 시에도 맨 아래로
+          setMessages(serverMsgs);
           return;
         }
         if (data.type === "history_cleared") {
@@ -239,10 +239,25 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
         } else if (data.type === "status") {
           setToolStatus(data.content);
           setToolLog(prev => [...prev, { time: new Date().toLocaleTimeString("ko-KR", { hour12: false }), text: data.content }]);
+        } else if (data.type === "tool_use") {
+          // 실시간 도구 호출 카드: toolStatus + toolLog + activeTools 누적
+          const summary = (data.summary as string) || `${data.tool}`;
+          setToolStatus(summary);
+          setToolLog(prev => [...prev, { time: new Date().toLocaleTimeString("ko-KR", { hour12: false }), text: summary }]);
+          setActiveTools(prev => ({ ...prev, [data.tool_id || data.tool]: { tool: data.tool, summary, done: false, error: false } }));
+        } else if (data.type === "tool_result") {
+          setActiveTools(prev => {
+            const key = data.tool_id || data.tool;
+            const cur = prev[key];
+            if (!cur) return prev;
+            return { ...prev, [key]: { ...cur, done: true, error: !!data.is_error, resultSummary: data.summary } };
+          });
+          setToolLog(prev => [...prev, { time: new Date().toLocaleTimeString("ko-KR", { hour12: false }), text: (data.summary as string) || "" }]);
         } else if (data.type === "ai_start") {
           setStreaming(true);
           setToolStatus("");
           setToolLog([]);
+          setActiveTools({});
           setLastDone(null);
           setElapsed(0);
           startTimeRef.current = Date.now();
@@ -251,6 +266,14 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
           }, 1000);
           onWorkingChangeRef.current(true);
           setMessages(prev => [...prev, { type: "ai", content: "", timestamp: new Date().toLocaleString("ko-KR", { hour12: false }) }]);
+        } else if (data.type === "handoff_request") {
+          // 인라인 핸드오프 카드 메시지 추가 (TM 패턴)
+          setMessages(prev => [...prev, {
+            type: "handoff",
+            content: `핸드오프 요청 — ${(data.steps || []).length}팀`,
+            timestamp: new Date().toLocaleString("ko-KR", { hour12: false }),
+            handoff: { dispatch_id: data.dispatch_id, steps: data.steps || [] },
+          }]);
         } else if (data.type === "ai_chunk") {
           setMessages(prev => {
             const u = [...prev]; const l = u[u.length - 1];
@@ -272,7 +295,10 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
               const next = prev[0];
               setTimeout(() => {
                 if (wsRef.current) {
-                  wsRef.current.send(JSON.stringify({ prompt: next }));
+                  wsRef.current.send(JSON.stringify({
+                    prompt: next,
+                    session_id: activeSessionIdRef.current || undefined,
+                  }));
                 }
               }, 500);
               return prev.slice(1);
@@ -294,17 +320,43 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
       };
     };
 
-    connect();
+    // 세션 목록 먼저 로드 → active 세션 id 확정 후 WS 연결
+    (async () => {
+      try {
+        const r = await fetch(`${getApiBase()}/api/sessions/${team.id}`);
+        const d = await r.json();
+        if (d.ok) {
+          setSessions(d.sessions || []);
+          activeSessionIdRef.current = d.session_id;
+          setActiveSessionId(d.session_id);
+        }
+      } catch {}
+      connect();
+    })();
     inputRef.current?.focus();
 
     return () => {
       dead = true;
       if (reconnectTimer) clearTimeout(reconnectTimer);
       if (timerRef.current) clearInterval(timerRef.current);
+      stopPolling();
       ws?.close();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps -- onWorkingChange/notify는 ref로 안정화
   }, [team.id]);
+
+  // 아티팩트 🔧 수정 요청 — 해당 팀에 WS로 재질의
+  const handleFixRequest = useCallback((code: string, filename: string | null, lang: string, error: string) => {
+    if (!wsRef.current) return;
+    const fence = "```";
+    const header = filename ? `${lang}:${filename}` : lang;
+    const prompt =
+      `아래 코드에 다음 에러가 있어. 원인 분석하고 수정안을 제시해줘.\n\n` +
+      `【에러】\n${error}\n\n` +
+      `【코드】\n${fence}${header}\n${code}\n${fence}`;
+    setMessages(prev => [...prev, { type: "user", content: `🔧 수정 요청 — ${error.slice(0, 60)}`, timestamp: new Date().toLocaleString("ko-KR", { hour12: false }) }]);
+    wsRef.current.send(JSON.stringify({ prompt }));
+  }, [setMessages]);
 
   // 메시지 변경 시 맨 아래로 (위로 올려놨으면 유지) + 스크롤 버튼 상태 갱신
   useEffect(() => {
@@ -348,12 +400,88 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
   };
 
   const sendDirect = useCallback((msg: string, imagePaths?: string[]) => {
-    if (!wsRef.current) return;
-    wsRef.current.send(JSON.stringify({ prompt: msg, images: imagePaths?.length ? imagePaths : undefined }));
-  }, []);
+    const sid = activeSessionIdRef.current || undefined;
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        prompt: msg,
+        images: imagePaths?.length ? imagePaths : undefined,
+        session_id: sid,
+      }));
+    } else {
+      fetch(`${getApiBase()}/api/chat/${team.id}/send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: msg,
+          images: imagePaths?.length ? imagePaths : undefined,
+          session_id: sid,
+        }),
+      }).catch(() => {});
+    }
+  }, [team.id]);
+
+  // ── 세션 조작 ─────────────────────────────────────
+  const switchSession = useCallback((sessionId: string) => {
+    if (sessionId === activeSessionIdRef.current) return;
+    setActiveSessionId(sessionId);
+    activeSessionIdRef.current = sessionId;
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ action: "switch_session", session_id: sessionId }));
+    } else {
+      // WS 없으면 HTTP로 활성 전환 + 히스토리 다시 로드
+      fetch(`${getApiBase()}/api/sessions/${team.id}/${sessionId}/activate`, { method: "POST" }).catch(() => {});
+      fetch(`${getApiBase()}/api/chat/${team.id}/history?session_id=${encodeURIComponent(sessionId)}`)
+        .then(r => r.json())
+        .then(d => { if (d.ok) setMessages(d.messages || []); })
+        .catch(() => {});
+    }
+  }, [team.id, setMessages]);
+
+  const createSession = useCallback(async (title?: string) => {
+    try {
+      const r = await fetch(`${getApiBase()}/api/sessions/${team.id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: title || "" }),
+      });
+      const d = await r.json();
+      if (d.ok && d.session) {
+        await refreshSessions();
+        switchSession(d.session.id);
+      }
+    } catch {}
+  }, [team.id, refreshSessions, switchSession]);
+
+  const deleteSessionById = useCallback(async (sessionId: string) => {
+    if (!confirm("이 세션을 삭제합니다. 대화 내용은 복구되지 않습니다.")) return;
+    try {
+      await fetch(`${getApiBase()}/api/sessions/${team.id}/${sessionId}`, { method: "DELETE" });
+      await refreshSessions();
+      // 현재 보고 있던 세션이면 active로 전환
+      if (sessionId === activeSessionIdRef.current) {
+        const r = await fetch(`${getApiBase()}/api/sessions/${team.id}`);
+        const d = await r.json();
+        if (d.ok && d.session_id) switchSession(d.session_id);
+      }
+    } catch {}
+  }, [team.id, refreshSessions, switchSession]);
+
+  const renameSession = useCallback(async (sessionId: string, currentTitle: string) => {
+    const next = prompt("세션 이름", currentTitle);
+    if (!next || !next.trim() || next === currentTitle) return;
+    try {
+      await fetch(`${getApiBase()}/api/sessions/${team.id}/${sessionId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: next.trim() }),
+      });
+      await refreshSessions();
+    } catch {}
+  }, [team.id, refreshSessions]);
 
   const send = async () => {
-    if ((!input.trim() && pendingImages.length === 0) || !wsRef.current) return;
+    if (!input.trim() && pendingImages.length === 0) return;
+    // WS 없어도 HTTP fallback으로 보낼 수 있으므로 wsRef 체크 제거
     const msg = input.trim();
 
     // streaming 중이면 큐에만 넣고 입력 초기화
@@ -397,24 +525,127 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
   // ── 경과시간 포맷 ──
   const fmtTime = (s: number) => s >= 60 ? `${Math.floor(s / 60)}분 ${s % 60}초` : `${s}초`;
 
+  // 현재 세션 메타
+  const activeSession = sessions.find(s => s.id === activeSessionId) || null;
+
+  // ── 실패 감지: 이어하기 버튼 표시 조건 ─────────────
+  // 1) 진행 중이 아님 + 2) 마지막 메시지가 user로 끝남 (응답 끊김)
+  //    or 마지막 ai 응답에 "⚠️ ... 타임아웃" / "빈 응답" / "오류" 포함
+  const lastMsg = messages[messages.length - 1];
+  const needResume = !streaming && !!lastMsg && (
+    lastMsg.type === "user" ||
+    (lastMsg.type === "ai" && (
+      /⚠️.*(타임아웃|limit|hit your limit|exceeded|reset)/i.test(lastMsg.content) ||
+      /응답이 비어있/.test(lastMsg.content) ||
+      lastMsg.content.trim() === "" ||
+      lastMsg.content.trim() === "✅ 작업 완료 (응답 없음)"
+    ))
+  );
+
+  const handleResume = useCallback(() => {
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      fetch(`${getApiBase()}/api/chat/${team.id}/send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: "직전 작업을 이어서 완료해줘.",
+          session_id: activeSessionIdRef.current || undefined,
+        }),
+      }).catch(() => {});
+      return;
+    }
+    wsRef.current.send(JSON.stringify({
+      prompt: "직전 작업을 이어서 완료해줘.",
+      session_id: activeSessionIdRef.current || undefined,
+    }));
+  }, [team.id]);
+
+  // ── 세션 선택 바 (재사용용) ───────────────────────
+  const SessionBar = (
+    <div className="flex items-center gap-1 mb-1.5 text-[12px] relative">
+      <button
+        onClick={() => setSessionMenuOpen(v => !v)}
+        className="flex items-center gap-1 px-2 py-1 rounded bg-[#161628] border border-[#2a2a4a] hover:border-yellow-400/40 text-gray-200 max-w-[60%] min-w-0"
+        title="세션 전환"
+      >
+        <span className="text-yellow-400">▾</span>
+        <span className="truncate">{activeSession?.title || "세션 없음"}</span>
+        {activeSession && (
+          <span className="text-[13px] text-gray-500 shrink-0">· {activeSession.messageCount}</span>
+        )}
+      </button>
+      <button
+        onClick={() => createSession()}
+        className="px-1.5 py-1 rounded bg-[#161628] border border-[#2a2a4a] hover:border-yellow-400/40 text-gray-400 hover:text-yellow-300"
+        title="새 세션"
+      >＋</button>
+      {activeSession && (
+        <button
+          onClick={() => renameSession(activeSession.id, activeSession.title)}
+          className="px-1.5 py-1 rounded bg-[#161628] border border-[#2a2a4a] hover:border-yellow-400/40 text-gray-400 hover:text-yellow-300"
+          title="세션 이름 변경"
+        >✎</button>
+      )}
+      {activeSession && sessions.length > 1 && (
+        <button
+          onClick={() => deleteSessionById(activeSession.id)}
+          className="px-1.5 py-1 rounded bg-[#161628] border border-[#2a2a4a] hover:border-red-400/40 text-gray-400 hover:text-red-400"
+          title="세션 삭제"
+        >🗑</button>
+      )}
+      {sessionMenuOpen && (
+        <div
+          className="absolute left-0 top-full mt-1 z-30 w-64 max-h-72 overflow-y-auto rounded border border-[#2a2a4a] bg-[#0f0f1f] shadow-lg p-1"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {sessions.length === 0 && (
+            <div className="px-2 py-3 text-gray-500 text-center">세션 없음</div>
+          )}
+          {sessions.map(s => (
+            <button
+              key={s.id}
+              onClick={() => { switchSession(s.id); setSessionMenuOpen(false); }}
+              className={`w-full text-left px-2 py-1.5 rounded hover:bg-[#1a1a2e] ${s.id === activeSessionId ? "bg-[#1a1a2e] border border-yellow-400/30" : ""}`}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="truncate text-gray-200 flex items-center gap-1">
+                  {s.resumable && <span title="이전 대화 이어할 수 있음">🔗</span>}
+                  {s.title}
+                </span>
+                <span className="text-[13px] text-gray-500 shrink-0">{s.messageCount}</span>
+              </div>
+              <div className="text-[13px] text-gray-600">{new Date(s.updatedAt).toLocaleString("ko-KR", { hour12: false, year: "2-digit", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</div>
+            </button>
+          ))}
+          <button
+            onClick={() => { createSession(); setSessionMenuOpen(false); }}
+            className="w-full text-left px-2 py-1.5 mt-1 rounded border border-yellow-500/40 bg-yellow-500/10 text-yellow-300 hover:bg-yellow-500/20"
+          >＋ 새 세션</button>
+        </div>
+      )}
+    </div>
+  );
+
   // ── 인라인 모드 ──────────────────────────────────────
   if (inline) {
     return (
-      <div className="flex-1 flex flex-col min-h-0">
+      <div className="flex-1 flex flex-col min-h-0" onClick={() => sessionMenuOpen && setSessionMenuOpen(false)}>
+        {/* 세션 선택 */}
+        {SessionBar}
         {/* 상태 */}
         <div className="flex items-center gap-2 mb-2">
-          <div className={`w-1.5 h-1.5 rounded-full ${connected ? "bg-green-400" : "bg-red-500 animate-pulse"}`} />
-          <span className={`text-[9px] ${connected ? "text-gray-500" : "text-red-400"}`}>{connected ? "연결됨" : "재연결중..."}</span>
+          <div className={`w-1.5 h-1.5 rounded-full ${connected ? "bg-green-400" : polling ? "bg-yellow-400 animate-pulse" : "bg-red-500 animate-pulse"}`} />
+          <span className={`text-[13px] ${connected ? "text-gray-500" : polling ? "text-yellow-400" : "text-red-400"}`}>{connected ? "WS 연결됨" : polling ? "폴링 모드 (HTTP)" : "재연결중..."}</span>
           {team.id === "trading-bot" && onOpenTradingDash && (
             <button
               onClick={onOpenTradingDash}
-              className="ml-auto text-[10px] font-semibold px-2 py-0.5 rounded bg-yellow-500/15 text-yellow-300 border border-yellow-500/40 hover:bg-yellow-500/25 transition-colors"
+              className="ml-auto text-[12px] font-semibold px-2 py-0.5 rounded bg-yellow-500/15 text-yellow-300 border border-yellow-500/40 hover:bg-yellow-500/25 transition-colors"
               title="매매 분석 대시보드 열기"
             >📊 매매 분석</button>
           )}
           <button
-            onClick={() => { setMessages([]); onMessages([]); wsRef.current?.send(JSON.stringify({ action: "clear_history" })); }}
-            className={`text-[9px] text-gray-500 hover:text-gray-300 ${team.id === "trading-bot" && onOpenTradingDash ? "" : "ml-auto"}`}
+            onClick={() => { setMessages([]); onMessages([]); wsRef.current?.send(JSON.stringify({ action: "clear_history", session_id: activeSessionIdRef.current || undefined })); }}
+            className={`text-[13px] text-gray-500 hover:text-gray-300 ${team.id === "trading-bot" && onOpenTradingDash ? "" : "ml-auto"}`}
           >🗑 대화 지우기</button>
         </div>
 
@@ -422,7 +653,7 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
           <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto space-y-2 min-h-0 select-text overscroll-contain" style={{ WebkitOverflowScrolling: "touch", touchAction: "pan-y" }}>
           {messages.length === 0 && (
             <div className="py-6 text-center">
-              <p className="text-[10px] text-gray-600">명령을 입력하거나 아래 바로가기를 사용하세요</p>
+              <p className="text-[12px] text-gray-600">명령을 입력하거나 아래 바로가기를 사용하세요</p>
             </div>
           )}
           {messages.map((msg, i) => (
@@ -433,18 +664,79 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
             }`}>
               {/* 타임스탬프 */}
               {msg.timestamp && (
-                <div className="text-[8px] text-gray-600 font-mono mb-0.5">{msg.timestamp}</div>
+                <div className="text-[13px] text-gray-600 font-mono mb-0.5">{msg.timestamp}</div>
               )}
               {msg.type === "ai"
-                ? <div className="font-mono text-xs"><MarkdownMessage content={msg.content} /></div>
+                ? (() => {
+                    const parsed = parseArtifacts(msg.content);
+                    const hasDeploy = /배포|deploy|cloudflare pages|wrangler/i.test(msg.content);
+                    return (
+                      <>
+                        {parsed.artifacts.length > 0
+                          ? <AgentResultCard summary={parsed.summary} artifacts={parsed.artifacts} agentName={team.name}
+                              onFixRequest={(a, err) => handleFixRequest(a.content, a.title, a.language || "", err)} />
+                          : <div className="text-xs"><TMMarkdown content={msg.content} /></div>}
+                        {hasDeploy && !streaming && i === messages.length - 1 && (
+                          <DeployGuideCard apiBase={getApiBase()} />
+                        )}
+                      </>
+                    );
+                  })()
+                : msg.type === "handoff" && msg.handoff
+                ? <AgentHandoffCard
+                    fromTo="CPO → 팀들"
+                    summary={msg.handoff.steps.map(s => `${s.emoji} ${s.team_name}: ${s.prompt}`).join("\n")}
+                    artifacts={[]}
+                    isPendingReview
+                    onApprove={async (feedback) => {
+                      try {
+                        await fetch(`${getApiBase()}/api/dispatch/approve`, {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            dispatch_id: msg.handoff!.dispatch_id,
+                            decision: "approve",
+                            feedback,
+                          }),
+                        });
+                      } catch {}
+                    }}
+                  />
                 : <div className="whitespace-pre-wrap break-words">{msg.content}</div>
               }
               {msg.type === "ai" && streaming && i === messages.length - 1 && (
-                <span className="inline-block w-1.5 h-3 bg-green-400 ml-0.5 animate-pulse" />
+                <>
+                  {/* 실시간 도구 호출 카드 */}
+                  {Object.keys(activeTools).length > 0 && (
+                    <div className="mt-1.5 mb-1 space-y-0.5">
+                      {Object.entries(activeTools).slice(-6).map(([k, t]) => (
+                        <div key={k} className={`flex items-center gap-1.5 px-1.5 py-0.5 rounded text-[12px] border ${
+                          t.error ? "border-red-500/40 bg-red-500/10 text-red-300"
+                          : t.done ? "border-green-700/40 bg-green-900/20 text-green-300/80"
+                          : "border-yellow-500/40 bg-yellow-500/10 text-yellow-200"
+                        }`}>
+                          <span className={`w-1 h-1 rounded-full ${
+                            t.error ? "bg-red-400" : t.done ? "bg-green-400" : "bg-yellow-300 animate-pulse"
+                          }`} />
+                          <span className="truncate">{t.summary}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {msg.content.trim() === "" ? (
+                    <span className="inline-flex gap-0.5 items-center">
+                      <span className="w-1 h-1 rounded-full bg-green-400 animate-bounce" style={{ animationDelay: "0ms" }} />
+                      <span className="w-1 h-1 rounded-full bg-green-400 animate-bounce" style={{ animationDelay: "150ms" }} />
+                      <span className="w-1 h-1 rounded-full bg-green-400 animate-bounce" style={{ animationDelay: "300ms" }} />
+                    </span>
+                  ) : (
+                    <span className="inline-block w-1.5 h-3 bg-green-400 ml-0.5 animate-pulse" />
+                  )}
+                </>
               )}
               <div className="flex items-center justify-between mt-0.5">
                 {msg.type === "user" && !streaming && (
-                  <span className="text-[8px]">
+                  <span className="text-[13px]">
                     <span className="text-blue-400/50">✓ 읽음</span>
                     {msg.cancelled && <span className="text-red-400/70 ml-1">· ✕ 취소됨</span>}
                   </span>
@@ -453,7 +745,7 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
                 {msg.content && !streaming && (
                   <button
                     onClick={() => navigator.clipboard.writeText(msg.content)}
-                    className="opacity-0 group-hover:opacity-100 text-[8px] px-1.5 py-0.5
+                    className="opacity-0 group-hover:opacity-100 text-[13px] px-1.5 py-0.5
                                bg-[#2a2a4a] text-gray-400 rounded hover:text-white transition-opacity"
                   >
                     복사
@@ -468,12 +760,12 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
               {/* 헤더 */}
               <div className="flex items-center justify-between px-2 py-1.5" style={{ borderBottom: '1px solid #1a1a3a' }}>
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] text-[#f5c842] font-mono">▶ 작업중</span>
-                  <span className="text-[9px] text-gray-600 font-mono">{fmtTime(elapsed)}</span>
-                  <span className="text-[8px] text-gray-700 font-mono">{toolLog.length}개 실행</span>
+                  <span className="text-[12px] text-[#f5c842] font-mono">▶ 작업중</span>
+                  <span className="text-[13px] text-gray-600 font-mono">{fmtTime(elapsed)}</span>
+                  <span className="text-[13px] text-gray-700 font-mono">{toolLog.length}개 실행</span>
                 </div>
                 <button onClick={cancelWork}
-                  className="bg-red-500/90 hover:bg-red-500 text-white text-[9px] font-bold px-2.5 py-0.5 rounded transition-colors">
+                  className="bg-red-500/90 hover:bg-red-500 text-white text-[13px] font-bold px-2.5 py-0.5 rounded transition-colors">
                   ■ 취소
                 </button>
               </div>
@@ -515,9 +807,19 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
         {showScrollBtn && (
           <div className="flex justify-center py-0.5 shrink-0">
             <button onClick={() => scrollToBottom(true)}
-              className="bg-[#1a1a3a] border border-[#3a3a5a] text-yellow-400 text-[10px] px-3 py-0.5 rounded-full shadow-lg hover:bg-[#2a2a4a] transition-colors flex items-center gap-1">
+              className="bg-[#1a1a3a] border border-[#3a3a5a] text-yellow-400 text-[12px] px-3 py-0.5 rounded-full shadow-lg hover:bg-[#2a2a4a] transition-colors flex items-center gap-1">
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M19 14l-7 7m0 0l-7-7m7 7V3"/></svg>
               최신 메시지 ↓
+            </button>
+          </div>
+        )}
+
+        {/* 이어하기 — 실패 감지 시만 노출 */}
+        {needResume && (
+          <div className="flex justify-center py-1 shrink-0">
+            <button onClick={handleResume}
+              className="bg-yellow-500/15 border border-yellow-500/50 text-yellow-300 text-[12px] px-3 py-1 rounded-full hover:bg-yellow-500/25 transition-colors flex items-center gap-1">
+              ⟳ 직전 작업 이어하기
             </button>
           </div>
         )}
@@ -537,7 +839,7 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
                 wsRef.current.send(JSON.stringify({ prompt: cmd }));
               }}
               disabled={streaming}
-              className="text-[9px] px-2 py-1 bg-[#1a1a2e] border border-[#2a2a4a] text-gray-500
+              className="text-[13px] px-2 py-1 bg-[#1a1a2e] border border-[#2a2a4a] text-gray-500
                          rounded hover:bg-[#2a2a3a] hover:text-gray-300 active:bg-[#3a3a4a]
                          disabled:opacity-30 transition-colors"
             >
@@ -550,7 +852,7 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
         {queued.length > 0 && (
           <div className="mt-1 space-y-0.5">
             {queued.map((q, i) => (
-              <div key={i} className="text-[9px] text-yellow-400/60 bg-yellow-500/5 border border-yellow-500/10 rounded px-2 py-0.5 truncate">
+              <div key={i} className="text-[13px] text-yellow-400/60 bg-yellow-500/5 border border-yellow-500/10 rounded px-2 py-0.5 truncate">
                 ⏳ 대기{queued.length > 1 ? ` (${i + 1}/${queued.length})` : ""}: {q.slice(0, 40)}{q.length > 40 ? "..." : ""}
               </div>
             ))}
@@ -581,7 +883,7 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
             e.target.value = "";
           }}
         />
-        <div className="mt-1.5 flex gap-1.5 items-end">
+        <div className="mt-1.5 flex gap-1.5 items-end" style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
           <button
             onClick={() => fileInputRef.current?.click()}
             className="text-gray-500 hover:text-yellow-400 px-1.5 py-1.5 text-sm transition-colors shrink-0"
@@ -616,7 +918,7 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
           <button
             onClick={send}
             disabled={!input.trim() && pendingImages.length === 0}
-            className="bg-yellow-500 text-black px-3 py-1.5 text-[10px] font-bold rounded
+            className="bg-yellow-500 text-black px-3 py-1.5 text-[12px] font-bold rounded
                        hover:bg-yellow-400 disabled:opacity-30 transition-colors shrink-0"
           >
             전송
@@ -628,8 +930,8 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
 
   // ── 모달 모드 ────────────────────────────────────────
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="w-full max-w-2xl h-[80vh] bg-[#0f0f1f] border border-[#3a3a5a] rounded-lg shadow-2xl flex flex-col overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => sessionMenuOpen && setSessionMenuOpen(false)}>
+      <div className="w-full max-w-2xl h-[80vh] bg-[#0f0f1f] border border-[#3a3a5a] rounded-lg shadow-2xl flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-4 py-3 bg-[#1a1a3a] border-b border-[#2a2a5a]">
           <div className="flex items-center gap-3">
             <span className="text-xl">{team.emoji}</span>
@@ -638,6 +940,7 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-white">✕</button>
         </div>
+        <div className="px-3 py-2 border-b border-[#2a2a5a]/50">{SessionBar}</div>
         <div className="flex-1 min-h-0 flex flex-col">
           <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0">
           {messages.map((msg, i) => (
@@ -648,11 +951,17 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
                   : "bg-[#1a2a1a] text-green-300 font-mono text-xs"
               }`}>
                 {msg.type === "ai"
-                  ? <MarkdownMessage content={msg.content} />
+                  ? (() => {
+                      const parsed = parseArtifacts(msg.content);
+                      return parsed.artifacts.length > 0
+                        ? <AgentResultCard summary={parsed.summary} artifacts={parsed.artifacts} agentName={team.name}
+                            onFixRequest={(a, err) => handleFixRequest(a.content, a.title, a.language || "", err)} />
+                        : <TMMarkdown content={msg.content} />;
+                    })()
                   : msg.content
                 }
                 {msg.type === "user" && msg.cancelled && (
-                  <div className="text-[9px] text-red-300/70 mt-0.5">✕ 취소됨</div>
+                  <div className="text-[13px] text-red-300/70 mt-0.5">✕ 취소됨</div>
                 )}
               </div>
             </div>
@@ -669,10 +978,10 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
                   </div>
                   <span className="text-xs text-green-400/70">작업중</span>
                   <span className="text-xs text-gray-600 font-mono">{fmtTime(elapsed)}</span>
-                  {toolStatus && <span className="text-[10px] text-yellow-300/80 truncate max-w-[180px]">· {toolStatus}</span>}
+                  {toolStatus && <span className="text-[12px] text-yellow-300/80 truncate max-w-[180px]">· {toolStatus}</span>}
                 </div>
                 <button onClick={cancelWork}
-                  className="bg-red-500/90 hover:bg-red-500 text-white text-[10px] font-bold px-3 py-1 rounded transition-colors">
+                  className="bg-red-500/90 hover:bg-red-500 text-white text-[12px] font-bold px-3 py-1 rounded transition-colors">
                   ■ 취소
                 </button>
               </div>
@@ -682,7 +991,7 @@ export default function ChatPanel({ team, onClose, onWorkingChange, inline, mess
           {showScrollBtn && (
             <div className="flex justify-center py-1 shrink-0 border-t border-[#2a2a5a]/50">
               <button onClick={() => scrollToBottom(true)}
-                className="bg-[#1a1a3a] border border-[#3a3a5a] text-yellow-400 text-[11px] px-4 py-1 rounded-full shadow-lg hover:bg-[#2a2a4a] transition-colors flex items-center gap-1">
+                className="bg-[#1a1a3a] border border-[#3a3a5a] text-yellow-400 text-[13px] px-4 py-1 rounded-full shadow-lg hover:bg-[#2a2a4a] transition-colors flex items-center gap-1">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M19 14l-7 7m0 0l-7-7m7 7V3"/></svg>
                 최신 메시지 ↓
               </button>

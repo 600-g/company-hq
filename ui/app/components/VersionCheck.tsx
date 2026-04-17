@@ -16,18 +16,29 @@ export default function VersionCheck() {
         if (!stored) { localStorage.setItem(KEY, build); return; }
         if (stored !== build && !cancelled) {
           localStorage.setItem(KEY, build);
-          // 캐시 싹 비우고 강제 리로드
-          try {
-            if ("caches" in window) {
-              const keys = await caches.keys();
-              await Promise.all(keys.map(k => caches.delete(k)));
-            }
-            if ("serviceWorker" in navigator) {
-              const regs = await navigator.serviceWorker.getRegistrations();
-              await Promise.all(regs.map(r => r.unregister()));
-            }
-          } catch {}
-          location.replace(`${location.pathname}?v=${build}`);
+          // 편집 중이면 리로드 보류 — 토스트만 남겨 사용자가 수동으로 새로고침
+          const isEditing = ((window as unknown as { __hqEditingUntil?: number }).__hqEditingUntil ?? 0) > Date.now();
+          window.dispatchEvent(new CustomEvent("hq:toast", {
+            detail: {
+              text: isEditing
+                ? `🔄 새 버전 (${build.slice(0, 8)}) — 편집 끝나면 수동 새로고침`
+                : `🔄 새 버전 (${build.slice(0, 8)}) 배포됨 — 15초 후 새로고침`,
+              variant: "info",
+              ms: 15000,
+            },
+          }));
+          if (isEditing) return;
+          // 15초 후 부드럽게 리로드 (급하지 않게)
+          setTimeout(() => {
+            if (cancelled) return;
+            // 리로드 직전 한 번 더 편집 중 체크
+            const stillEditing = ((window as unknown as { __hqEditingUntil?: number }).__hqEditingUntil ?? 0) > Date.now();
+            if (stillEditing) return;
+            try {
+              if ("caches" in window) caches.keys().then(ks => Promise.all(ks.map(k => caches.delete(k))));
+            } catch {}
+            location.replace(`${location.pathname}?v=${build}`);
+          }, 15000);
         }
       } catch {}
     };

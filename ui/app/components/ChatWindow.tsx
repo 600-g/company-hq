@@ -59,7 +59,7 @@ function SpecPopup({ team, onClose }: { team: Team; onClose: () => void }) {
 
   const tabBtn = (id: typeof tab, label: string) => (
     <button onClick={() => { setTab(id); setEditing(false); }}
-      className={`text-[10px] px-2 py-1 rounded transition-colors ${
+      className={`text-[12px] px-2 py-1 rounded transition-colors ${
         tab === id ? "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30" : "text-gray-500 hover:text-gray-300"
       }`}>{label}</button>
   );
@@ -70,19 +70,19 @@ function SpecPopup({ team, onClose }: { team: Team; onClose: () => void }) {
         onClick={e => e.stopPropagation()}>
         {/* 헤더 */}
         <div className="flex items-center justify-between px-3 py-2 bg-[#14142a] border-b border-[#2a2a5a] shrink-0">
-          <span className="text-[11px] font-bold text-gray-300">{team.emoji} {team.name}</span>
+          <span className="text-[13px] font-bold text-gray-300">{team.emoji} {team.name}</span>
           <div className="flex items-center gap-1.5">
-            {saved && <span className="text-[9px] text-green-400">저장됨</span>}
+            {saved && <span className="text-[13px] text-green-400">저장됨</span>}
             {tab === "spec" && !editing && (
               <button onClick={() => setEditing(true)}
-                className="text-[9px] px-2 py-0.5 bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 rounded hover:bg-yellow-500/20">수정</button>
+                className="text-[13px] px-2 py-0.5 bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 rounded hover:bg-yellow-500/20">수정</button>
             )}
             {tab === "spec" && editing && (
               <>
                 <button onClick={handleSave} disabled={saving}
-                  className="text-[9px] px-2 py-0.5 bg-green-500/20 text-green-400 border border-green-500/30 rounded hover:bg-green-500/30 disabled:opacity-50">
+                  className="text-[13px] px-2 py-0.5 bg-green-500/20 text-green-400 border border-green-500/30 rounded hover:bg-green-500/30 disabled:opacity-50">
                   {saving ? "..." : "저장"}</button>
-                <button onClick={() => setEditing(false)} className="text-[9px] px-2 py-0.5 text-gray-500 hover:text-gray-300">취소</button>
+                <button onClick={() => setEditing(false)} className="text-[13px] px-2 py-0.5 text-gray-500 hover:text-gray-300">취소</button>
               </>
             )}
             <button onClick={onClose} className="text-gray-400 hover:text-white text-sm px-1">✕</button>
@@ -97,20 +97,20 @@ function SpecPopup({ team, onClose }: { team: Team; onClose: () => void }) {
         {/* 콘텐츠 */}
         <div className="flex-1 overflow-y-auto p-3 min-h-0">
           {loading ? (
-            <span className="text-[11px] text-gray-500 p-2">로딩중...</span>
+            <span className="text-[13px] text-gray-500 p-2">로딩중...</span>
           ) : tab === "spec" ? (
             editing ? (
               <textarea value={claudeMd} onChange={e => setClaudeMd(e.target.value)}
-                className="w-full h-full bg-[#0f0f1f] text-[11px] text-gray-300 leading-relaxed p-2 border border-[#2a2a5a] rounded resize-none focus:outline-none focus:border-yellow-500/40 font-mono" />
+                className="w-full h-full bg-[#0f0f1f] text-[13px] text-gray-300 leading-relaxed p-2 border border-[#2a2a5a] rounded resize-none focus:outline-none focus:border-yellow-500/40 font-mono" />
             ) : (
-              <div className="text-[11px] text-gray-300 leading-relaxed whitespace-pre-wrap p-1 font-mono">{claudeMd}</div>
+              <div className="text-[13px] text-gray-300 leading-relaxed whitespace-pre-wrap p-1 font-mono">{claudeMd}</div>
             )
           ) : tab === "prompt" ? (
-            <div className="text-[11px] text-gray-300 leading-relaxed whitespace-pre-wrap p-1 font-mono">{systemPrompt}</div>
+            <div className="text-[13px] text-gray-300 leading-relaxed whitespace-pre-wrap p-1 font-mono">{systemPrompt}</div>
           ) : (
-            <div className="space-y-3 text-[11px]">
+            <div className="space-y-3 text-[13px]">
               <div className="bg-[#12122a] rounded-lg p-3 border border-[#2a2a5a]">
-                <div className="text-gray-500 text-[9px] mb-2">기본 정보</div>
+                <div className="text-gray-500 text-[13px] mb-2">기본 정보</div>
                 <div className="grid grid-cols-2 gap-y-1.5">
                   <span className="text-gray-500">팀 ID</span>
                   <span className="text-gray-300 font-mono">{team.id}</span>
@@ -129,7 +129,7 @@ function SpecPopup({ team, onClose }: { team: Team; onClose: () => void }) {
                 </div>
               </div>
               <div className="bg-[#12122a] rounded-lg p-3 border border-[#2a2a5a]">
-                <div className="text-gray-500 text-[9px] mb-2">역할 요약</div>
+                <div className="text-gray-500 text-[13px] mb-2">역할 요약</div>
                 <div className="text-gray-300 leading-relaxed">
                   {systemPrompt.split("\n").slice(0, 5).join("\n") || "역할 정보 없음"}
                 </div>
@@ -271,12 +271,12 @@ export default function ChatWindow({
             <div className="flex items-center gap-1.5 ml-auto">
               {isTrading && (
                 <button onClick={() => setShowTradingDash(v => !v)}
-                  className="text-[9px] px-1.5 py-0.5 rounded border bg-yellow-900/20 text-yellow-400 border-yellow-800/40 hover:bg-yellow-900/40 transition-colors">
+                  className="text-[13px] px-1.5 py-0.5 rounded border bg-yellow-900/20 text-yellow-400 border-yellow-800/40 hover:bg-yellow-900/40 transition-colors">
                   📊
                 </button>
               )}
               {!isDashboard && (
-                <span className={`text-[9px] px-1.5 py-0.5 rounded font-mono border ${
+                <span className={`text-[13px] px-1.5 py-0.5 rounded font-mono border ${
                   team.model === 'opus'
                     ? 'bg-[#2a1a4a] text-[#a080f0] border-[#4a2a7a]'
                     : 'bg-[#1a2a3a] text-[#60a0e0] border-[#2a4a6a]'
@@ -350,7 +350,7 @@ export default function ChatWindow({
           {/* 스펙 보기 */}
           {!isDashboard && (
             <button onClick={() => setShowSpec(true)} onPointerDown={e => e.stopPropagation()}
-              className="text-[9px] text-gray-600 hover:text-yellow-400 transition-colors" title="CLAUDE.md 스펙">
+              className="text-[13px] text-gray-600 hover:text-yellow-400 transition-colors" title="CLAUDE.md 스펙">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" className="inline">
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM6 20V4h5v7h7v9H6zm2-7h8v1.5H8V13zm0 3h8v1.5H8V16zm0-6h3v1.5H8V10z"/>
               </svg>
@@ -361,7 +361,7 @@ export default function ChatWindow({
             {/* 매매봇 대시보드 */}
             {isTrading && (
               <button onClick={() => setShowTradingDash(v => !v)} onPointerDown={e => e.stopPropagation()}
-                className={`text-[9px] px-1.5 py-0.5 rounded border transition-colors ${
+                className={`text-[13px] px-1.5 py-0.5 rounded border transition-colors ${
                   showTradingDash
                     ? "bg-yellow-500/30 text-yellow-300 border-yellow-500/50"
                     : "bg-yellow-900/20 text-yellow-400 border-yellow-800/40 hover:bg-yellow-900/40"
@@ -371,7 +371,7 @@ export default function ChatWindow({
             )}
             {/* 모델 뱃지 */}
             {!isDashboard && (
-              <span className={`text-[9px] px-1.5 py-0.5 rounded font-mono border ${
+              <span className={`text-[13px] px-1.5 py-0.5 rounded font-mono border ${
                 team.model === 'opus'
                   ? 'bg-[#2a1a4a] text-[#a080f0] border-[#4a2a7a]'
                   : 'bg-[#1a2a3a] text-[#60a0e0] border-[#2a4a6a]'
@@ -380,7 +380,7 @@ export default function ChatWindow({
               </span>
             )}
             {team.id === "server-monitor" && (
-              <span className="text-[9px] text-green-500 font-mono border border-green-800 px-1.5 py-0.5 rounded">LIVE</span>
+              <span className="text-[13px] text-green-500 font-mono border border-green-800 px-1.5 py-0.5 rounded">LIVE</span>
             )}
             {/* 닫기 */}
             <button onClick={onClose} onPointerDown={e => e.stopPropagation()}

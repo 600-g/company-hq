@@ -217,10 +217,12 @@ except Exception:
 
 app = FastAPI(title="AI Company HQ", version="1.0.0")
 
+# CORS: allow_origins="*" + allow_credentials=True 는 Chrome에서 reject됨 (스펙 위반).
+# 우리는 쿠키 인증 안 쓰므로 credentials=False 로 유지하고 와일드카드 허용.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -479,6 +481,156 @@ async def add_team(body: dict):
     }
 
 
+@app.post("/api/agents/generate-config")
+async def generate_agent_config(body: dict):
+    """TM generateAgentConfig 패턴 — 설명 1줄로 LLM이 역할/스텝/산출물 자동 생성.
+
+    body: {name?, description}
+    returns: {ok, role, description, outputHint, steps, system_prompt}
+    """
+    agent_name = (body.get("name") or "").strip() or "새 에이전트"
+    desc = (body.get("description") or "").strip()
+    if not desc:
+        return {"ok": False, "error": "description 필요"}
+
+    system_prompt = (
+        "너는 AI 에이전트 역할 설계 전문가다. 유저가 설명한 역할에 맞는 단일 AI 에이전트를 설계해.\n\n"
+        "반드시 아래 JSON 형식으로만 응답. 다른 텍스트 금지.\n\n"
+        "{\n"
+        '  "role": "역할명 (한국어, 간결, ~담당 형식)",\n'
+        '  "description": "이 에이전트가 뭘 하는지 쉬운 한국어 1-2문장",\n'
+        '  "outputHint": "산출물 형식 (쉼표구분 2~4개, 예: 설계문서, 코드, 테스트)",\n'
+        '  "steps": ["1단계 설명", "2단계 설명", "3단계 설명"]\n'
+        "}\n\n"
+        "규칙:\n"
+        "- 단일 에이전트가 모든 책임 통합 수행\n"
+        "- role은 '~담당' 형식 (예: 마케팅 담당)\n"
+        "- description은 비개발자도 이해 가능한 평이한 말\n"
+        "- outputHint는 구체 산출물 나열\n"
+        "- steps 2~4단계, 각 한 문장"
+    )
+    user_msg = f"에이전트 이름: {agent_name}\n에이전트 설명: {desc}\n\n이 에이전트를 설계해줘."
+
+    full_prompt = f"{system_prompt}\n\n{user_msg}"
+    try:
+        result = await run_claude_light(full_prompt, os.path.expanduser("~/Developer/my-company/company-hq"))
+    except Exception as e:
+        return {"ok": False, "error": f"LLM 호출 실패: {e}"}
+
+    import re as _re
+    m = _re.search(r'\{[\s\S]*\}', result)
+    if not m:
+        return {"ok": False, "error": "JSON 파싱 실패", "raw": result[:300]}
+    try:
+        cfg = json.loads(m.group())
+    except json.JSONDecodeError as e:
+        return {"ok": False, "error": f"JSON 파싱 에러: {e}", "raw": result[:300]}
+
+    # 생성된 config로 system_prompt 합성
+    steps_text = "\n".join(f"{i+1}. {s}" for i, s in enumerate(cfg.get("steps", [])))
+    role = cfg.get("role", "담당자")
+    sys_prompt = (
+        f"# {agent_name} ({role})\n\n"
+        f"## 페르소나\n"
+        f"너는 10년 경력의 시니어 {role}다. 실무 경험 풍부, 실수 줄이고 실행력 강함.\n"
+        "무엇을 모르는지 명확히 알고, 모르면 되물어서 확실히 한다.\n\n"
+        f"## 역할\n{cfg.get('description', desc)}\n\n"
+        f"## 산출물\n{cfg.get('outputHint', '보고서')}\n\n"
+        f"## 작업 단계\n{steps_text}\n\n"
+        "## 행동 원칙\n"
+        "- 80% 확신이면 실행 후 보고, 불확실하면 간단히 확인 질문\n"
+        "- 무응답 금지. 완료 시 `✅ (한 줄 요약)`, 에러 시 `❌ (원인)`\n"
+        "- 한국어로 자연스럽게, 마크다운 활용\n"
+        "- 협업 필요 시 `@팀명`으로 다른 에이전트 호출\n\n"
+        "## CLAUDE.md 연계\n"
+        "프로젝트 폴더에 CLAUDE.md 있으면 그걸 최우선으로 따른다.\n"
+        "없으면 이 프롬프트가 최상위 지침.\n"
+    )
+    return {
+        "ok": True,
+        "role": cfg.get("role", ""),
+        "description": cfg.get("description", desc),
+        "outputHint": cfg.get("outputHint", ""),
+        "steps": cfg.get("steps", []),
+        "system_prompt": sys_prompt,
+    }
+
+
+@app.post("/api/teams/light")
+async def add_light_agent(body: dict):
+    """경량 에이전트 — GitHub/레포 없이 빠르게 추가 (단독 / 협업 가능)"""
+    import re as _re
+    description = (body.get("description") or "").strip()
+    if not description:
+        return {"ok": False, "error": "설명이 필요합니다"}
+    emoji = body.get("emoji") or "🤖"
+    collaborative = bool(body.get("collaborative", True))
+
+    # 자연어 description에서 간단히 name/id 추출 (1차: 유저 제공, 2차: LLM, 3차: 해시)
+    name = (body.get("name") or "").strip()
+    team_id = (body.get("id") or "").strip()
+    if not name:
+        # description 첫 단어 사용
+        first = description.split()[0] if description.split() else "agent"
+        name = first[:20]
+    if not team_id:
+        base = _re.sub(r'[^a-z0-9]+', '-', name.lower()).strip('-')
+        if not base or len(base) < 3:
+            base = f"agent-{uuid.uuid4().hex[:6]}"
+        team_id = base
+    if not _re.match(r'^[a-z0-9][a-z0-9-]*$', team_id):
+        return {"ok": False, "error": "id는 영문 소문자/숫자/하이픈"}
+
+    # 중복 체크
+    if any(t["id"] == team_id for t in TEAMS):
+        return {"ok": False, "error": f"이미 존재하는 id: {team_id}"}
+
+    # CPO 로컬패스 재사용 (경량은 별도 레포 없이 company-hq에서 실행)
+    local_path = os.path.expanduser("~/Developer/my-company/company-hq")
+
+    new_team = {
+        "id": team_id, "name": name, "emoji": emoji,
+        "repo": "company-hq", "localPath": local_path,
+        "status": "운영중", "category": "product",
+        "order": _next_order(TEAMS), "layer": 1,
+        "lightweight": True, "collaborative": collaborative,
+    }
+    TEAMS.append(new_team)
+    _save_teams(TEAMS)
+    set_team_lookup(TEAMS)
+
+    # 시스템 프롬프트: 클라이언트가 generate-config로 만든 프롬프트 넘기면 그거 사용, 없으면 간단 템플릿
+    from claude_runner import TEAM_SYSTEM_PROMPTS, _save_prompts, _SAVED_PROMPTS
+    provided_prompt = (body.get("system_prompt") or "").strip()
+    collab_line = (
+        "- 다른 팀과 협업 가능 (@태그 / 핸드오프 활용)"
+        if collaborative else
+        "- 단독 실행 전용 — 다른 팀 호출 금지"
+    )
+    if provided_prompt:
+        sys_prompt = provided_prompt + "\n\n【협업】\n" + collab_line + "\n"
+    else:
+        sys_prompt = (
+            f"너는 두근컴퍼니의 '{name}' 에이전트야.\n\n"
+            f"【역할】 {description}\n\n"
+            "【행동 원칙】\n"
+            f"{collab_line}\n"
+            "- 80% 확신이면 실행 후 보고\n"
+            "- 무응답 금지, 작업 완료 시 ✅ 요약 / 에러 시 ❌ 내용\n"
+            "- 한국어로 자연스럽게 대화\n"
+        )
+    TEAM_SYSTEM_PROMPTS[team_id] = sys_prompt
+    _SAVED_PROMPTS[team_id] = sys_prompt
+    _save_prompts(_SAVED_PROMPTS)
+
+    # 층 배치 동기화
+    global FLOOR_LAYOUT
+    FLOOR_LAYOUT = _sync_layout_with_teams(TEAMS, FLOOR_LAYOUT)
+    _save_layout(FLOOR_LAYOUT)
+
+    return {"ok": True, "team": new_team, "lightweight": True}
+
+
 @app.delete("/api/teams/{team_id}")
 async def delete_team(team_id: str):
     """에이전트 삭제 — teams.json + 로컬 폴더 + GitHub 레포 + 프롬프트 정리"""
@@ -526,13 +678,13 @@ async def delete_team(team_id: str):
     FLOOR_LAYOUT = _sync_layout_with_teams(TEAMS, FLOOR_LAYOUT)
     _save_layout(FLOOR_LAYOUT)
 
-    # 4) 채팅 히스토리 파일 삭제
-    chat_file = os.path.join(os.path.dirname(__file__), "chat_history", f"{team_id}.json")
+    # 4) 채팅 히스토리 (세션 디렉토리 + 레거시 파일) 삭제
     try:
-        os.unlink(chat_file)
-        logging.info(f"[DELETE] 채팅 히스토리 삭제: {chat_file}")
-    except FileNotFoundError:
-        pass
+        import sessions_store
+        sessions_store.delete_all_for_team(team_id)
+        logging.info(f"[DELETE] 채팅 세션 디렉토리 삭제: {team_id}")
+    except Exception as e:
+        logging.warning(f"[DELETE] 세션 디렉토리 삭제 실패: {e}")
 
     # 5) team_sessions.json에서 세션 제거
     try:
@@ -705,6 +857,243 @@ async def update_floor_layout(body: dict):
     FLOOR_LAYOUT = cleaned
     _save_layout(FLOOR_LAYOUT)
     return {"ok": True, "layout": FLOOR_LAYOUT}
+
+
+# ── 사무실 가구 레이아웃 동기화 (모든 기기 공유) ──────────────────
+
+OFFICE_LAYOUT_PATH = Path(__file__).parent / "office_layout.json"
+
+
+def _load_office_layout() -> dict:
+    if OFFICE_LAYOUT_PATH.exists():
+        try:
+            with open(OFFICE_LAYOUT_PATH, encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            logger.warning("office_layout.json load failed: %s", e)
+    return {"version": 2, "items": [], "removed": []}
+
+
+def _save_office_layout(layout: dict) -> None:
+    try:
+        with open(OFFICE_LAYOUT_PATH, "w", encoding="utf-8") as f:
+            json.dump(layout, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        logger.error("office_layout.json save failed: %s", e)
+
+
+@app.get("/api/layout/office")
+async def get_office_layout() -> dict:
+    """사무실 가구 배치 — 모든 기기 공유 (PC/모바일 동기화)"""
+    return {"ok": True, "layout": _load_office_layout()}
+
+
+@app.put("/api/layout/office")
+async def update_office_layout(body: dict) -> dict:
+    """사무실 가구 배치 저장 — 에디터에서 placement 변경 시 호출
+
+    body: {"layout": {"version": 2, "items": [...], "removed": [...]}}
+    """
+    layout = body.get("layout") or {}
+    items = layout.get("items")
+    if not isinstance(items, list):
+        return {"ok": False, "error": "layout.items 배열이 필요합니다"}
+    cleaned = {
+        "version": 2,
+        "items": items,
+        "removed": layout.get("removed") or [],
+        "updated_at": datetime.utcnow().isoformat(),
+    }
+    _save_office_layout(cleaned)
+    return {"ok": True, "layout": cleaned}
+
+
+# ── 브라우저 진단 로그 + 버그 리포트 ────────────────────
+DIAG_DIR = os.path.join(os.path.dirname(__file__), "diag")
+os.makedirs(DIAG_DIR, exist_ok=True)
+DIAG_LOG_PATH = os.path.join(DIAG_DIR, "client_logs.jsonl")
+DIAG_REPORTS_PATH = os.path.join(DIAG_DIR, "bug_reports.jsonl")
+_DIAG_LOG_MAX_LINES = 5000
+
+
+def _append_jsonl(path: str, row: dict) -> None:
+    try:
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(row, ensure_ascii=False) + "\n")
+    except Exception as e:
+        logger.warning("diag append failed: %s", e)
+
+
+def _trim_jsonl(path: str, max_lines: int) -> None:
+    try:
+        if not os.path.exists(path):
+            return
+        with open(path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+        if len(lines) <= max_lines:
+            return
+        with open(path, "w", encoding="utf-8") as f:
+            f.writelines(lines[-max_lines:])
+    except Exception:
+        pass
+
+
+@app.post("/api/diag/log")
+async def diag_log(body: dict) -> dict:
+    """브라우저 console.info/warn/error 포워드. body: {entries: [{level,msg,ts,ua,url,user}]}"""
+    entries = body.get("entries") or []
+    if not isinstance(entries, list):
+        return {"ok": False, "error": "entries 배열 필요"}
+    server_ts = datetime.utcnow().isoformat()
+    for e in entries[-200:]:  # 최대 200줄/요청
+        if not isinstance(e, dict):
+            continue
+        row = {
+            "ts": server_ts,
+            "level": str(e.get("level", "info"))[:10],
+            "msg": str(e.get("msg", ""))[:4000],
+            "ua": str(e.get("ua", ""))[:300],
+            "url": str(e.get("url", ""))[:300],
+            "user": str(e.get("user", ""))[:80],
+            "client_ts": str(e.get("ts", "")),
+        }
+        _append_jsonl(DIAG_LOG_PATH, row)
+    _trim_jsonl(DIAG_LOG_PATH, _DIAG_LOG_MAX_LINES)
+    return {"ok": True, "count": len(entries)}
+
+
+@app.get("/api/diag/logs")
+async def diag_logs(limit: int = 200, level: str | None = None) -> dict:
+    """최근 로그 N개 반환. level 필터(info/warn/error) 선택."""
+    rows: list[dict] = []
+    try:
+        if os.path.exists(DIAG_LOG_PATH):
+            with open(DIAG_LOG_PATH, "r", encoding="utf-8") as f:
+                for line in f:
+                    try:
+                        r = json.loads(line)
+                        if level and r.get("level") != level:
+                            continue
+                        rows.append(r)
+                    except Exception:
+                        continue
+    except Exception:
+        pass
+    return {"ok": True, "rows": rows[-limit:]}
+
+
+@app.post("/api/diag/report")
+async def diag_report(body: dict) -> dict:
+    """버그 리포트 제출: {title, note, logs, meta, attachments}"""
+    priority = "urgent" if str(body.get("priority", "")).lower() == "urgent" else "normal"
+    row = {
+        "ts": datetime.utcnow().isoformat(),
+        "title": str(body.get("title", ""))[:200],
+        "note": str(body.get("note", ""))[:4000],
+        "logs": (body.get("logs") or [])[-500:],
+        "meta": body.get("meta") or {},
+        "user": str((body.get("meta") or {}).get("user", ""))[:80],
+        "attachments": [str(p)[:500] for p in (body.get("attachments") or [])][:10],
+        "priority": priority,
+    }
+    _append_jsonl(DIAG_REPORTS_PATH, row)
+    # GitHub Issue 자동 생성 (gh CLI 있으면)
+    issue_url: str | None = None
+    try:
+        import subprocess
+        gh = "/opt/homebrew/bin/gh"
+        if not os.path.exists(gh):
+            gh = "gh"
+        title = row["title"] or "[auto] 버그 리포트"
+        att_md = ""
+        if row["attachments"]:
+            att_md = "\n\n**Attachments (server paths)**:\n" + "\n".join(f"- `{p}`" for p in row["attachments"])
+        body_md = (
+            f"**User**: {row['user']}  |  **Priority**: `{priority}`\n\n"
+            f"**Note**:\n{row['note']}\n\n"
+            f"**UA**: `{row['meta'].get('ua', '')}`\n"
+            f"**URL**: `{row['meta'].get('url', '')}`\n"
+            f"**Build**: `{row['meta'].get('build', '')}`"
+            + att_md + "\n\n"
+            + f"<details><summary>최근 로그 {len(row['logs'])}줄</summary>\n\n```\n"
+            + "\n".join(f"[{l.get('level','?')}] {l.get('msg','')[:300]}" for l in row['logs'][-80:])
+            + "\n```\n</details>"
+        )
+        # 긴급 시 urgent 라벨 추가
+        labels = "bug,auto,urgent" if priority == "urgent" else "bug,auto"
+        cp = subprocess.run(
+            [gh, "issue", "create", "--title", title, "--body", body_md, "--label", labels],
+            cwd="/Users/600mac/Developer/my-company/company-hq",
+            capture_output=True, text=True, timeout=15,
+        )
+        if cp.returncode == 0:
+            issue_url = (cp.stdout or "").strip().splitlines()[-1] if cp.stdout else None
+    except Exception as e:
+        logger.warning("gh issue create failed: %s", e)
+    return {"ok": True, "issue_url": issue_url}
+
+
+@app.get("/api/diag/reports")
+async def diag_reports(limit: int = 50) -> dict:
+    rows: list[dict] = []
+    try:
+        if os.path.exists(DIAG_REPORTS_PATH):
+            with open(DIAG_REPORTS_PATH, "r", encoding="utf-8") as f:
+                for line in f:
+                    try: rows.append(json.loads(line))
+                    except Exception: continue
+    except Exception:
+        pass
+    return {"ok": True, "rows": rows[-limit:]}
+
+
+# ── 가구 카탈로그 관리자 오버라이드 ────────────────────
+FURNITURE_OVERRIDES_PATH = os.path.join(os.path.dirname(__file__), "furniture_overrides.json")
+
+
+def _load_furniture_overrides() -> dict:
+    if os.path.exists(FURNITURE_OVERRIDES_PATH):
+        try:
+            with open(FURNITURE_OVERRIDES_PATH, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, dict):
+                return data
+        except Exception as e:
+            logger.warning("furniture_overrides.json load failed: %s", e)
+    return {}
+
+
+def _save_furniture_overrides(data: dict) -> None:
+    try:
+        with open(FURNITURE_OVERRIDES_PATH, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        logger.error("furniture_overrides.json save failed: %s", e)
+
+
+@app.get("/api/furniture/overrides")
+async def get_furniture_overrides() -> dict:
+    """카탈로그 라벨/카테고리/숨김 오버라이드 — 모든 기기 동기화"""
+    return {"ok": True, "overrides": _load_furniture_overrides()}
+
+
+@app.put("/api/furniture/overrides")
+async def update_furniture_overrides(body: dict) -> dict:
+    """관리자 전용 — 가구 카탈로그 오버라이드 전체 덮어쓰기."""
+    overrides = body.get("overrides") or {}
+    if not isinstance(overrides, dict):
+        return {"ok": False, "error": "overrides 객체 필요"}
+    cleaned: dict = {
+        "version": 1,
+        "overrides": overrides,
+        "poke_labels": body.get("poke_labels") or {},
+        "poke_hidden": body.get("poke_hidden") or [],
+        "tile_labels": body.get("tile_labels") or {},
+        "tile_hidden": body.get("tile_hidden") or [],
+        "updated_at": datetime.utcnow().isoformat(),
+    }
+    _save_furniture_overrides(cleaned)
+    return {"ok": True, "saved": cleaned}
 
 
 # ── 캐릭터 상태 API ────────────────────────────────────
@@ -1001,6 +1390,65 @@ async def get_dashboard():
     }
 
 
+@app.post("/api/agents/{team_id}/model")
+async def set_agent_model(team_id: str, body: dict):
+    """팀 모델 변경 (haiku|sonnet|opus)."""
+    model = body.get("model", "")
+    if model not in ("haiku", "sonnet", "opus"):
+        return {"ok": False, "error": "model은 haiku|sonnet|opus"}
+    TEAM_MODELS[team_id] = model
+    _log_activity(team_id, f"🔧 모델 변경: {model}")
+    return {"ok": True, "team_id": team_id, "model": model}
+
+
+@app.get("/api/agents/{team_id}/info")
+async def get_agent_info(team_id: str):
+    """팀 세션/모델 정보."""
+    return {
+        "ok": True,
+        "team_id": team_id,
+        "model": TEAM_MODELS.get(team_id, "sonnet"),
+        "session_id": TEAM_SESSIONS.get(team_id),
+        "has_session": team_id in TEAM_SESSIONS,
+    }
+
+
+@app.post("/api/agents/{team_id}/test")
+async def test_agent(team_id: str):
+    """에이전트 스모크 테스트 — CLI가 실제로 응답하는지 30초 안에 확인.
+
+    returns: {ok, response, duration_ms, error}
+    """
+    team = next((t for t in TEAMS if t["id"] == team_id), None)
+    if not team:
+        return {"ok": False, "error": "팀을 찾을 수 없음"}
+    local_path = os.path.expanduser(team.get("localPath", ""))
+    if not os.path.isdir(local_path):
+        return {"ok": False, "error": f"로컬 경로 없음: {local_path}"}
+
+    prompt = "테스트입니다. 정확히 '작동함'이라는 두 글자로만 답해주세요."
+    started = time.time()
+    collected = ""
+    try:
+        async def _collect():
+            nonlocal collected
+            async for chunk in run_claude(prompt, team["localPath"], team_id, is_auto=True):
+                if chunk.get("kind") == "text":
+                    collected += chunk.get("content", "")
+                    if len(collected) > 200:
+                        break
+        await asyncio.wait_for(_collect(), timeout=30)
+    except asyncio.TimeoutError:
+        return {"ok": False, "error": "30초 타임아웃", "duration_ms": int((time.time() - started) * 1000)}
+    except Exception as e:
+        return {"ok": False, "error": f"CLI 에러: {e}", "duration_ms": int((time.time() - started) * 1000)}
+
+    duration_ms = int((time.time() - started) * 1000)
+    resp = collected.strip()
+    passed = bool(resp) and ("작동" in resp or "동작" in resp or "ok" in resp.lower())
+    return {"ok": passed, "response": resp[:300], "duration_ms": duration_ms}
+
+
 @app.post("/api/agents/{team_id}/restart")
 async def restart_agent(team_id: str):
     """에이전트 세션 초기화 (재부팅)"""
@@ -1274,6 +1722,34 @@ import logging as _log
 
 # 디스패치 작업 저장소
 DISPATCH_TASKS: dict[str, dict] = {}  # dispatch_id -> task info
+
+# 핸드오프 승인 게이트 (dispatch_id -> asyncio.Event)
+PENDING_APPROVALS: dict[str, asyncio.Event] = {}
+APPROVAL_DECISIONS: dict[str, str] = {}  # dispatch_id -> "approve" | "cancel"
+
+
+APPROVAL_FEEDBACK: dict[str, str] = {}  # dispatch_id -> optional user feedback
+
+@app.post("/api/dispatch/approve")
+async def dispatch_approve(body: dict):
+    """인라인 핸드오프 승인 게이트 응답. TM 피드백+재작업 패턴 지원.
+
+    body: { "dispatch_id": "xxxx", "decision": "approve" | "cancel", "feedback"?: str }
+    feedback 있으면 각 step prompt에 추가 주입되어 에이전트가 피드백 반영해 재실행.
+    """
+    dispatch_id = body.get("dispatch_id", "")
+    decision = body.get("decision", "")
+    feedback = (body.get("feedback") or "").strip()
+    if decision not in ("approve", "cancel"):
+        return {"ok": False, "error": "decision은 approve|cancel"}
+    ev = PENDING_APPROVALS.get(dispatch_id)
+    if not ev:
+        return {"ok": False, "error": "대기중인 승인 없음"}
+    APPROVAL_DECISIONS[dispatch_id] = decision
+    if feedback:
+        APPROVAL_FEEDBACK[dispatch_id] = feedback
+    ev.set()
+    return {"ok": True, "feedback_applied": bool(feedback)}
 
 @app.post("/api/dispatch")
 async def dispatch_task(body: dict):
@@ -1622,9 +2098,20 @@ async def smart_dispatch(body: dict):
             "3. 개발팀과 프로젝트팀을 동시에 선택하지 마 (성격이 다름)\n"
             "4. 관련 팀이 없으면 (일반 질문, 인사) → 빈 배열 []로 답해\n"
             "5. 관련 없는 팀은 절대 포함하지 마\n\n"
+            "【의존성 판단】\n"
+            "- 프론트+백엔드+QA 같이 협업(동일 기능 크로스컷팅) → deps 없음 (병렬)\n"
+            "- 디자인 → 프론트 (에셋 받아서 구현) → 프론트 step에 deps=[\"design-team\"]\n"
+            "- 백엔드 API → 프론트 연동 → 프론트 step에 deps=[\"backend-team\"]\n"
+            "- 독립된 여러 작업 (X 수정 + Y 수정) → deps 없음 (병렬)\n\n"
             "형식 (JSON만, 설명 없이):\n"
-            '[{"team": "team-id", "prompt": "유저가 OO를 요청했다. 구체적으로 XX를 해줘"}]\n'
-            '또는 관련 팀 없으면: []'
+            '[{"team": "team-id", "prompt": "구체 지시", "deps": ["prev-team-id"]}]\n'
+            "deps 생략 가능 (없으면 [] 또는 필드 생략 = 병렬 실행).\n"
+            "deps 있으면 이전 팀 결과가 {prev_result}로 prompt에 주입됨.\n"
+            "예 1 (크로스컷팅 병렬):\n"
+            '  [{"team":"frontend-team","prompt":"..."},{"team":"backend-team","prompt":"..."}]\n'
+            "예 2 (순차 전달):\n"
+            '  [{"team":"design-team","prompt":"로고 시안 3개"},{"team":"frontend-team","prompt":"아래 시안 중 하나로 구현: {prev_result}","deps":["design-team"]}]\n'
+            "관련 팀 없으면: []"
         )
 
         cpo_team = next((t for t in TEAMS if t["id"] == "cpo-claude"), None)
@@ -1682,6 +2169,52 @@ async def smart_dispatch(body: dict):
 
         yield f"data: {json.dumps({'phase': 'routed', 'teams': routed_team_ids, 'skipped': [t['id'] for t in skipped_teams]})}\n\n"
 
+        # ── 인라인 핸드오프 승인 게이트 (2팀 이상일 때만) ──
+        if len(routed_steps) >= 2:
+            preview_steps = [
+                {
+                    "team": s["team"],
+                    "team_name": team_map.get(s["team"], {}).get("name", s["team"]),
+                    "emoji": team_map.get(s["team"], {}).get("emoji", "🤖"),
+                    "prompt": (s.get("prompt") or "")[:200],
+                }
+                for s in routed_steps
+            ]
+            ev = asyncio.Event()
+            PENDING_APPROVALS[dispatch_id] = ev
+            APPROVAL_DECISIONS.pop(dispatch_id, None)
+            yield f"data: {json.dumps({'phase': 'handoff_request', 'dispatch_id': dispatch_id, 'steps': preview_steps})}\n\n"
+            # CPO 채팅창에도 핸드오프 카드 표시 (WS 모든 연결에 broadcast)
+            try:
+                await ws_manager.send_json("cpo-claude", {
+                    "type": "handoff_request", "dispatch_id": dispatch_id, "steps": preview_steps,
+                })
+            except Exception:
+                pass
+            try:
+                await asyncio.wait_for(ev.wait(), timeout=180)
+            except asyncio.TimeoutError:
+                yield f"data: {json.dumps({'phase': 'handoff_cancelled', 'reason': 'timeout'})}\n\n"
+                PENDING_APPROVALS.pop(dispatch_id, None)
+                DISPATCH_TASKS[dispatch_id]["status"] = "cancelled"
+                await _cpo_close("⏱️ 핸드오프 승인 시간 초과 — 취소됨")
+                return
+            decision = APPROVAL_DECISIONS.pop(dispatch_id, "cancel")
+            fb = APPROVAL_FEEDBACK.pop(dispatch_id, "")
+            PENDING_APPROVALS.pop(dispatch_id, None)
+            if decision != "approve":
+                yield f"data: {json.dumps({'phase': 'handoff_cancelled', 'reason': 'user_cancel'})}\n\n"
+                DISPATCH_TASKS[dispatch_id]["status"] = "cancelled"
+                await _cpo_close("❌ 사용자가 핸드오프를 취소했습니다")
+                return
+            # 피드백이 있으면 각 step prompt 앞에 주입 (에이전트가 반영해 재실행)
+            if fb:
+                for s in routed_steps:
+                    s["prompt"] = f"[유저 피드백] {fb}\n\n{s.get('prompt','')}"
+                yield f"data: {json.dumps({'phase': 'handoff_approved', 'feedback': fb})}\n\n"
+            else:
+                yield f"data: {json.dumps({'phase': 'handoff_approved'})}\n\n"
+
         # ── Phase 2: 관련 팀만 병렬 실행 ──
         yield f"data: {json.dumps({'phase': 'executing', 'message': f'⚡ {len(routed_steps)}개 팀 작업 중...'})}\n\n"
 
@@ -1729,8 +2262,37 @@ async def smart_dispatch(body: dict):
             except Exception as e:
                 team_results[team_id] = {"status": "error", "error": str(e)}
 
-        # 병렬 실행
-        await asyncio.gather(*[run_team(step) for step in routed_steps])
+        # ── DAG 실행: deps 존중. deps 없는 step은 병렬, deps 있는 step은 이전 결과 대기 ──
+        remaining = list(routed_steps)
+        executed: set[str] = set()
+        while remaining:
+            # 현재 실행 가능한 step들 (모든 deps가 executed에 있는 것)
+            runnable = [s for s in remaining if all(d in executed for d in (s.get("deps") or []))]
+            if not runnable:
+                # 의존성 순환 등 실행 불가 → 남은 step 에러 마킹
+                for s in remaining:
+                    tid = s["team"]
+                    team_results[tid] = {"status": "error", "error": f"의존성 해결 불가: deps={s.get('deps')}"}
+                break
+            # prev_result 치환
+            def _inject_prev(step: dict) -> dict:
+                prev_key = "{prev_result}"
+                p = step.get("prompt", "")
+                if prev_key in p and step.get("deps"):
+                    prev_texts = []
+                    for d in step["deps"]:
+                        r = team_results.get(d, {})
+                        if r.get("status") == "done":
+                            prev_texts.append(f"[{d} 결과]\n{r.get('result', '')}")
+                    p = p.replace(prev_key, "\n\n".join(prev_texts) if prev_texts else "(이전 결과 없음)")
+                return {**step, "prompt": p}
+            batch = [_inject_prev(s) for s in runnable]
+            yield f"data: {json.dumps({'phase': 'batch_start', 'teams': [s['team'] for s in batch], 'parallel': len(batch) > 1})}\n\n"
+            await asyncio.gather(*[run_team(step) for step in batch])
+            # 완료 마킹
+            for s in runnable:
+                executed.add(s["team"])
+                remaining.remove(s)
 
         # 완료 알림
         done_teams = list(team_results.keys())
@@ -2121,9 +2683,280 @@ async def read_notion(body: dict):
 
 # ── WebSocket ─────────────────────────────────────────
 
+@app.post("/api/terminal/run")
+async def terminal_run(body: dict):
+    """TM TerminalPanel용 — 쉘 명령 실행 + SSE stdout/stderr 스트림"""
+    from fastapi.responses import StreamingResponse
+    cmd = (body.get("command") or "").strip()
+    cwd = body.get("cwd") or os.path.expanduser("~/Developer/my-company/company-hq")
+    cwd = os.path.expanduser(cwd)
+    if not cmd:
+        return {"ok": False, "error": "command 필요"}
+    # 간단 보안 — rm -rf / 같은 명백히 위험한 패턴 차단
+    import re as _re
+    dangerous = [r"\brm\s+-rf\s+/", r"\bdd\b.*of=/dev", r"\bmkfs\.", r":\(\)\{.*:\|:&"]
+    if any(_re.search(p, cmd) for p in dangerous):
+        return {"ok": False, "error": "위험한 명령 차단"}
+
+    async def stream():
+        yield f"data: {json.dumps({'stream':'exec','text':f'$ {cmd}'})}\n\n"
+        proc = await asyncio.create_subprocess_shell(
+            cmd, cwd=cwd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,  # stderr → stdout 통합
+        )
+        assert proc.stdout is not None
+        while True:
+            line = await proc.stdout.readline()
+            if not line:
+                break
+            text = line.decode("utf-8", errors="replace").rstrip()
+            if text:
+                yield f"data: {json.dumps({'stream':'stdout','text':text})}\n\n"
+        code = await proc.wait()
+        yield f"data: {json.dumps({'stream':'exit','code':code})}\n\n"
+
+    return StreamingResponse(stream(), media_type="text/event-stream")
+
+
+@app.get("/api/deploy/status")
+async def deploy_status():
+    """현재 배포 상태 — git + 마지막 빌드 + 배포 URL"""
+    import subprocess
+    import os as _os
+    root = _os.path.expanduser("~/Developer/my-company/company-hq")
+    def run(cmd: list[str], cwd: str = root) -> str:
+        try:
+            r = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=5)
+            return (r.stdout or r.stderr).strip()
+        except Exception:
+            return ""
+    branch = run(["git", "rev-parse", "--abbrev-ref", "HEAD"])
+    head = run(["git", "rev-parse", "--short", "HEAD"])
+    last_msg = run(["git", "log", "-1", "--format=%s"])
+    dirty_n = len([l for l in run(["git", "status", "--porcelain"]).splitlines() if l.strip()])
+    # 최근 build ID (deploy.sh가 out/version.json에 씀)
+    version_path = _os.path.join(root, "ui", "out", "version.json")
+    build_info = {}
+    try:
+        import json as _json
+        if _os.path.exists(version_path):
+            build_info = _json.loads(open(version_path).read())
+    except Exception:
+        pass
+    return {
+        "ok": True,
+        "git": {"branch": branch, "head": head, "last_msg": last_msg, "dirty": dirty_n},
+        "build": build_info,
+    }
+
+
+@app.post("/api/deploy/trigger")
+async def deploy_trigger():
+    """배포 스크립트 실행 — SSE 스트림으로 진행상황 보고"""
+    from fastapi.responses import StreamingResponse
+    import subprocess
+    import os as _os
+    root = _os.path.expanduser("~/Developer/my-company/company-hq")
+    async def stream():
+        yield f"data: {json.dumps({'phase':'starting','message':'배포 시작...'})}\n\n"
+        proc = await asyncio.create_subprocess_shell(
+            "bash deploy.sh",
+            cwd=root,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+        assert proc.stdout is not None
+        while True:
+            line = await proc.stdout.readline()
+            if not line:
+                break
+            text = line.decode("utf-8", errors="replace").rstrip()
+            if not text:
+                continue
+            # 간단 단계 감지
+            phase = "building"
+            if "Compiled" in text or "Turbopack" in text:
+                phase = "building"
+            elif "Uploading" in text:
+                phase = "uploading"
+            elif "Deploying" in text or "Deployment complete" in text:
+                phase = "deploying"
+            elif "Done" in text:
+                phase = "done"
+            yield f"data: {json.dumps({'phase':phase,'line':text})}\n\n"
+        code = await proc.wait()
+        yield f"data: {json.dumps({'phase':'finished','exit_code':code})}\n\n"
+    return StreamingResponse(stream(), media_type="text/event-stream")
+
+
+@app.get("/api/system/check")
+async def system_check():
+    """TM SystemCheckDialog용 — node/git/npm/cloudflared/claude 버전 확인"""
+    import shutil
+    import subprocess
+    tools = {}
+    for name in ("node", "git", "npm", "cloudflared"):
+        path = shutil.which(name)
+        installed = bool(path)
+        version = None
+        if installed:
+            try:
+                r = subprocess.run([name, "--version"], capture_output=True, text=True, timeout=5)
+                version = (r.stdout or r.stderr).strip().splitlines()[0] if r.returncode == 0 else None
+            except Exception:
+                version = None
+        tools[name] = {"installed": installed, "version": version, "path": path}
+    # Claude CLI
+    claude_path = shutil.which("claude")
+    claude_ver = None
+    if claude_path:
+        try:
+            r = subprocess.run(["claude", "--version"], capture_output=True, text=True, timeout=5)
+            claude_ver = (r.stdout or r.stderr).strip() if r.returncode == 0 else None
+        except Exception:
+            pass
+    tools["claude"] = {"installed": bool(claude_path), "version": claude_ver, "path": claude_path}
+    return {"ok": True, "platform": sys.platform, "tools": tools}
+
+
+@app.get("/api/chat/{team_id}/history")
+async def http_chat_history(team_id: str, session_id: str | None = None):
+    """HTTP 폴링 대체 — session_id 지정 시 해당 세션의 메시지.
+    미지정 시 active 세션. resumable 플래그 포함 (claude jsonl 파일 존재 여부).
+    """
+    import sessions_store
+    sid = sessions_store.resolve_session_id(team_id, session_id)
+    messages = ws_manager.get_history(team_id, sid)
+    claude_sid = sessions_store.get_claude_session_id(team_id, sid)
+    resumable = sessions_store._is_resumable(claude_sid)
+    return {
+        "ok": True,
+        "team_id": team_id,
+        "session_id": sid,
+        "resumable": resumable,
+        "messages": messages,
+    }
+
+
+@app.post("/api/chat/{team_id}/send")
+async def http_chat_send(team_id: str, body: dict):
+    """HTTP 대체 — WS 없이 메시지 전송. 백그라운드로 Claude 실행. 응답은 히스토리 폴링으로 확인."""
+    team = next((t for t in TEAMS if t["id"] == team_id), None)
+    if not team:
+        return {"ok": False, "error": "팀 없음"}
+    prompt = (body.get("prompt") or "").strip()
+    image_paths = body.get("images", []) or []
+    if not prompt and not image_paths:
+        return {"ok": False, "error": "prompt 또는 images 필요"}
+    import sessions_store
+    sid = sessions_store.resolve_session_id(team_id, body.get("session_id"))
+    # 이미지가 있으면 프롬프트에 파일 경로 추가
+    if image_paths:
+        img_instruction = "\n\n[첨부된 이미지 — Read 도구로 확인]"
+        for ip in image_paths:
+            img_instruction += f"\n- {ip}"
+        prompt = (prompt or "이 이미지를 분석해줘") + img_instruction
+    display_msg = prompt.split("\n\n[첨부된 이미지")[0] if image_paths else prompt
+    img_badge = f" 📷×{len(image_paths)}" if image_paths else ""
+    ws_manager.add_message(team_id, "user", display_msg + img_badge, sid)
+    try:
+        await ws_manager.send_json(
+            team_id,
+            {"type": "user", "content": display_msg + img_badge, "session_id": sid},
+            session_id=sid,
+        )
+    except Exception:
+        pass
+    from task_queue import task_queue
+    await task_queue.enqueue(team_id, prompt, session_id=sid)
+    return {"ok": True, "session_id": sid}
+
+
+# ── 세션 CRUD ────────────────────────────────────────
+
+@app.get("/api/sessions/{team_id}")
+async def list_sessions_api(team_id: str):
+    """팀의 세션 목록 + active 세션 id."""
+    import sessions_store
+    return {
+        "ok": True,
+        "team_id": team_id,
+        "session_id": sessions_store.get_active_session_id(team_id),
+        "sessions": sessions_store.list_sessions(team_id),
+    }
+
+
+@app.post("/api/sessions/{team_id}")
+async def create_session_api(team_id: str, body: dict | None = None):
+    """새 세션 생성. body: {title?: str}"""
+    import sessions_store
+    team = next((t for t in TEAMS if t["id"] == team_id), None)
+    if not team:
+        return {"ok": False, "error": "팀 없음"}
+    title = ((body or {}).get("title") or "").strip() or None
+    session = sessions_store.create_session(team_id, title)
+    # 실시간 브로드캐스트 (해당 팀 접속자들 UI 갱신)
+    try:
+        await ws_manager.send_json(team_id, {
+            "type": "sessions_sync",
+            "sessions": sessions_store.list_sessions(team_id),
+            "session_id": session["id"],
+        })
+    except Exception:
+        pass
+    return {"ok": True, "team_id": team_id, "session": session}
+
+
+@app.delete("/api/sessions/{team_id}/{session_id}")
+async def delete_session_api(team_id: str, session_id: str):
+    import sessions_store
+    ok = sessions_store.delete_session(team_id, session_id)
+    if not ok:
+        return {"ok": False, "error": "세션을 찾을 수 없습니다"}
+    try:
+        await ws_manager.send_json(team_id, {
+            "type": "sessions_sync",
+            "sessions": sessions_store.list_sessions(team_id),
+            "session_id": sessions_store.get_active_session_id(team_id),
+        })
+    except Exception:
+        pass
+    return {"ok": True}
+
+
+@app.patch("/api/sessions/{team_id}/{session_id}")
+async def rename_session_api(team_id: str, session_id: str, body: dict):
+    import sessions_store
+    title = (body.get("title") or "").strip()
+    if not title:
+        return {"ok": False, "error": "title 필요"}
+    if not sessions_store.rename_session(team_id, session_id, title):
+        return {"ok": False, "error": "세션을 찾을 수 없습니다"}
+    try:
+        await ws_manager.send_json(team_id, {
+            "type": "sessions_sync",
+            "sessions": sessions_store.list_sessions(team_id),
+            "session_id": sessions_store.get_active_session_id(team_id),
+        })
+    except Exception:
+        pass
+    return {"ok": True}
+
+
+@app.post("/api/sessions/{team_id}/{session_id}/activate")
+async def activate_session_api(team_id: str, session_id: str):
+    import sessions_store
+    if not sessions_store.switch_session(team_id, session_id):
+        return {"ok": False, "error": "세션을 찾을 수 없습니다"}
+    return {"ok": True, "session_id": session_id}
+
+
 @app.websocket("/ws/chat/{team_id}")
-async def ws_chat(ws: WebSocket, team_id: str):
-    """팀별 채팅 WebSocket 엔드포인트"""
+async def ws_chat(ws: WebSocket, team_id: str, session_id: str | None = None):
+    """팀별 채팅 WebSocket 엔드포인트.
+    쿼리스트링 session_id 로 초기 구독 세션 지정 가능 (?session_id=...).
+    """
     team = next((t for t in TEAMS if t["id"] == team_id), None)
     if not team:
         await ws.accept()
@@ -2139,7 +2972,7 @@ async def ws_chat(ws: WebSocket, team_id: str):
         await ws.close()
         return
 
-    await handle_chat(ws, team_id, project_path)
+    await handle_chat(ws, team_id, project_path, session_id=session_id)
 
 
 # ── Task Queue / Pipeline / Debounce API ────────────────

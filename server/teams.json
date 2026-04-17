@@ -116,5 +116,18 @@
     "category": "dev",
     "order": 9,
     "layer": 2
+  },
+  {
+    "id": "agent-a90ce6",
+    "name": "마케팅디자이너",
+    "emoji": "🤖",
+    "repo": "company-hq",
+    "localPath": "/Users/600mac/Developer/my-company/company-hq",
+    "status": "운영중",
+    "category": "product",
+    "order": 10,
+    "layer": 1,
+    "lightweight": true,
+    "collaborative": true
   }
 ]

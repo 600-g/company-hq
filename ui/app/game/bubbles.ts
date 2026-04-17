@@ -55,6 +55,7 @@ export class BubbleManager {
   private bubbles = new Map<string, Live>();
   private uid = 0;
   private updateLoopBound = false;
+  private pulseTimers = new Map<string, ReturnType<typeof setInterval>>();
 
   constructor(
     private scene: Scene,
@@ -79,14 +80,19 @@ export class BubbleManager {
     const id = `bubble_${++this.uid}`;
     const anchor = this.getTeamAnchor(opts.teamId) ?? { x: 0, y: 0 };
 
+    // TeamMaker 패턴: light 테마 — loading=회색이탤릭, result/info/tool=다크그레이
+    const textColor =
+      variant === "loading" ? "#9ca3af" : "#374151";
+
     const txt = this.scene.add
       .text(anchor.x, anchor.y - 28, opts.text, {
         fontFamily: FONT,
         fontSize: "10px",
-        color: variant === "loading" ? "#fbbf24" : "#e5e7eb",
+        color: textColor,
         resolution: 4,
         align: "center",
-        wordWrap: { width: 120 },
+        wordWrap: { width: 140 },
+        fontStyle: variant === "loading" ? "italic" : "normal",
       })
       .setOrigin(0.5, 1)
       .setDepth(200);
@@ -94,15 +100,28 @@ export class BubbleManager {
     const bg = this.scene.add.graphics().setDepth(199);
     this.drawBg(bg, txt, variant);
 
-    // 부드러운 fade-in
+    // 부드러운 fade-in (TeamMaker 200ms 패턴)
     txt.setAlpha(0);
     bg.setAlpha(0);
     this.scene.tweens.add({
       targets: [txt, bg],
       alpha: 1,
-      duration: 180,
+      duration: 200,
       ease: "Sine.easeOut",
     });
+
+    // loading 펄스 (TeamMaker: 400ms sin 사이클, alpha 0.6~1.0)
+    if (variant === "loading") {
+      let elapsed = 0;
+      const timer = setInterval(() => {
+        if (!txt.active) { clearInterval(timer); return; }
+        elapsed += 16;
+        const a = 0.6 + 0.4 * Math.sin(elapsed / 400);
+        txt.setAlpha(a);
+        bg.setAlpha(a);
+      }, 16);
+      this.pulseTimers.set(id, timer);
+    }
 
     const followFn = () => {
       const a = this.getTeamAnchor(opts.teamId);
@@ -140,6 +159,9 @@ export class BubbleManager {
   remove(id: string) {
     const b = this.bubbles.get(id);
     if (!b) return;
+    // 펄스 타이머 정리
+    const timer = this.pulseTimers.get(id);
+    if (timer) { clearInterval(timer); this.pulseTimers.delete(id); }
     this.scene.tweens.add({
       targets: [b.txt, b.bg],
       alpha: 0,
@@ -171,6 +193,8 @@ export class BubbleManager {
       this.scene.events.off("update", this.tick, this);
       this.updateLoopBound = false;
     }
+    for (const timer of this.pulseTimers.values()) clearInterval(timer);
+    this.pulseTimers.clear();
     for (const b of this.bubbles.values()) {
       b.txt.destroy();
       b.bg.destroy();
