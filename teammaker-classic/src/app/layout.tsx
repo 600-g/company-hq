@@ -4,8 +4,8 @@ import { getLocale, getMessages } from "next-intl/server";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "TeamMaker",
-  description: "Build AI agents and assign tasks with natural language",
+  title: "Company HQ",
+  description: "AI 에이전트 오피스 — 팀메이커 구조 + 두근컴퍼니 장점 이식",
 };
 
 export default async function RootLayout({
