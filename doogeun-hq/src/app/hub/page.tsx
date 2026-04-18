@@ -100,7 +100,7 @@ export default function HubPage() {
       {/* 좌측 사이드 — collapsible (아이콘 only ↔ 풀) */}
       <aside
         className={`shrink-0 flex flex-col border-r border-gray-800/70 bg-[#0b0b14] transition-[width] duration-200 ${
-          sideCollapsed ? "w-14" : "w-56"
+          sideCollapsed ? "w-16" : "w-60"
         }`}
       >
         <div className="h-12 flex items-center justify-between border-b border-gray-800/60 px-3 shrink-0">
@@ -148,33 +148,36 @@ export default function HubPage() {
         )}
       </aside>
 
-      {/* 중앙 메인 — 오피스 미니멀 (가운데 일부) */}
+      {/* 중앙 메인 — 오피스 (구 두근컴퍼니 크기 ~1024×736) */}
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* 상단 얇은 바 — 날씨 · 층 */}
-        <div className="h-12 flex items-center justify-between px-4 border-b border-gray-800/60 shrink-0">
+        {/* 상단 얇은 바 — 날씨만 (층 선택은 오피스 옆) */}
+        <div className="h-12 flex items-center px-4 border-b border-gray-800/60 shrink-0">
           <Weather compact />
-          <div className="flex items-center gap-1">
+        </div>
+
+        {/* 오피스 캔버스 + 층 선택 (오피스 좌측 붙여서) */}
+        <div className="flex-1 flex items-center justify-center p-3 overflow-hidden relative gap-2">
+          {/* 층 세로 스택 — 오피스 왼쪽 */}
+          <div className="flex flex-col gap-2">
             {[1, 2, 3].map((f) => (
               <button
                 key={f}
                 onClick={() => setFloor(f)}
-                className={`h-7 w-7 flex items-center justify-center rounded text-[11px] font-bold transition-all ${
+                className={`h-10 w-10 flex items-center justify-center rounded-md text-[13px] font-bold transition-all ${
                   floor === f
-                    ? "bg-sky-500/15 text-gray-200 border border-sky-400/40"
-                    : "border border-gray-800 text-gray-500 hover:text-gray-200 hover:border-gray-600"
+                    ? "bg-sky-500/15 text-gray-100 border border-sky-400/50"
+                    : "border border-gray-800 text-gray-400 hover:text-gray-100 hover:border-gray-600 bg-gray-900/40"
                 }`}
+                title={`${f}층`}
               >
                 {f}F
               </button>
             ))}
           </div>
-        </div>
 
-        {/* 오피스 캔버스 — 중앙, 세로 여유 확대 */}
-        <div className="flex-1 flex items-center justify-center p-4 overflow-hidden relative">
           <div
             className="relative rounded-xl border border-gray-800/60 bg-[#06060e] overflow-hidden shadow-2xl"
-            style={{ width: "min(100%, 1100px)", height: "min(100%, 720px)", aspectRatio: "16/10" }}
+            style={{ width: "min(100%, 1024px)", height: "min(100%, 736px)", aspectRatio: "1024/736" }}
           >
             <HubOffice floor={floor} agentCount={agents.length} />
             {/* 엠비언트 틴트 — 캔버스 내부만 */}
@@ -323,13 +326,13 @@ function SideItem({ collapsed, icon: Icon, label, onClick, badge, active }: {
     <button
       onClick={onClick}
       title={collapsed ? label : undefined}
-      className={`w-full flex items-center gap-3 px-2 py-2 rounded-md text-[13px] transition-colors ${
+      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-[14px] transition-colors ${
         active
           ? "bg-sky-500/10 text-gray-200"
           : "text-gray-300 hover:bg-gray-800/50 hover:text-gray-200"
       }`}
     >
-      <Icon className="w-4 h-4 shrink-0" />
+      <Icon className="w-[18px] h-[18px] shrink-0" />
       {!collapsed && (
         <>
           <span className="flex-1 text-left truncate">{label}</span>
