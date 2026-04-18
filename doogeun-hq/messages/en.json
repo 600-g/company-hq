@@ -1,0 +1,45 @@
+{
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "close": "Close",
+    "loading": "Loading...",
+    "done": "Done"
+  },
+  "chat": {
+    "title": "Chat",
+    "emptyState": "Ask your agent to do something",
+    "placeholder": "What do you want the agent to do?",
+    "sending": "Sending...",
+    "resume": "Resume",
+    "reset": "Reset session"
+  },
+  "agent": {
+    "add": "Add agent",
+    "name": "Name",
+    "role": "Role",
+    "description": "Description",
+    "systemPrompt": "System prompt (MD)",
+    "workingDirectory": "Working directory",
+    "githubRepo": "GitHub repo"
+  },
+  "status": {
+    "idle": "Idle",
+    "working": "Working",
+    "complete": "Complete",
+    "error": "Error"
+  },
+  "settings": {
+    "apiKey": "API key",
+    "model": "Model",
+    "tokens": "External tokens",
+    "automation": "Automation",
+    "testMode": "Test mode"
+  },
+  "bug": {
+    "report": "Report",
+    "noItems": "No bugs",
+    "urgent": "Urgent"
+  }
+}
