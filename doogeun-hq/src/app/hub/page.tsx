@@ -19,6 +19,8 @@ import { useThemeStore } from "@/stores/themeStore";
 import AgentCreate from "@/components/AgentCreate";
 import { useConfirm } from "@/components/Confirm";
 import { initDiag, getRecentLogs } from "@/lib/diag";
+import { BellButton } from "@/components/NotifyRoot";
+import { useNotifStore } from "@/stores/notifyStore";
 
 const HubOffice = dynamic(() => import("@/components/HubOffice"), { ssr: false });
 
@@ -29,6 +31,7 @@ interface HubMsg {
   agentEmoji?: string;
   agentName?: string;
   ts: number;
+  images?: string[];  // data URLs (사용자 메시지 첨부)
 }
 
 type ModalKey = null | "agents" | "server" | "bugs" | "settings" | "newAgent";
@@ -57,8 +60,17 @@ export default function HubPage() {
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [composing, setComposing] = useState(false);
+  const [attachedImages, setAttachedImages] = useState<string[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const notifyPush = useNotifStore((s) => s.push);
   const selected = agents.find((a) => a.id === selectedAgentId) ?? null;
+
+  const addImage = (file: File) => {
+    if (!file.type.startsWith("image/")) return;
+    const reader = new FileReader();
+    reader.onload = () => setAttachedImages((p) => [...p, reader.result as string].slice(0, 4));
+    reader.readAsDataURL(file);
+  };
 
   useEffect(() => { fetchWx(); initDiag(); }, [fetchWx]);
   useEffect(() => {
@@ -66,25 +78,38 @@ export default function HubPage() {
   }, [messages]);
 
   const send = async () => {
-    if (!input.trim() || !selected) return;
-    const msg: HubMsg = { id: crypto.randomUUID(), role: "user", content: input.trim(), ts: Date.now() };
+    if ((!input.trim() && attachedImages.length === 0) || !selected) return;
+    const msg: HubMsg = {
+      id: crypto.randomUUID(),
+      role: "user",
+      content: input.trim(),
+      ts: Date.now(),
+      images: attachedImages.length > 0 ? [...attachedImages] : undefined,
+    };
     setMessages((p) => [...p, msg]);
     setInput("");
+    setAttachedImages([]);
     setSending(true);
     try {
       await fetch(`${apiBase()}/api/chat/${selected.id}/send`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: msg.content }),
+        body: JSON.stringify({
+          prompt: msg.content,
+          images: msg.images,
+        }),
       });
       setTimeout(async () => {
         try {
           const h = await fetch(`${apiBase()}/api/chat/${selected.id}/history`);
           const d = await h.json();
           const last = (d.messages || []).filter((m: { role?: string }) => m.role === "assistant").slice(-1)[0];
-          if (last) setMessages((p) => [...p, {
-            id: crypto.randomUUID(), role: "agent", content: last.content,
-            agentEmoji: selected.emoji, agentName: selected.name, ts: Date.now(),
-          }]);
+          if (last) {
+            setMessages((p) => [...p, {
+              id: crypto.randomUUID(), role: "agent", content: last.content,
+              agentEmoji: selected.emoji, agentName: selected.name, ts: Date.now(),
+            }]);
+            notifyPush("success", `${selected.emoji} ${selected.name} 응답 도착`, last.content.slice(0, 120), "chat");
+          }
         } catch {}
         setSending(false);
       }, 2000);
@@ -93,6 +118,7 @@ export default function HubPage() {
         id: crypto.randomUUID(), role: "system",
         content: "⚠️ 백엔드 연결 실패 (localhost:8000)", ts: Date.now(),
       }]);
+      notifyPush("error", "백엔드 연결 실패", "FastAPI 서버(localhost:8000) 가 켜져있는지 확인", "chat");
       setSending(false);
     }
   };
@@ -152,9 +178,10 @@ export default function HubPage() {
 
       {/* 중앙 메인 — 오피스 (구 두근컴퍼니 크기 ~1024×736) */}
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* 상단 얇은 바 — 날씨만 (층 선택은 오피스 옆) */}
-        <div className="h-12 flex items-center px-4 border-b border-gray-800/60 shrink-0">
+        {/* 상단 얇은 바 — 날씨 + 알림 벨 */}
+        <div className="h-12 flex items-center justify-between px-4 border-b border-gray-800/60 shrink-0">
           <Weather compact />
+          <BellButton />
         </div>
 
         {/* 오피스 캔버스 + 층 선택 — 최대한 확대, 빈 공간 최소 */}
@@ -250,7 +277,15 @@ export default function HubPage() {
                   : "rounded-bl-md bg-[var(--chat-ai-bg)] border border-[var(--chat-ai-border)] text-[var(--chat-ai-text)]"
               }`}>
                 {m.role === "agent" && <div className="text-[10px] text-gray-400 mb-1">{m.agentEmoji} {m.agentName}</div>}
-                <div className="whitespace-pre-wrap break-words">{m.content}</div>
+                {m.images && m.images.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mb-1.5">
+                    {m.images.map((src, j) => (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img key={j} src={src} alt="" className="max-h-40 rounded border border-gray-700 object-contain" />
+                    ))}
+                  </div>
+                )}
+                {m.content && <div className="whitespace-pre-wrap break-words">{m.content}</div>}
               </div>
             </div>
           ))}
@@ -267,22 +302,57 @@ export default function HubPage() {
           )}
         </div>
 
-        <div className="p-2 border-t border-gray-800/60 flex gap-2 shrink-0">
+        {/* 이미지 첨부 프리뷰 */}
+        {attachedImages.length > 0 && (
+          <div className="flex gap-1.5 px-2 pt-2 flex-wrap">
+            {attachedImages.map((src, i) => (
+              <div key={i} className="relative shrink-0">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={src} alt="" className="h-14 rounded border border-gray-700 object-cover" />
+                <button
+                  onClick={() => setAttachedImages((p) => p.filter((_, j) => j !== i))}
+                  className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500/90 text-white text-[9px] font-bold"
+                >×</button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div
+          className="p-2 border-t border-gray-800/60 flex gap-2 shrink-0 items-center"
+          onDragOver={(e) => { if (selected) e.preventDefault(); }}
+          onDrop={(e) => {
+            if (!selected) return;
+            e.preventDefault();
+            for (const f of Array.from(e.dataTransfer.files)) addImage(f);
+          }}
+        >
+          <label className="shrink-0 h-9 w-9 flex items-center justify-center rounded-md text-gray-500 hover:text-sky-200 hover:bg-gray-800/40 cursor-pointer transition-colors" title="이미지 첨부">
+            <Plus className="w-4 h-4" />
+            <input type="file" accept="image/*" multiple onChange={(e) => { for (const f of Array.from(e.target.files || [])) addImage(f); e.target.value = ""; }} className="hidden" />
+          </label>
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
+            onPaste={(e) => {
+              for (const it of Array.from(e.clipboardData.items)) {
+                if (it.kind === "file" && it.type.startsWith("image/")) {
+                  const f = it.getAsFile();
+                  if (f) addImage(f);
+                }
+              }
+            }}
             onCompositionStart={() => setComposing(true)}
             onCompositionEnd={() => setComposing(false)}
             onKeyDown={(e) => {
-              // 한글 IME 조합 중 엔터 무시 (중복 전송 방지)
               if (composing || e.nativeEvent.isComposing || e.keyCode === 229) return;
               if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
             }}
-            placeholder={selected ? "시킬 일 입력" : "에이전트 선택 필요"}
+            placeholder={selected ? "시킬 일 입력 · ⌘+V 이미지" : "에이전트 선택 필요"}
             disabled={!selected}
             className="flex-1 h-9 rounded-md border border-gray-700 bg-gray-900/60 px-3 text-sm text-gray-100 placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-sky-400/40 disabled:opacity-40"
           />
-          <Button onClick={send} disabled={!input.trim() || !selected || sending} size="sm">
+          <Button onClick={send} disabled={(!input.trim() && attachedImages.length === 0) || !selected || sending} size="sm">
             <Send className="w-3.5 h-3.5" />
           </Button>
         </div>

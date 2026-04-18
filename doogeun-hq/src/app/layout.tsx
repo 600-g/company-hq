@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { ConfirmRoot } from "@/components/Confirm";
+import { ToastStack } from "@/components/NotifyRoot";
 
 export const metadata: Metadata = {
   title: "두근컴퍼니",
@@ -17,6 +18,7 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col">
         {children}
         <ConfirmRoot />
+        <ToastStack />
       </body>
     </html>
   );
