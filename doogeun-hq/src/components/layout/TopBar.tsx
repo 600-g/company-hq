@@ -21,7 +21,7 @@ export default function TopBar({ title = "두근컴퍼니 HQ" }: Props) {
 
   return (
     <header className="flex h-12 items-center border-b border-gray-800/60 px-4 bg-[var(--background)]">
-      <Link href="/" className="flex items-center gap-2 font-bold text-yellow-300 hover:text-yellow-200 transition-colors">
+      <Link href="/" className="flex items-center gap-2 font-bold text-blue-300 hover:text-blue-200 transition-colors">
         <Home className="w-4 h-4" />
         {title}
       </Link>

@@ -68,7 +68,7 @@ export default function ServerPage() {
 function Stat({ icon: Icon, label, value }: { icon: React.ComponentType<{ className?: string }>; label: string; value: string }) {
   return (
     <div className="p-3 rounded-lg border border-gray-800/60 bg-gray-900/40 flex items-center gap-3">
-      <Icon className="w-5 h-5 text-yellow-300" />
+      <Icon className="w-5 h-5 text-blue-300" />
       <div>
         <div className="text-[10px] text-gray-500 uppercase">{label}</div>
         <div className="text-lg font-bold text-gray-100">{value}</div>

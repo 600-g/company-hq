@@ -19,7 +19,7 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)] flex flex-col items-center justify-center gap-8 p-8">
       <div className="text-center">
-        <h1 className="text-4xl font-bold text-yellow-300 tracking-tight">두근컴퍼니 HQ</h1>
+        <h1 className="text-4xl font-bold text-blue-300 tracking-tight">두근컴퍼니 HQ</h1>
         <p className="text-sm text-[var(--muted)] mt-3">
           새판 빌드 · BUILDING
         </p>
@@ -60,15 +60,15 @@ export default function Home() {
 
         {/* 3. 신규 */}
         <Link
-          href="/setup"
-          className="w-64 p-5 rounded-xl border-2 border-yellow-400/70 bg-yellow-500/10 hover:bg-yellow-500/20 hover:border-yellow-300 transition-all text-left block"
+          href="/hub"
+          className="w-64 p-5 rounded-xl border-2 border-blue-400/70 bg-blue-500/10 hover:bg-blue-500/20 hover:border-blue-300 transition-all text-left block"
         >
           <div className="flex items-center justify-between mb-2">
             <div className="text-2xl">✨ 신규</div>
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-500/40 text-yellow-200 font-bold">BUILDING</span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/40 text-blue-200 font-bold">BUILDING</span>
           </div>
-          <div className="text-xs text-yellow-200/90 mb-1">두근컴퍼니 HQ — 새판</div>
-          <div className="text-[11px] text-yellow-100/70 mt-2 leading-relaxed">
+          <div className="text-xs text-blue-200/90 mb-1">두근컴퍼니 HQ — 새판</div>
+          <div className="text-[11px] text-blue-100/70 mt-2 leading-relaxed">
             설정 · 로그인 · 버그리포트 · 사진업로드 · 에이전트 MD · 서버실 · 층 · 알림 · i18n · 캐시버스팅
           </div>
         </Link>
@@ -77,7 +77,7 @@ export default function Home() {
       <div className="mt-8 p-4 rounded-lg border border-gray-800/60 bg-gray-900/30 max-w-3xl text-center">
         <div className="text-[12px] text-gray-400 mb-2">🏗 이 프로젝트는 완전 새판</div>
         <div className="text-[11px] text-gray-500 leading-relaxed">
-          <code className="text-yellow-300/80">doogeun-hq/</code> 디렉토리에 <code>create-next-app</code> 으로 신규 생성.
+          <code className="text-blue-300/80">doogeun-hq/</code> 디렉토리에 <code>create-next-app</code> 으로 신규 생성.
           <br />기존 <code className="text-gray-300">ui/</code>, <code className="text-gray-300">teammaker-classic/</code> 와 물리적으로 분리.
           <br />코드 참조는 하되 <b>import·심링크·복사 없음</b>. 머지 충돌 원천 차단.
         </div>

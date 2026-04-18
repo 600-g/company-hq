@@ -106,12 +106,12 @@ export default function SettingsPage() {
                     onClick={() => setModel(m.id)}
                     className={`p-3 rounded-lg border text-left transition-all ${
                       active
-                        ? "border-yellow-400/60 bg-yellow-500/10"
+                        ? "border-blue-400/60 bg-blue-500/10"
                         : "border-gray-700/60 bg-gray-800/20 hover:bg-gray-700/30"
                     }`}
                   >
                     <div className="flex items-center gap-2 mb-1">
-                      <Icon className="w-4 h-4 text-yellow-300" />
+                      <Icon className="w-4 h-4 text-blue-300" />
                       <span className="font-bold text-[13px]">{m.name}</span>
                       {active && <Check className="w-3 h-3 text-green-400 ml-auto" />}
                     </div>
@@ -176,7 +176,7 @@ export default function SettingsPage() {
                 type="checkbox"
                 checked={testMode}
                 onChange={(e) => setTestMode(e.target.checked)}
-                className="w-4 h-4 accent-yellow-400"
+                className="w-4 h-4 accent-blue-400"
               />
             </label>
           </CardContent>

@@ -96,7 +96,7 @@ export default function ChatPage() {
           <CardContent className="space-y-1">
             {agents.length === 0 ? (
               <div className="text-[12px] text-gray-500 py-2">
-                에이전트가 없습니다. <a href="/agents" className="text-yellow-400 hover:underline">추가</a>
+                에이전트가 없습니다. <a href="/agents" className="text-blue-400 hover:underline">추가</a>
               </div>
             ) : (
               agents.map((a) => (
@@ -105,7 +105,7 @@ export default function ChatPage() {
                   onClick={() => { setSelectedAgentId(a.id); setMessages([]); }}
                   className={`w-full text-left p-2 rounded-md border transition-all ${
                     a.id === selectedAgentId
-                      ? "border-yellow-400/50 bg-yellow-500/10"
+                      ? "border-blue-400/50 bg-blue-500/10"
                       : "border-gray-800/60 bg-gray-900/20 hover:bg-gray-800/40"
                   }`}
                 >
@@ -175,7 +175,7 @@ export default function ChatPage() {
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
                   placeholder="에이전트에게 시킬 일을 입력하세요"
-                  className="flex-1 h-10 rounded-md border border-gray-700 bg-gray-900/60 px-3 text-sm text-gray-100 placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-yellow-400/50"
+                  className="flex-1 h-10 rounded-md border border-gray-700 bg-gray-900/60 px-3 text-sm text-gray-100 placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-400/50"
                 />
                 <Button onClick={send} disabled={!input.trim() || sending}>
                   <Send className="w-4 h-4" />

@@ -66,7 +66,7 @@ export default function BugsPage() {
                   onClick={() => setFilter(s)}
                   className={`flex-1 text-[12px] py-1.5 rounded transition-colors ${
                     filter === s
-                      ? "bg-yellow-400/20 text-yellow-300 font-bold"
+                      ? "bg-blue-400/20 text-blue-300 font-bold"
                       : "text-gray-400 hover:text-gray-200"
                   }`}
                 >
@@ -147,7 +147,7 @@ function BugReportDialog({ onClose, onSent }: { onClose: () => void; onSent: () 
               onChange={(e) => setNote(e.target.value)}
               rows={5}
               placeholder="예: 채팅 입력 후 응답이 오지 않음..."
-              className="w-full rounded-md border border-gray-700 bg-gray-900/60 px-3 py-2 text-sm text-gray-100 placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-yellow-400/50"
+              className="w-full rounded-md border border-gray-700 bg-gray-900/60 px-3 py-2 text-sm text-gray-100 placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-400/50"
             />
             <div className="text-[11px] text-gray-500">
               이미지 업로드(⌘+V) 는 다음 세션에 추가 예정
