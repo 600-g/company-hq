@@ -21,6 +21,7 @@ import { useConfirm } from "@/components/Confirm";
 import { initDiag, getRecentLogs } from "@/lib/diag";
 import { BellButton } from "@/components/NotifyRoot";
 import { useNotifStore } from "@/stores/notifyStore";
+import AgentResultCard from "@/components/chat/AgentResultCard";
 
 const HubOffice = dynamic(() => import("@/components/HubOffice"), { ssr: false });
 
@@ -269,14 +270,13 @@ export default function HubPage() {
           )}
           {messages.map((m) => (
             <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-              <div className={`max-w-[85%] px-3 py-2 rounded-2xl text-[12px] leading-relaxed ${
+              <div className={`max-w-[90%] px-3 py-2 rounded-2xl text-[12px] leading-relaxed ${
                 m.role === "user"
                   ? "rounded-br-md bg-[var(--chat-user-bg)] border border-[var(--chat-user-border)] text-[var(--chat-user-text)]"
                   : m.role === "system"
                   ? "rounded-bl-md bg-red-500/10 border border-red-400/30 text-red-200"
                   : "rounded-bl-md bg-[var(--chat-ai-bg)] border border-[var(--chat-ai-border)] text-[var(--chat-ai-text)]"
               }`}>
-                {m.role === "agent" && <div className="text-[10px] text-gray-400 mb-1">{m.agentEmoji} {m.agentName}</div>}
                 {m.images && m.images.length > 0 && (
                   <div className="flex flex-wrap gap-1 mb-1.5">
                     {m.images.map((src, j) => (
@@ -285,7 +285,11 @@ export default function HubPage() {
                     ))}
                   </div>
                 )}
-                {m.content && <div className="whitespace-pre-wrap break-words">{m.content}</div>}
+                {m.role === "agent" ? (
+                  <AgentResultCard content={m.content} agentName={m.agentName} agentEmoji={m.agentEmoji} />
+                ) : m.content ? (
+                  <div className="whitespace-pre-wrap break-words">{m.content}</div>
+                ) : null}
               </div>
             </div>
           ))}

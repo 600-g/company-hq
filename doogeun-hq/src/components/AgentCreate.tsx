@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Zap, Settings, ChevronDown, ChevronRight, Wand2 } from "lucide-react";
 import { useAgentStore } from "@/stores/agentStore";
+import EmojiPicker from "@/components/EmojiPicker";
 
 type Mode = "light" | "project";
 
@@ -137,9 +138,9 @@ export default function AgentCreate({ onDone }: Props) {
         </button>
       </div>
 
-      {/* 공용: 이모지 + 이름 */}
-      <div className="flex gap-2">
-        <input value={emoji} onChange={(e) => setEmoji(e.target.value)} className="w-14 h-10 text-center text-xl rounded-md border border-gray-700 bg-gray-900/60 text-gray-100" maxLength={2} placeholder="🤖" title="이모지" />
+      {/* 공용: 이모지 선택 + 이름 */}
+      <div className="flex gap-2 items-start">
+        <EmojiPicker value={emoji} onChange={setEmoji} className="w-14 shrink-0" />
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="에이전트 이름 (예: 디자인팀)" className="flex-1 h-10 rounded-md border border-gray-700 bg-gray-900/60 px-3 text-sm text-gray-100 placeholder:text-gray-500" />
       </div>
 
