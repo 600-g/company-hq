@@ -22,6 +22,11 @@ import { initDiag, getRecentLogs } from "@/lib/diag";
 import { BellButton } from "@/components/NotifyRoot";
 import { useNotifStore } from "@/stores/notifyStore";
 import AgentResultCard from "@/components/chat/AgentResultCard";
+import AgentHandoffCard from "@/components/chat/AgentHandoffCard";
+import DeployGuideCard from "@/components/chat/DeployGuideCard";
+import { useChatWs, type WsMessage, type ToolEntry } from "@/lib/useChatWs";
+import { refineRequest } from "@/lib/refineRequest";
+import { Rocket } from "lucide-react";
 
 const HubOffice = dynamic(() => import("@/components/HubOffice"), { ssr: false });
 
@@ -57,14 +62,23 @@ export default function HubPage() {
     document.documentElement.setAttribute("data-theme", theme);
   }, [theme]);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<HubMsg[]>([]);
   const [input, setInput] = useState("");
-  const [sending, setSending] = useState(false);
   const [composing, setComposing] = useState(false);
   const [attachedImages, setAttachedImages] = useState<string[]>([]);
+  const [refineHints, setRefineHints] = useState<string[] | null>(null);
+  const [showDeploy, setShowDeploy] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const notifyPush = useNotifStore((s) => s.push);
   const selected = agents.find((a) => a.id === selectedAgentId) ?? null;
+
+  // WebSocket 실시간 채팅 (스트리밍 + tool_use + handoff)
+  const { messages: wsMessages, send: wsSend, streaming: wsStreaming, connected: wsConnected, toolStatus } = useChatWs({
+    teamId: selected?.id ?? null,
+    agentEmoji: selected?.emoji,
+    agentName: selected?.name,
+    onHandoff: () => notifyPush("warning", "핸드오프 승인 필요", "다른 팀으로 작업 전달 검토", "dispatch"),
+    onToolUse: (t: ToolEntry) => notifyPush("info", `🛠 ${t.tool}`, t.summary, selected?.name || "tool"),
+  });
 
   const addImage = (file: File) => {
     if (!file.type.startsWith("image/")) return;
@@ -76,52 +90,30 @@ export default function HubPage() {
   useEffect(() => { fetchWx(); initDiag(); }, [fetchWx]);
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages]);
+  }, [wsMessages]);
 
-  const send = async () => {
+  const messages = wsMessages;
+  const sending = wsStreaming;
+
+  const send = () => {
     if ((!input.trim() && attachedImages.length === 0) || !selected) return;
-    const msg: HubMsg = {
-      id: crypto.randomUUID(),
-      role: "user",
-      content: input.trim(),
-      ts: Date.now(),
-      images: attachedImages.length > 0 ? [...attachedImages] : undefined,
-    };
-    setMessages((p) => [...p, msg]);
+    // refine 검사 (경량)
+    const r = refineRequest(input);
+    if (r.needsClarify && attachedImages.length === 0) {
+      setRefineHints([...r.questions, ...r.hints]);
+      return;
+    }
+    setRefineHints(null);
+    wsSend(input, attachedImages.length > 0 ? [...attachedImages] : undefined);
     setInput("");
     setAttachedImages([]);
-    setSending(true);
-    try {
-      await fetch(`${apiBase()}/api/chat/${selected.id}/send`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          prompt: msg.content,
-          images: msg.images,
-        }),
-      });
-      setTimeout(async () => {
-        try {
-          const h = await fetch(`${apiBase()}/api/chat/${selected.id}/history`);
-          const d = await h.json();
-          const last = (d.messages || []).filter((m: { role?: string }) => m.role === "assistant").slice(-1)[0];
-          if (last) {
-            setMessages((p) => [...p, {
-              id: crypto.randomUUID(), role: "agent", content: last.content,
-              agentEmoji: selected.emoji, agentName: selected.name, ts: Date.now(),
-            }]);
-            notifyPush("success", `${selected.emoji} ${selected.name} 응답 도착`, last.content.slice(0, 120), "chat");
-          }
-        } catch {}
-        setSending(false);
-      }, 2000);
-    } catch {
-      setMessages((p) => [...p, {
-        id: crypto.randomUUID(), role: "system",
-        content: "⚠️ 백엔드 연결 실패 (localhost:8000)", ts: Date.now(),
-      }]);
-      notifyPush("error", "백엔드 연결 실패", "FastAPI 서버(localhost:8000) 가 켜져있는지 확인", "chat");
-      setSending(false);
-    }
+  };
+
+  const forceSend = () => {
+    setRefineHints(null);
+    wsSend(input, attachedImages.length > 0 ? [...attachedImages] : undefined);
+    setInput("");
+    setAttachedImages([]);
   };
 
   return (
@@ -241,17 +233,39 @@ export default function HubPage() {
             <span className="text-[13px] font-bold text-gray-200 truncate">
               {selected ? `${selected.emoji} ${selected.name}` : "채팅"}
             </span>
+            {selected && (
+              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${wsConnected ? "bg-green-400" : "bg-amber-400 animate-pulse"}`} title={wsConnected ? "WS 연결됨" : "재연결 중..."} />
+            )}
           </div>
-          <button onClick={() => setChatOpen(false)} className="text-gray-500 hover:text-gray-200 shrink-0">
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-1">
+            {selected && (
+              <button
+                onClick={() => setShowDeploy((v) => !v)}
+                className={`h-7 px-2 rounded-md text-[11px] transition-colors flex items-center gap-1 ${
+                  showDeploy ? "bg-sky-500/15 text-sky-200" : "text-gray-400 hover:text-sky-200 hover:bg-gray-800/40"
+                }`}
+                title="배포 가이드"
+              >
+                <Rocket className="w-3.5 h-3.5" />
+                배포
+              </button>
+            )}
+            <button onClick={() => setChatOpen(false)} className="text-gray-500 hover:text-gray-200 shrink-0">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
+        {toolStatus && (
+          <div className="px-3 py-1 border-b border-gray-800/40 bg-amber-500/5 text-[10px] text-amber-300 truncate">
+            🛠 {toolStatus}
+          </div>
+        )}
 
         {agents.length > 0 && (
           <div className="p-2 border-b border-gray-800/60">
             <select
               value={selectedAgentId || ""}
-              onChange={(e) => { setSelectedAgentId(e.target.value || null); setMessages([]); }}
+              onChange={(e) => { setSelectedAgentId(e.target.value || null); }}
               className="w-full h-8 rounded-md border border-gray-700 bg-gray-900/60 px-2 text-[12px] text-gray-200"
             >
               <option value="">에이전트 선택...</option>
@@ -268,31 +282,64 @@ export default function HubPage() {
               {selected ? "메시지 입력으로 시작" : agents.length === 0 ? "에이전트가 없어요 — 사이드바 [새 에이전트]" : "위에서 에이전트 선택"}
             </div>
           )}
-          {messages.map((m) => (
-            <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-              <div className={`max-w-[90%] px-3 py-2 rounded-2xl text-[12px] leading-relaxed ${
-                m.role === "user"
-                  ? "rounded-br-md bg-[var(--chat-user-bg)] border border-[var(--chat-user-border)] text-[var(--chat-user-text)]"
-                  : m.role === "system"
-                  ? "rounded-bl-md bg-red-500/10 border border-red-400/30 text-red-200"
-                  : "rounded-bl-md bg-[var(--chat-ai-bg)] border border-[var(--chat-ai-border)] text-[var(--chat-ai-text)]"
-              }`}>
-                {m.images && m.images.length > 0 && (
-                  <div className="flex flex-wrap gap-1 mb-1.5">
-                    {m.images.map((src, j) => (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img key={j} src={src} alt="" className="max-h-40 rounded border border-gray-700 object-contain" />
-                    ))}
-                  </div>
-                )}
-                {m.role === "agent" ? (
-                  <AgentResultCard content={m.content} agentName={m.agentName} agentEmoji={m.agentEmoji} />
-                ) : m.content ? (
-                  <div className="whitespace-pre-wrap break-words">{m.content}</div>
-                ) : null}
+          {messages.map((m: WsMessage) => {
+            // 핸드오프 시스템 메시지
+            if (m.role === "system" && m.handoff) {
+              return (
+                <div key={m.id} className="w-full">
+                  <AgentHandoffCard
+                    dispatchId={m.handoff.dispatch_id}
+                    steps={m.handoff.steps}
+                    onApproved={() => notifyPush("success", "핸드오프 승인", "작업이 이어서 진행됩니다", "dispatch")}
+                    onCancelled={() => notifyPush("info", "핸드오프 취소됨", undefined, "dispatch")}
+                  />
+                </div>
+              );
+            }
+            return (
+              <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+                <div className={`max-w-[90%] px-3 py-2 rounded-2xl text-[12px] leading-relaxed ${
+                  m.role === "user"
+                    ? "rounded-br-md bg-[var(--chat-user-bg)] border border-[var(--chat-user-border)] text-[var(--chat-user-text)]"
+                    : m.role === "system"
+                    ? "rounded-bl-md bg-red-500/10 border border-red-400/30 text-red-200"
+                    : "rounded-bl-md bg-[var(--chat-ai-bg)] border border-[var(--chat-ai-border)] text-[var(--chat-ai-text)]"
+                }`}>
+                  {m.images && m.images.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mb-1.5">
+                      {m.images.map((src, j) => (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img key={j} src={src} alt="" className="max-h-40 rounded border border-gray-700 object-contain" />
+                      ))}
+                    </div>
+                  )}
+                  {m.role === "agent" ? (
+                    <>
+                      <AgentResultCard content={m.content} agentName={m.agentName} agentEmoji={m.agentEmoji} />
+                      {m.tools && m.tools.length > 0 && (
+                        <div className="mt-1.5 space-y-0.5">
+                          {m.tools.slice(-6).map((t) => (
+                            <div key={t.id} className={`flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] border ${
+                              t.error ? "border-red-400/40 bg-red-500/10 text-red-300"
+                              : t.done ? "border-green-700/40 bg-green-900/20 text-green-300/80"
+                              : "border-amber-400/40 bg-amber-500/10 text-amber-200"
+                            }`}>
+                              <span className={`w-1 h-1 rounded-full ${
+                                t.error ? "bg-red-400" : t.done ? "bg-green-400" : "bg-amber-300 animate-pulse"
+                              }`} />
+                              <span className="truncate">{t.summary}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  ) : m.content ? (
+                    <div className="whitespace-pre-wrap break-words">{m.content}</div>
+                  ) : null}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
           {sending && (
             <div className="flex justify-start">
               <div className="px-3 py-2 rounded-2xl rounded-bl-md bg-[var(--chat-ai-bg)] border border-[var(--chat-ai-border)]">
@@ -305,6 +352,26 @@ export default function HubPage() {
             </div>
           )}
         </div>
+
+        {/* refine 힌트 (모호한 요청일 때) */}
+        {refineHints && refineHints.length > 0 && (
+          <div className="mx-2 mb-2 p-2.5 rounded-lg border border-amber-400/40 bg-amber-500/10 text-[11px] space-y-1">
+            <div className="flex items-center justify-between">
+              <div className="text-amber-200 font-bold">💡 요청 보완 제안</div>
+              <button onClick={forceSend} className="text-amber-300/80 hover:text-amber-200 underline">그대로 전송</button>
+            </div>
+            <ul className="list-disc list-inside text-amber-200/80 space-y-0.5">
+              {refineHints.map((h, i) => <li key={i}>{h}</li>)}
+            </ul>
+          </div>
+        )}
+
+        {/* Deploy 카드 */}
+        {showDeploy && selected && (
+          <div className="mx-2 mb-2">
+            <DeployGuideCard teamId={selected.id} repo={selected.githubRepo} />
+          </div>
+        )}
 
         {/* 이미지 첨부 프리뷰 */}
         {attachedImages.length > 0 && (
@@ -380,7 +447,6 @@ export default function HubPage() {
           onNew={() => setModalKey("newAgent")}
           onSelect={(a) => {
             setSelectedAgentId(a.id);
-            setMessages([]);
             setModalKey(null);
             setChatOpen(true);
           }}
