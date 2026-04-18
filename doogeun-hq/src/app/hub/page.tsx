@@ -12,8 +12,8 @@ import { useAgentStore, type Agent } from "@/stores/agentStore";
 import { useAuthStore } from "@/stores/authStore";
 import { apiBase } from "@/lib/utils";
 import {
-  Menu, X, Users, Bug, Cpu, Settings, LogOut, Send,
-  MessagesSquare, Plus, Home as HomeIcon, RefreshCw, ChevronRight,
+  X, Users, Bug, Cpu, Settings, LogOut, Send,
+  MessagesSquare, Plus, Home as HomeIcon, RefreshCw, ChevronRight, ChevronLeft,
 } from "lucide-react";
 
 const HubOffice = dynamic(() => import("@/components/HubOffice"), { ssr: false });
@@ -38,7 +38,7 @@ export default function HubPage() {
   const tod = useWeatherStore((s) => s.tod);
   const ambientTint = useWeatherStore((s) => s.ambientTint);
 
-  const [sideOpen, setSideOpen] = useState(false);
+  const [sideCollapsed, setSideCollapsed] = useState(false);
   const [chatOpen, setChatOpen] = useState(true);
   const [floor, setFloor] = useState(1);
   const [modalKey, setModalKey] = useState<ModalKey>(null);
@@ -88,202 +88,203 @@ export default function HubPage() {
   };
 
   return (
-    <div className="h-screen w-screen overflow-hidden relative flex flex-col">
-      {/* 상단 미니 헤더 — 로고 + 날씨 + 층 + 메뉴 */}
-      <header className="absolute top-0 left-0 right-0 z-30 flex items-center justify-between px-3 py-2 pointer-events-none">
-        <div className="flex items-center gap-2 pointer-events-auto">
+    <div className="h-screen w-screen flex overflow-hidden">
+      {/* 좌측 사이드 — collapsible (아이콘 only ↔ 풀) */}
+      <aside
+        className={`shrink-0 flex flex-col border-r border-gray-800/70 bg-[#0b0b14] transition-[width] duration-200 ${
+          sideCollapsed ? "w-14" : "w-56"
+        }`}
+      >
+        <div className="h-12 flex items-center justify-between border-b border-gray-800/60 px-3 shrink-0">
+          {!sideCollapsed && (
+            <Link href="/" className="flex items-center gap-1.5 text-[13px] font-bold text-blue-300 hover:text-blue-200">
+              <HomeIcon className="w-3.5 h-3.5" />
+              <span className="truncate">두근컴퍼니 HQ</span>
+            </Link>
+          )}
           <button
-            onClick={() => setSideOpen((v) => !v)}
-            className="h-9 w-9 flex items-center justify-center rounded-lg border border-gray-800/80 bg-gray-900/80 backdrop-blur text-gray-300 hover:text-blue-300 hover:border-blue-400/50 transition-all"
+            onClick={() => setSideCollapsed((v) => !v)}
+            className={`text-gray-500 hover:text-gray-200 ${sideCollapsed ? "mx-auto" : ""}`}
+            title={sideCollapsed ? "사이드바 펼치기" : "사이드바 접기"}
           >
-            <Menu className="w-4 h-4" />
+            {sideCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
           </button>
-          <Link href="/" className="h-9 px-3 flex items-center rounded-lg border border-gray-800/80 bg-gray-900/80 backdrop-blur text-blue-300 font-bold text-[13px] hover:text-blue-200 transition-colors">
-            <HomeIcon className="w-3.5 h-3.5 mr-1.5" />
-            두근컴퍼니 HQ
-          </Link>
-          <div className="h-9 px-3 flex items-center rounded-lg border border-gray-800/80 bg-gray-900/80 backdrop-blur">
-            <Weather compact />
-          </div>
-        </div>
-        <div className="flex items-center gap-1 pointer-events-auto">
-          {[1, 2, 3].map((f) => (
-            <button
-              key={f}
-              onClick={() => setFloor(f)}
-              className={`h-9 w-9 flex items-center justify-center rounded-lg border text-[13px] font-bold transition-all backdrop-blur ${
-                floor === f
-                  ? "border-blue-400/60 bg-blue-500/20 text-blue-200"
-                  : "border-gray-800/80 bg-gray-900/80 text-gray-400 hover:text-gray-200"
-              }`}
-            >
-              {f}F
-            </button>
-          ))}
-        </div>
-      </header>
-
-      {/* 메인 영역 */}
-      <main className="flex-1 relative overflow-hidden">
-        {/* Phaser 오피스 씬 (전체 배경) */}
-        <div className="absolute inset-0 bg-[#06060e]">
-          <HubOffice floor={floor} agentCount={agents.length} />
         </div>
 
-        {/* 엠비언트 틴트 (밤/비/눈) */}
-        <div
-          className="absolute inset-0 pointer-events-none transition-colors duration-[2s]"
-          style={{ background: ambientTint }}
-        />
-
-        {/* 오버레이 플로팅 버튼 — 서버실/버그/에이전트/설정 */}
-        <div className="absolute bottom-4 right-4 z-20 flex flex-col gap-2">
-          <FloatBtn label="에이전트" icon={Users} onClick={() => setModalKey("agents")} badge={agents.length} />
-          <FloatBtn label="서버실" icon={Cpu} onClick={() => setModalKey("server")} />
-          <FloatBtn label="버그" icon={Bug} onClick={() => setModalKey("bugs")} />
-          <FloatBtn label="설정" icon={Settings} onClick={() => setModalKey("settings")} />
-          <FloatBtn
-            label={chatOpen ? "채팅 숨김" : "채팅 열기"}
+        <nav className="flex-1 p-2 space-y-1 overflow-y-auto">
+          <SideItem collapsed={sideCollapsed} icon={Users} label="에이전트" badge={agents.length} onClick={() => setModalKey("agents")} />
+          <SideItem collapsed={sideCollapsed} icon={Plus} label="새 에이전트" onClick={() => setModalKey("newAgent")} />
+          <SideItem collapsed={sideCollapsed} icon={Cpu} label="서버실" onClick={() => setModalKey("server")} />
+          <SideItem collapsed={sideCollapsed} icon={Bug} label="버그 리포트" onClick={() => setModalKey("bugs")} />
+          <SideItem collapsed={sideCollapsed} icon={Settings} label="설정" onClick={() => setModalKey("settings")} />
+          <SideItem
+            collapsed={sideCollapsed}
             icon={MessagesSquare}
+            label={chatOpen ? "채팅 접기" : "채팅 펴기"}
             onClick={() => setChatOpen((v) => !v)}
             active={chatOpen}
           />
+          <div className="h-px bg-gray-800/60 my-2" />
+          <SideItem collapsed={sideCollapsed} icon={RefreshCw} label="강제 새로고침" onClick={() => {
+            const keep = ["doogeun-hq-auth", "doogeun-hq-settings", "doogeun-hq-agents"];
+            const keepMap: Record<string, string> = {};
+            keep.forEach((k) => { const v = localStorage.getItem(k); if (v !== null) keepMap[k] = v; });
+            Object.keys(localStorage).forEach((k) => { if (!(k in keepMap)) localStorage.removeItem(k); });
+            location.reload();
+          }} />
+          <SideItem
+            collapsed={sideCollapsed}
+            icon={LogOut}
+            label={user ? `로그아웃 (${user.nickname})` : "로그인"}
+            onClick={() => { if (user) { logout(); router.push("/"); } else router.push("/auth"); }}
+          />
+        </nav>
+
+        {!sideCollapsed && (
+          <div className="p-3 border-t border-gray-800/60 text-[10px] text-gray-600 font-mono">
+            <div>{user ? `${user.nickname} · ${user.role}` : "게스트"}</div>
+            <div className="mt-0.5 text-gray-700">TOD: {tod}</div>
+          </div>
+        )}
+      </aside>
+
+      {/* 중앙 메인 — 오피스 미니멀 (가운데 일부) */}
+      <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        {/* 상단 얇은 바 — 날씨 · 층 */}
+        <div className="h-12 flex items-center justify-between px-4 border-b border-gray-800/60 shrink-0">
+          <Weather compact />
+          <div className="flex items-center gap-1">
+            {[1, 2, 3].map((f) => (
+              <button
+                key={f}
+                onClick={() => setFloor(f)}
+                className={`h-7 w-7 flex items-center justify-center rounded text-[11px] font-bold transition-all ${
+                  floor === f
+                    ? "bg-blue-500/20 text-blue-200 border border-blue-400/50"
+                    : "border border-gray-800 text-gray-500 hover:text-gray-200 hover:border-gray-600"
+                }`}
+              >
+                {f}F
+              </button>
+            ))}
+          </div>
         </div>
 
-        {/* 오른쪽 채팅 슬라이드 패널 */}
-        <aside
-          className={`absolute top-0 right-0 h-full z-10 transition-transform duration-300 ${
-            chatOpen ? "translate-x-0" : "translate-x-full"
-          }`}
-          style={{ width: "380px" }}
-        >
-          <div className="h-full flex flex-col border-l border-gray-800/80 bg-[#0b0b14]/95 backdrop-blur">
-            <div className="p-3 border-b border-gray-800/60 pt-14">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-[13px] text-gray-200 font-bold">💬 채팅</div>
-                  <div className="text-[11px] text-gray-500 mt-0.5 truncate">
-                    {selected ? `${selected.emoji} ${selected.name}` : "좌측에서 에이전트 선택"}
-                  </div>
-                </div>
-                <button onClick={() => setChatOpen(false)} className="text-gray-500 hover:text-gray-200">
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-              {agents.length > 0 && (
-                <select
-                  value={selectedAgentId || ""}
-                  onChange={(e) => { setSelectedAgentId(e.target.value || null); setMessages([]); }}
-                  className="mt-2 w-full h-8 rounded-md border border-gray-700 bg-gray-900/60 px-2 text-[12px] text-gray-200"
-                >
-                  <option value="">에이전트 선택...</option>
-                  {agents.map((a) => (
-                    <option key={a.id} value={a.id}>{a.emoji} {a.name}</option>
-                  ))}
-                </select>
-              )}
-            </div>
-            <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-2.5">
-              {messages.length === 0 && (
-                <div className="py-10 text-center text-[12px] text-gray-500">
-                  {selected ? "메시지 입력으로 시작" : "에이전트 선택 필요"}
-                </div>
-              )}
-              {messages.map((m) => (
-                <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-                  <div className={`max-w-[85%] px-3 py-2 rounded-2xl text-[12px] leading-relaxed ${
-                    m.role === "user"
-                      ? "rounded-br-md bg-[var(--chat-user-bg)] border border-[var(--chat-user-border)] text-[var(--chat-user-text)]"
-                      : m.role === "system"
-                      ? "rounded-bl-md bg-red-500/10 border border-red-400/30 text-red-200"
-                      : "rounded-bl-md bg-[var(--chat-ai-bg)] border border-[var(--chat-ai-border)] text-[var(--chat-ai-text)]"
-                  }`}>
-                    {m.role === "agent" && <div className="text-[10px] text-gray-400 mb-1">{m.agentEmoji} {m.agentName}</div>}
-                    <div className="whitespace-pre-wrap break-words">{m.content}</div>
-                  </div>
-                </div>
-              ))}
-              {sending && (
-                <div className="flex justify-start">
-                  <div className="px-3 py-2 rounded-2xl rounded-bl-md bg-[var(--chat-ai-bg)] border border-[var(--chat-ai-border)]">
-                    <span className="inline-flex gap-1 items-center text-gray-400 text-[12px]">
-                      <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse" />
-                      <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse" style={{ animationDelay: "0.2s" }} />
-                      <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse" style={{ animationDelay: "0.4s" }} />
-                    </span>
-                  </div>
-                </div>
-              )}
-            </div>
-            <div className="p-2 border-t border-gray-800/60 flex gap-2">
-              <input
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
-                placeholder={selected ? "에이전트에게 시킬 일" : "에이전트 선택 필요"}
-                disabled={!selected}
-                className="flex-1 h-9 rounded-md border border-gray-700 bg-gray-900/60 px-3 text-sm text-gray-100 placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-400/50 disabled:opacity-40"
-              />
-              <Button onClick={send} disabled={!input.trim() || !selected || sending} size="sm">
-                <Send className="w-3.5 h-3.5" />
-              </Button>
-            </div>
-          </div>
-        </aside>
-
-        {/* 왼쪽 사이드 메뉴 (햄버거로 토글) */}
-        <aside
-          className={`absolute top-0 left-0 h-full z-40 transition-transform duration-300 ${
-            sideOpen ? "translate-x-0" : "-translate-x-full"
-          }`}
-          style={{ width: "260px" }}
-        >
-          <div className="h-full flex flex-col border-r border-gray-800/80 bg-[#0b0b14]/98 backdrop-blur">
-            <div className="p-4 border-b border-gray-800/60">
-              <div className="flex items-center justify-between">
-                <div className="text-[13px] font-bold text-blue-300">메뉴</div>
-                <button onClick={() => setSideOpen(false)} className="text-gray-500 hover:text-gray-200">
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-            <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-              <MenuItem icon={Users} label="에이전트" onClick={() => { setModalKey("agents"); setSideOpen(false); }} badge={agents.length} />
-              <MenuItem icon={Plus} label="새 에이전트" onClick={() => { setModalKey("newAgent"); setSideOpen(false); }} />
-              <MenuItem icon={Cpu} label="서버실" onClick={() => { setModalKey("server"); setSideOpen(false); }} />
-              <MenuItem icon={Bug} label="버그 리포트" onClick={() => { setModalKey("bugs"); setSideOpen(false); }} />
-              <MenuItem icon={Settings} label="설정" onClick={() => { setModalKey("settings"); setSideOpen(false); }} />
-              <div className="h-px bg-gray-800/60 my-2" />
-              <MenuItem icon={RefreshCw} label="강제 새로고침" onClick={() => {
-                const keep = ["doogeun-hq-auth", "doogeun-hq-settings", "doogeun-hq-agents"];
-                const keepMap: Record<string, string> = {};
-                keep.forEach(k => { const v = localStorage.getItem(k); if (v !== null) keepMap[k] = v; });
-                Object.keys(localStorage).forEach(k => { if (!(k in keepMap)) localStorage.removeItem(k); });
-                location.reload();
-              }} />
-              {user ? (
-                <MenuItem icon={LogOut} label={`로그아웃 (${user.nickname})`} onClick={() => { logout(); router.push("/"); }} />
-              ) : (
-                <MenuItem icon={LogOut} label="로그인" onClick={() => router.push("/auth")} />
-              )}
-            </nav>
-            <div className="p-3 border-t border-gray-800/60">
-              <div className="text-[10px] text-gray-600 font-mono">
-                {user ? `${user.nickname} · ${user.role}` : "게스트"}
-              </div>
-              <div className="text-[10px] text-gray-700 mt-0.5">TOD: {tod}</div>
-            </div>
-          </div>
-        </aside>
-
-        {/* 사이드 메뉴 오픈 시 반투명 오버레이 (모바일) */}
-        {sideOpen && (
+        {/* 오피스 캔버스 — 중앙 일부 */}
+        <div className="flex-1 flex items-center justify-center p-6 overflow-hidden relative">
           <div
-            className="absolute inset-0 z-30 bg-black/40 lg:hidden"
-            onClick={() => setSideOpen(false)}
-          />
-        )}
+            className="relative rounded-xl border border-gray-800/60 bg-[#06060e] overflow-hidden shadow-2xl"
+            style={{ width: "min(100%, 900px)", aspectRatio: "16/9" }}
+          >
+            <HubOffice floor={floor} agentCount={agents.length} />
+            {/* 엠비언트 틴트 — 캔버스 내부만 */}
+            <div
+              className="absolute inset-0 pointer-events-none transition-colors duration-[2s]"
+              style={{ background: ambientTint }}
+            />
+          </div>
+        </div>
+
+        {/* 하단 빠른 액션 바 */}
+        <div className="h-12 flex items-center justify-center gap-2 border-t border-gray-800/60 shrink-0 px-4">
+          <QuickBtn icon={Users} label="에이전트" badge={agents.length} onClick={() => setModalKey("agents")} />
+          <QuickBtn icon={Cpu} label="서버실" onClick={() => setModalKey("server")} />
+          <QuickBtn icon={Bug} label="버그" onClick={() => setModalKey("bugs")} />
+          <QuickBtn icon={Settings} label="설정" onClick={() => setModalKey("settings")} />
+        </div>
       </main>
+
+      {/* 우측 채팅 패널 — collapsible */}
+      <aside
+        className={`shrink-0 flex flex-col border-l border-gray-800/70 bg-[#0b0b14] transition-[width] duration-200 ${
+          chatOpen ? "w-80" : "w-0"
+        } overflow-hidden`}
+      >
+        <div className="h-12 flex items-center justify-between px-3 border-b border-gray-800/60 shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <MessagesSquare className="w-4 h-4 text-blue-300 shrink-0" />
+            <span className="text-[13px] font-bold text-gray-200 truncate">
+              {selected ? `${selected.emoji} ${selected.name}` : "채팅"}
+            </span>
+          </div>
+          <button onClick={() => setChatOpen(false)} className="text-gray-500 hover:text-gray-200 shrink-0">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {agents.length > 0 && (
+          <div className="p-2 border-b border-gray-800/60">
+            <select
+              value={selectedAgentId || ""}
+              onChange={(e) => { setSelectedAgentId(e.target.value || null); setMessages([]); }}
+              className="w-full h-8 rounded-md border border-gray-700 bg-gray-900/60 px-2 text-[12px] text-gray-200"
+            >
+              <option value="">에이전트 선택...</option>
+              {agents.map((a) => (
+                <option key={a.id} value={a.id}>{a.emoji} {a.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-2.5">
+          {messages.length === 0 && (
+            <div className="py-10 text-center text-[12px] text-gray-500">
+              {selected ? "메시지 입력으로 시작" : agents.length === 0 ? "에이전트가 없어요 — 사이드바 [새 에이전트]" : "위에서 에이전트 선택"}
+            </div>
+          )}
+          {messages.map((m) => (
+            <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+              <div className={`max-w-[85%] px-3 py-2 rounded-2xl text-[12px] leading-relaxed ${
+                m.role === "user"
+                  ? "rounded-br-md bg-[var(--chat-user-bg)] border border-[var(--chat-user-border)] text-[var(--chat-user-text)]"
+                  : m.role === "system"
+                  ? "rounded-bl-md bg-red-500/10 border border-red-400/30 text-red-200"
+                  : "rounded-bl-md bg-[var(--chat-ai-bg)] border border-[var(--chat-ai-border)] text-[var(--chat-ai-text)]"
+              }`}>
+                {m.role === "agent" && <div className="text-[10px] text-gray-400 mb-1">{m.agentEmoji} {m.agentName}</div>}
+                <div className="whitespace-pre-wrap break-words">{m.content}</div>
+              </div>
+            </div>
+          ))}
+          {sending && (
+            <div className="flex justify-start">
+              <div className="px-3 py-2 rounded-2xl rounded-bl-md bg-[var(--chat-ai-bg)] border border-[var(--chat-ai-border)]">
+                <span className="inline-flex gap-1 items-center text-gray-400 text-[12px]">
+                  <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse" />
+                  <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse" style={{ animationDelay: "0.2s" }} />
+                  <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse" style={{ animationDelay: "0.4s" }} />
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="p-2 border-t border-gray-800/60 flex gap-2 shrink-0">
+          <input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
+            placeholder={selected ? "시킬 일 입력" : "에이전트 선택 필요"}
+            disabled={!selected}
+            className="flex-1 h-9 rounded-md border border-gray-700 bg-gray-900/60 px-3 text-sm text-gray-100 placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-400/50 disabled:opacity-40"
+          />
+          <Button onClick={send} disabled={!input.trim() || !selected || sending} size="sm">
+            <Send className="w-3.5 h-3.5" />
+          </Button>
+        </div>
+      </aside>
+
+      {/* 채팅 닫혔을 때 열기 핸들 */}
+      {!chatOpen && (
+        <button
+          onClick={() => setChatOpen(true)}
+          className="absolute right-0 top-1/2 -translate-y-1/2 h-24 w-6 rounded-l-lg bg-gray-900/90 border-l border-y border-gray-800/80 flex items-center justify-center text-gray-400 hover:text-blue-200 hover:border-blue-400/40 transition-all z-20"
+          title="채팅 펴기"
+        >
+          <ChevronLeft className="w-4 h-4" />
+        </button>
+      )}
 
       {/* 모달들 */}
       <Modal open={modalKey === "agents"} onClose={() => setModalKey(null)} title="에이전트 목록" subtitle={`${agents.length}명 등록`}>
@@ -319,38 +320,49 @@ export default function HubPage() {
   );
 }
 
-function FloatBtn({ label, icon: Icon, onClick, badge, active }: {
-  label: string; icon: React.ComponentType<{ className?: string }>; onClick: () => void; badge?: number; active?: boolean;
+function SideItem({ collapsed, icon: Icon, label, onClick, badge, active }: {
+  collapsed: boolean;
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  onClick: () => void;
+  badge?: number;
+  active?: boolean;
 }) {
   return (
     <button
       onClick={onClick}
-      className={`group flex items-center gap-2 px-3 h-10 rounded-lg border text-[12px] backdrop-blur transition-all ${
+      title={collapsed ? label : undefined}
+      className={`w-full flex items-center gap-3 px-2 py-2 rounded-md text-[13px] transition-colors ${
         active
-          ? "border-blue-400/60 bg-blue-500/20 text-blue-200"
-          : "border-gray-800/80 bg-gray-900/80 text-gray-300 hover:text-blue-200 hover:border-blue-400/40"
+          ? "bg-blue-500/15 text-blue-200"
+          : "text-gray-300 hover:bg-gray-800/50 hover:text-blue-200"
       }`}
     >
-      <Icon className="w-4 h-4" />
-      <span className="font-bold">{label}</span>
-      {badge != null && badge > 0 && (
-        <Badge variant="default" className="ml-1">{badge}</Badge>
+      <Icon className="w-4 h-4 shrink-0" />
+      {!collapsed && (
+        <>
+          <span className="flex-1 text-left truncate">{label}</span>
+          {badge != null && badge > 0 && <Badge variant="secondary">{badge}</Badge>}
+        </>
       )}
     </button>
   );
 }
 
-function MenuItem({ icon: Icon, label, onClick, badge }: {
-  icon: React.ComponentType<{ className?: string }>; label: string; onClick: () => void; badge?: number;
+function QuickBtn({ icon: Icon, label, onClick, badge }: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  onClick: () => void;
+  badge?: number;
 }) {
   return (
     <button
       onClick={onClick}
-      className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-[13px] text-gray-300 hover:bg-gray-800/50 hover:text-blue-200 transition-colors"
+      className="flex items-center gap-1.5 px-3 h-8 rounded-md text-[12px] text-gray-400 hover:text-blue-200 hover:bg-gray-800/40 transition-colors"
     >
-      <Icon className="w-4 h-4" />
-      <span className="flex-1 text-left">{label}</span>
-      {badge != null && badge > 0 && <Badge variant="secondary">{badge}</Badge>}
+      <Icon className="w-3.5 h-3.5" />
+      <span>{label}</span>
+      {badge != null && badge > 0 && <Badge variant="default">{badge}</Badge>}
     </button>
   );
 }
@@ -422,8 +434,8 @@ function NewAgentBody({ onDone }: { onDone: () => void }) {
       <input value={role} onChange={(e) => setRole(e.target.value)} placeholder="역할 (예: UI/UX · 에셋)" required className="w-full h-9 rounded-md border border-gray-700 bg-gray-900/60 px-3 text-sm text-gray-100 placeholder:text-gray-500" />
       <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="설명 (짧게)" className="w-full h-9 rounded-md border border-gray-700 bg-gray-900/60 px-3 text-sm text-gray-100 placeholder:text-gray-500" />
       <div className="grid grid-cols-2 gap-2">
-        <input value={workingDirectory} onChange={(e) => setWorkingDirectory(e.target.value)} placeholder="작업 디렉토리 (옵션)" className="h-9 rounded-md border border-gray-700 bg-gray-900/60 px-3 text-sm text-gray-100 placeholder:text-gray-500" />
-        <input value={githubRepo} onChange={(e) => setGithubRepo(e.target.value)} placeholder="owner/repo (옵션)" className="h-9 rounded-md border border-gray-700 bg-gray-900/60 px-3 text-sm text-gray-100 placeholder:text-gray-500" />
+        <input value={workingDirectory} onChange={(e) => setWorkingDirectory(e.target.value)} placeholder="작업 디렉토리" className="h-9 rounded-md border border-gray-700 bg-gray-900/60 px-3 text-sm text-gray-100 placeholder:text-gray-500" />
+        <input value={githubRepo} onChange={(e) => setGithubRepo(e.target.value)} placeholder="owner/repo" className="h-9 rounded-md border border-gray-700 bg-gray-900/60 px-3 text-sm text-gray-100 placeholder:text-gray-500" />
       </div>
       <div>
         <label className="text-[12px] text-gray-400">시스템 프롬프트 (MD)</label>
