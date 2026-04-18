@@ -12,3 +12,5 @@ server/team_positions.json
 server/floor_layout.json
 teammaker-classic/public/assets/
 server/skills.bak-*
+doogeun-hq/node_modules/
+doogeun-hq/.next/

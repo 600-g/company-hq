@@ -1,0 +1,51 @@
+@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css');
+@import "tailwindcss";
+
+:root {
+  /* 다크 베이스 */
+  --background: #0b0b14;
+  --foreground: #e5e7eb;
+
+  /* 팀메이커 스타일 채팅 토큰 */
+  --chat-user-bg: rgba(251, 191, 36, 0.10);
+  --chat-user-border: rgba(251, 191, 36, 0.30);
+  --chat-user-text: #fde68a;
+  --chat-ai-bg: rgba(30, 41, 59, 0.55);
+  --chat-ai-border: rgba(71, 85, 105, 0.45);
+  --chat-ai-text: #e5e7eb;
+  --chat-system-bg: rgba(56, 189, 248, 0.10);
+  --chat-system-border: rgba(56, 189, 248, 0.30);
+  --chat-system-text: #bae6fd;
+
+  --muted: #6b7280;
+  --radius: 12px;
+
+  --font-main: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'SF Mono', ui-monospace, monospace;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-main);
+  --font-mono: var(--font-mono);
+}
+
+html, body {
+  height: 100%;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-main);
+  font-weight: 400;
+  font-feature-settings: "ss01", "kern" 1, "liga" 1, "calt" 1;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  letter-spacing: -0.005em;
+}
+
+button {
+  font-family: inherit;
+}
