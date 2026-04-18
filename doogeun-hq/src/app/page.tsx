@@ -3,7 +3,7 @@
 import Link from "next/link";
 
 /**
- * 두근컴퍼니 HQ — 새판 홈.
+ * 두근컴퍼니 · 새판 홈.
  * 뼈대 재사용 X. 완전 새 Next.js 프로젝트. 코드 참조는 teammaker-classic + company-hq/ui.
  *
  * 라우트 (예정):
@@ -19,7 +19,7 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)] flex flex-col items-center justify-center gap-8 p-8">
       <div className="text-center">
-        <h1 className="text-4xl font-bold text-sky-300 tracking-tight">두근컴퍼니 HQ</h1>
+        <h1 className="text-4xl font-bold text-sky-300 tracking-tight">두근컴퍼니</h1>
         <p className="text-sm text-[var(--muted)] mt-3">
           새판 빌드 · BUILDING
         </p>
@@ -67,7 +67,7 @@ export default function Home() {
             <div className="text-2xl">✨ 신규</div>
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-500/25 text-gray-200 font-bold">BUILDING</span>
           </div>
-          <div className="text-xs text-gray-200/90 mb-1">두근컴퍼니 HQ — 새판</div>
+          <div className="text-xs text-gray-200/90 mb-1">두근컴퍼니 · 새판</div>
           <div className="text-[11px] text-blue-100/70 mt-2 leading-relaxed">
             설정 · 로그인 · 버그리포트 · 사진업로드 · 에이전트 MD · 서버실 · 층 · 알림 · i18n · 캐시버스팅
           </div>

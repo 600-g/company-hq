@@ -38,7 +38,7 @@ export default function BugsPage() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <TopBar title="두근컴퍼니 HQ — 버그 리포트" />
+      <TopBar title="두근컴퍼니 · 버그 리포트" />
       <main className="flex-1 p-6 max-w-4xl w-full mx-auto">
         <Card>
           <CardHeader className="flex-row items-start justify-between">

@@ -12,7 +12,7 @@ interface Props {
   title?: string;
 }
 
-export default function TopBar({ title = "두근컴퍼니 HQ" }: Props) {
+export default function TopBar({ title = "두근컴퍼니" }: Props) {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);

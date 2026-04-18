@@ -14,7 +14,6 @@ import { apiBase } from "@/lib/utils";
 import {
   X, Users, Bug, Cpu, Settings, LogOut, Send,
   MessagesSquare, Plus, Home as HomeIcon, RefreshCw, ChevronRight, ChevronLeft,
-  Sun, Moon,
 } from "lucide-react";
 import { useThemeStore } from "@/stores/themeStore";
 import AgentCreate from "@/components/AgentCreate";
@@ -46,8 +45,11 @@ export default function HubPage() {
   const [floor, setFloor] = useState(1);
   const [modalKey, setModalKey] = useState<ModalKey>(null);
 
+  // 테마 저장된 값 HTML 속성에 반영 (persist hydrate 이후)
   const theme = useThemeStore((s) => s.theme);
-  const toggleTheme = useThemeStore((s) => s.toggle);
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+  }, [theme]);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [messages, setMessages] = useState<HubMsg[]>([]);
   const [input, setInput] = useState("");
@@ -105,7 +107,7 @@ export default function HubPage() {
           {!sideCollapsed && (
             <Link href="/" className="flex items-center gap-1.5 text-[13px] font-bold text-sky-300 hover:text-gray-200">
               <HomeIcon className="w-3.5 h-3.5" />
-              <span className="truncate">두근컴퍼니 HQ</span>
+              <span className="truncate">두근컴퍼니</span>
             </Link>
           )}
           <button
@@ -121,7 +123,7 @@ export default function HubPage() {
           <SideItem collapsed={sideCollapsed} icon={Users} label="에이전트" badge={agents.length} onClick={() => setModalKey("agents")} />
           <SideItem collapsed={sideCollapsed} icon={Cpu} label="서버실" onClick={() => setModalKey("server")} />
           <SideItem collapsed={sideCollapsed} icon={Bug} label="버그 리포트" onClick={() => setModalKey("bugs")} />
-          <SideItem collapsed={sideCollapsed} icon={Settings} label="설정" onClick={() => setModalKey("settings")} />
+          <SideItem collapsed={sideCollapsed} icon={Settings} label="설정" onClick={() => router.push("/settings")} />
           <div className="h-px bg-gray-800/60 my-2" />
           <SideItem collapsed={sideCollapsed} icon={RefreshCw} label="강제 새로고침" onClick={() => {
             const keep = ["doogeun-hq-auth", "doogeun-hq-settings", "doogeun-hq-agents"];
@@ -130,12 +132,6 @@ export default function HubPage() {
             Object.keys(localStorage).forEach((k) => { if (!(k in keepMap)) localStorage.removeItem(k); });
             location.reload();
           }} />
-          <SideItem
-            collapsed={sideCollapsed}
-            icon={theme === "dark" ? Sun : Moon}
-            label={theme === "dark" ? "라이트 모드" : "다크 모드"}
-            onClick={toggleTheme}
-          />
           <SideItem
             collapsed={sideCollapsed}
             icon={LogOut}
@@ -310,14 +306,6 @@ export default function HubPage() {
       </Modal>
       <Modal open={modalKey === "bugs"} onClose={() => setModalKey(null)} title="버그 리포트" subtitle="이슈 리스트 / 리포트 작성" widthClass="max-w-2xl">
         <BugsBody />
-      </Modal>
-      <Modal open={modalKey === "settings"} onClose={() => setModalKey(null)} title="설정" subtitle="/settings 페이지로 이동">
-        <div className="p-5 space-y-3">
-          <p className="text-[13px] text-gray-400">API 키, 모델, 토큰, 자동화 옵션은 설정 페이지에서 관리합니다.</p>
-          <Button onClick={() => { setModalKey(null); router.push("/settings"); }}>
-            설정 페이지 열기 <ChevronRight className="w-3.5 h-3.5" />
-          </Button>
-        </div>
       </Modal>
     </div>
   );

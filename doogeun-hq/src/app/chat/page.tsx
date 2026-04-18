@@ -85,7 +85,7 @@ export default function ChatPage() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <TopBar title="두근컴퍼니 HQ — 채팅" />
+      <TopBar title="두근컴퍼니 · 채팅" />
       <main className="flex-1 flex gap-4 p-6 max-w-6xl w-full mx-auto">
         {/* 에이전트 사이드바 */}
         <Card className="w-64 shrink-0">

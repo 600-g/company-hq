@@ -39,7 +39,7 @@ export default function ServerPage() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <TopBar title="두근컴퍼니 HQ — 서버실" />
+      <TopBar title="두근컴퍼니 · 서버실" />
       <main className="flex-1 p-6 max-w-4xl w-full mx-auto">
         <Card>
           <CardHeader>

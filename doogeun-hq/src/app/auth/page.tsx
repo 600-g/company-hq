@@ -55,7 +55,7 @@ export default function AuthPage() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <TopBar title="두근컴퍼니 HQ — 로그인" />
+      <TopBar title="두근컴퍼니 · 로그인" />
       <main className="flex-1 flex items-center justify-center p-6">
         <Card className="w-full max-w-md">
           <CardHeader>

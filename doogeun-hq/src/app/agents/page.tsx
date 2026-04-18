@@ -17,7 +17,7 @@ export default function AgentsPage() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <TopBar title="두근컴퍼니 HQ — 에이전트" />
+      <TopBar title="두근컴퍼니 · 에이전트" />
       <main className="flex-1 p-6 max-w-5xl w-full mx-auto">
         <Card>
           <CardHeader className="flex-row items-center justify-between">

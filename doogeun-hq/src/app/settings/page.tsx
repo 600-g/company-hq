@@ -6,8 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Zap, Brain, Sparkles, Trash2, Check } from "lucide-react";
+import { Zap, Brain, Sparkles, Trash2, Check, Sun, Moon } from "lucide-react";
 import { useSettingsStore, type ClaudeModel } from "@/stores/settingsStore";
+import { useThemeStore } from "@/stores/themeStore";
 
 const MODELS: { id: ClaudeModel; name: string; desc: string; icon: typeof Zap }[] = [
   { id: "haiku",  name: "Haiku",  desc: "빠르고 저렴. 간단한 분류/답변.",              icon: Zap },
@@ -29,6 +30,9 @@ export default function SettingsPage() {
     tokens, setToken, clearToken,
     testMode, setTestMode,
   } = useSettingsStore();
+
+  const theme = useThemeStore((s) => s.theme);
+  const setTheme = useThemeStore((s) => s.setTheme);
 
   const [apiInput, setApiInput] = useState("");
   const [tokenInputs, setTokenInputs] = useState<Record<string, string>>({});
@@ -56,8 +60,50 @@ export default function SettingsPage() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <TopBar title="두근컴퍼니 HQ — 설정" />
+      <TopBar title="두근컴퍼니 · 설정" />
       <main className="flex-1 p-6 max-w-3xl w-full mx-auto space-y-4">
+        {/* 테마 */}
+        <Card>
+          <CardHeader>
+            <CardTitle>테마</CardTitle>
+            <CardDescription>다크 / 라이트 선택. 하단 캐릭 전체에 즉시 반영.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => setTheme("dark")}
+                className={`p-3 rounded-lg border text-left transition-all ${
+                  theme === "dark"
+                    ? "border-sky-400/50 bg-sky-500/10"
+                    : "border-gray-700/60 bg-gray-800/20 hover:bg-gray-700/30"
+                }`}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <Moon className="w-4 h-4 text-sky-300" />
+                  <span className="font-bold text-[13px]">다크</span>
+                  {theme === "dark" && <Check className="w-3 h-3 text-green-400 ml-auto" />}
+                </div>
+                <div className="text-[11px] text-gray-400">어두운 배경, 밝은 글씨</div>
+              </button>
+              <button
+                onClick={() => setTheme("light")}
+                className={`p-3 rounded-lg border text-left transition-all ${
+                  theme === "light"
+                    ? "border-sky-400/50 bg-sky-500/10"
+                    : "border-gray-700/60 bg-gray-800/20 hover:bg-gray-700/30"
+                }`}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <Sun className="w-4 h-4 text-sky-300" />
+                  <span className="font-bold text-[13px]">라이트</span>
+                  {theme === "light" && <Check className="w-3 h-3 text-green-400 ml-auto" />}
+                </div>
+                <div className="text-[11px] text-gray-400">흰 배경 + 딥블루 액센트</div>
+              </button>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* API 키 */}
         <Card>
           <CardHeader>

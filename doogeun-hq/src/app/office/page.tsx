@@ -71,7 +71,7 @@ export default function OfficePage() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <TopBar title="두근컴퍼니 HQ — 오피스" />
+      <TopBar title="두근컴퍼니 · 오피스" />
       <main className="flex-1 p-6 max-w-6xl w-full mx-auto space-y-4">
         <Card>
           <CardHeader className="flex-row items-center justify-between gap-4">
