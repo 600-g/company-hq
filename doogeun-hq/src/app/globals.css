@@ -1,41 +1,69 @@
 @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css');
 @import "tailwindcss";
 
-:root {
-  /* 다크 베이스 — 검정에 딥블루 대비 */
+/* ── 다크 (기본) ─────────────────────────────────────── */
+:root, [data-theme="dark"] {
   --background: #060a14;
   --foreground: #e5e7eb;
 
-  /* 액센트 — 딥블루 / 스카이블루 */
-  --accent: #60a5fa;              /* blue-400 */
-  --accent-hover: #93c5fd;        /* blue-300 */
-  --accent-bg: rgba(96, 165, 250, 0.10);
-  --accent-border: rgba(96, 165, 250, 0.40);
-  --accent-glow: rgba(59, 130, 246, 0.25);
+  --surface-1: rgb(17 24 39 / 0.6);    /* gray-900/60 — 카드 배경 */
+  --surface-2: rgb(31 41 55 / 0.5);    /* gray-800/50 */
+  --border-1: rgb(31 41 55 / 0.6);
+  --border-2: rgb(55 65 81);           /* gray-700 */
 
-  /* 채팅 말풍선 — 사용자 블루 / AI 슬레이트 */
-  --chat-user-bg: rgba(59, 130, 246, 0.14);
-  --chat-user-border: rgba(96, 165, 250, 0.38);
-  --chat-user-text: #bfdbfe;
+  --muted: #6b7280;
+  --text-primary: #e5e7eb;
+  --text-secondary: #9ca3af;
+  --text-accent: #7dd3fc;              /* sky-300 — 하이라이트 */
+
+  --accent: #0284c7;                    /* sky-600 — 버튼 기본 */
+  --accent-hover: #0ea5e9;               /* sky-500 */
+  --accent-bg: rgba(14, 165, 233, 0.12);
+  --accent-border: rgba(56, 189, 248, 0.30);
+
+  --chat-user-bg: rgba(56, 189, 248, 0.12);
+  --chat-user-border: rgba(125, 211, 252, 0.30);
+  --chat-user-text: #e0f2fe;
   --chat-ai-bg: rgba(30, 41, 59, 0.55);
   --chat-ai-border: rgba(71, 85, 105, 0.45);
   --chat-ai-text: #e5e7eb;
-  --chat-system-bg: rgba(56, 189, 248, 0.10);
-  --chat-system-border: rgba(56, 189, 248, 0.30);
-  --chat-system-text: #bae6fd;
 
-  --muted: #6b7280;
   --radius: 12px;
-
   --font-main: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', 'Fira Code', 'SF Mono', ui-monospace, monospace;
+}
+
+/* ── 라이트 (화이트 + 딥블루) ──────────────────────────── */
+[data-theme="light"] {
+  --background: #f8fafc;
+  --foreground: #0f172a;
+
+  --surface-1: #ffffff;
+  --surface-2: #f1f5f9;
+  --border-1: #e2e8f0;
+  --border-2: #cbd5e1;
+
+  --muted: #64748b;
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-accent: #1e40af;               /* 딥블루 */
+
+  --accent: #1e3a8a;                     /* 더 진한 딥블루 */
+  --accent-hover: #1e40af;
+  --accent-bg: rgba(30, 64, 175, 0.08);
+  --accent-border: rgba(30, 64, 175, 0.35);
+
+  --chat-user-bg: rgba(30, 64, 175, 0.08);
+  --chat-user-border: rgba(30, 64, 175, 0.35);
+  --chat-user-text: #1e3a8a;
+  --chat-ai-bg: #f1f5f9;
+  --chat-ai-border: #cbd5e1;
+  --chat-ai-text: #0f172a;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-main);
-  --font-mono: var(--font-mono);
 }
 
 html, body {
@@ -51,6 +79,71 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   letter-spacing: -0.005em;
+  transition: background 0.2s, color 0.2s;
+}
+
+/* 라이트 모드에서 gray-* 다크 배경 자동 완화 */
+[data-theme="light"] .bg-gray-800\/20,
+[data-theme="light"] .bg-gray-800\/30,
+[data-theme="light"] .bg-gray-800\/40,
+[data-theme="light"] .bg-gray-800\/50 {
+  background-color: #f1f5f9;
+}
+[data-theme="light"] .bg-gray-900\/20,
+[data-theme="light"] .bg-gray-900\/30,
+[data-theme="light"] .bg-gray-900\/40,
+[data-theme="light"] .bg-gray-900\/60 {
+  background-color: #ffffff;
+}
+[data-theme="light"] .bg-gray-900\/98,
+[data-theme="light"] .bg-\[\#0b0b14\],
+[data-theme="light"] .bg-\[\#0b0b14\]\/95,
+[data-theme="light"] .bg-\[\#0b0b14\]\/98 {
+  background-color: #ffffff;
+}
+[data-theme="light"] .bg-\[\#06060e\] {
+  background-color: #e2e8f0;
+}
+[data-theme="light"] .border-gray-800,
+[data-theme="light"] .border-gray-800\/60,
+[data-theme="light"] .border-gray-800\/70,
+[data-theme="light"] .border-gray-800\/80 {
+  border-color: #e2e8f0;
+}
+[data-theme="light"] .border-gray-700 {
+  border-color: #cbd5e1;
+}
+[data-theme="light"] .text-gray-100,
+[data-theme="light"] .text-gray-200 {
+  color: #0f172a;
+}
+[data-theme="light"] .text-gray-300 {
+  color: #1e293b;
+}
+[data-theme="light"] .text-gray-400 {
+  color: #475569;
+}
+[data-theme="light"] .text-gray-500 {
+  color: #64748b;
+}
+[data-theme="light"] .text-gray-600 {
+  color: #94a3b8;
+}
+[data-theme="light"] .text-gray-700 {
+  color: #cbd5e1;
+}
+[data-theme="light"] .text-sky-300,
+[data-theme="light"] .text-sky-200 {
+  color: #1e40af;
+}
+[data-theme="light"] .border-sky-400\/30,
+[data-theme="light"] .border-sky-400\/40,
+[data-theme="light"] .border-sky-400\/50 {
+  border-color: rgba(30, 64, 175, 0.40);
+}
+[data-theme="light"] .bg-sky-500\/10,
+[data-theme="light"] .bg-sky-500\/15 {
+  background-color: rgba(30, 64, 175, 0.08);
 }
 
 button {

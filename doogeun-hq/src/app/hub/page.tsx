@@ -14,7 +14,10 @@ import { apiBase } from "@/lib/utils";
 import {
   X, Users, Bug, Cpu, Settings, LogOut, Send,
   MessagesSquare, Plus, Home as HomeIcon, RefreshCw, ChevronRight, ChevronLeft,
+  Sun, Moon,
 } from "lucide-react";
+import { useThemeStore } from "@/stores/themeStore";
+import AgentCreate from "@/components/AgentCreate";
 
 const HubOffice = dynamic(() => import("@/components/HubOffice"), { ssr: false });
 
@@ -43,10 +46,13 @@ export default function HubPage() {
   const [floor, setFloor] = useState(1);
   const [modalKey, setModalKey] = useState<ModalKey>(null);
 
+  const theme = useThemeStore((s) => s.theme);
+  const toggleTheme = useThemeStore((s) => s.toggle);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [messages, setMessages] = useState<HubMsg[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  const [composing, setComposing] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const selected = agents.find((a) => a.id === selectedAgentId) ?? null;
 
@@ -97,7 +103,7 @@ export default function HubPage() {
       >
         <div className="h-12 flex items-center justify-between border-b border-gray-800/60 px-3 shrink-0">
           {!sideCollapsed && (
-            <Link href="/" className="flex items-center gap-1.5 text-[13px] font-bold text-blue-300 hover:text-blue-200">
+            <Link href="/" className="flex items-center gap-1.5 text-[13px] font-bold text-sky-300 hover:text-gray-200">
               <HomeIcon className="w-3.5 h-3.5" />
               <span className="truncate">두근컴퍼니 HQ</span>
             </Link>
@@ -113,17 +119,9 @@ export default function HubPage() {
 
         <nav className="flex-1 p-2 space-y-1 overflow-y-auto">
           <SideItem collapsed={sideCollapsed} icon={Users} label="에이전트" badge={agents.length} onClick={() => setModalKey("agents")} />
-          <SideItem collapsed={sideCollapsed} icon={Plus} label="새 에이전트" onClick={() => setModalKey("newAgent")} />
           <SideItem collapsed={sideCollapsed} icon={Cpu} label="서버실" onClick={() => setModalKey("server")} />
           <SideItem collapsed={sideCollapsed} icon={Bug} label="버그 리포트" onClick={() => setModalKey("bugs")} />
           <SideItem collapsed={sideCollapsed} icon={Settings} label="설정" onClick={() => setModalKey("settings")} />
-          <SideItem
-            collapsed={sideCollapsed}
-            icon={MessagesSquare}
-            label={chatOpen ? "채팅 접기" : "채팅 펴기"}
-            onClick={() => setChatOpen((v) => !v)}
-            active={chatOpen}
-          />
           <div className="h-px bg-gray-800/60 my-2" />
           <SideItem collapsed={sideCollapsed} icon={RefreshCw} label="강제 새로고침" onClick={() => {
             const keep = ["doogeun-hq-auth", "doogeun-hq-settings", "doogeun-hq-agents"];
@@ -132,6 +130,12 @@ export default function HubPage() {
             Object.keys(localStorage).forEach((k) => { if (!(k in keepMap)) localStorage.removeItem(k); });
             location.reload();
           }} />
+          <SideItem
+            collapsed={sideCollapsed}
+            icon={theme === "dark" ? Sun : Moon}
+            label={theme === "dark" ? "라이트 모드" : "다크 모드"}
+            onClick={toggleTheme}
+          />
           <SideItem
             collapsed={sideCollapsed}
             icon={LogOut}
@@ -160,7 +164,7 @@ export default function HubPage() {
                 onClick={() => setFloor(f)}
                 className={`h-7 w-7 flex items-center justify-center rounded text-[11px] font-bold transition-all ${
                   floor === f
-                    ? "bg-blue-500/20 text-blue-200 border border-blue-400/50"
+                    ? "bg-sky-500/15 text-gray-200 border border-sky-400/40"
                     : "border border-gray-800 text-gray-500 hover:text-gray-200 hover:border-gray-600"
                 }`}
               >
@@ -170,11 +174,11 @@ export default function HubPage() {
           </div>
         </div>
 
-        {/* 오피스 캔버스 — 중앙 일부 */}
-        <div className="flex-1 flex items-center justify-center p-6 overflow-hidden relative">
+        {/* 오피스 캔버스 — 중앙, 세로 여유 확대 */}
+        <div className="flex-1 flex items-center justify-center p-4 overflow-hidden relative">
           <div
             className="relative rounded-xl border border-gray-800/60 bg-[#06060e] overflow-hidden shadow-2xl"
-            style={{ width: "min(100%, 900px)", aspectRatio: "16/9" }}
+            style={{ width: "min(100%, 1100px)", height: "min(100%, 720px)", aspectRatio: "16/10" }}
           >
             <HubOffice floor={floor} agentCount={agents.length} />
             {/* 엠비언트 틴트 — 캔버스 내부만 */}
@@ -185,13 +189,6 @@ export default function HubPage() {
           </div>
         </div>
 
-        {/* 하단 빠른 액션 바 */}
-        <div className="h-12 flex items-center justify-center gap-2 border-t border-gray-800/60 shrink-0 px-4">
-          <QuickBtn icon={Users} label="에이전트" badge={agents.length} onClick={() => setModalKey("agents")} />
-          <QuickBtn icon={Cpu} label="서버실" onClick={() => setModalKey("server")} />
-          <QuickBtn icon={Bug} label="버그" onClick={() => setModalKey("bugs")} />
-          <QuickBtn icon={Settings} label="설정" onClick={() => setModalKey("settings")} />
-        </div>
       </main>
 
       {/* 우측 채팅 패널 — collapsible */}
@@ -202,7 +199,7 @@ export default function HubPage() {
       >
         <div className="h-12 flex items-center justify-between px-3 border-b border-gray-800/60 shrink-0">
           <div className="flex items-center gap-2 min-w-0">
-            <MessagesSquare className="w-4 h-4 text-blue-300 shrink-0" />
+            <MessagesSquare className="w-4 h-4 text-sky-300 shrink-0" />
             <span className="text-[13px] font-bold text-gray-200 truncate">
               {selected ? `${selected.emoji} ${selected.name}` : "채팅"}
             </span>
@@ -264,10 +261,16 @@ export default function HubPage() {
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
+            onCompositionStart={() => setComposing(true)}
+            onCompositionEnd={() => setComposing(false)}
+            onKeyDown={(e) => {
+              // 한글 IME 조합 중 엔터 무시 (중복 전송 방지)
+              if (composing || e.nativeEvent.isComposing || e.keyCode === 229) return;
+              if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+            }}
             placeholder={selected ? "시킬 일 입력" : "에이전트 선택 필요"}
             disabled={!selected}
-            className="flex-1 h-9 rounded-md border border-gray-700 bg-gray-900/60 px-3 text-sm text-gray-100 placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-400/50 disabled:opacity-40"
+            className="flex-1 h-9 rounded-md border border-gray-700 bg-gray-900/60 px-3 text-sm text-gray-100 placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-sky-400/40 disabled:opacity-40"
           />
           <Button onClick={send} disabled={!input.trim() || !selected || sending} size="sm">
             <Send className="w-3.5 h-3.5" />
@@ -279,7 +282,7 @@ export default function HubPage() {
       {!chatOpen && (
         <button
           onClick={() => setChatOpen(true)}
-          className="absolute right-0 top-1/2 -translate-y-1/2 h-24 w-6 rounded-l-lg bg-gray-900/90 border-l border-y border-gray-800/80 flex items-center justify-center text-gray-400 hover:text-blue-200 hover:border-blue-400/40 transition-all z-20"
+          className="absolute right-0 top-1/2 -translate-y-1/2 h-24 w-6 rounded-l-lg bg-gray-900/90 border-l border-y border-gray-800/80 flex items-center justify-center text-gray-400 hover:text-gray-200 hover:border-sky-400/30 transition-all z-20"
           title="채팅 펴기"
         >
           <ChevronLeft className="w-4 h-4" />
@@ -299,8 +302,8 @@ export default function HubPage() {
           }}
         />
       </Modal>
-      <Modal open={modalKey === "newAgent"} onClose={() => setModalKey(null)} title="에이전트 추가" subtitle="이름/역할/MD 프롬프트" widthClass="max-w-2xl">
-        <NewAgentBody onDone={() => setModalKey("agents")} />
+      <Modal open={modalKey === "newAgent"} onClose={() => setModalKey(null)} title="에이전트 추가" subtitle="빠르게 (AI 초안) / 고도화 프로젝트" widthClass="max-w-2xl">
+        <AgentCreate onDone={() => setModalKey("agents")} />
       </Modal>
       <Modal open={modalKey === "server"} onClose={() => setModalKey(null)} title="서버실" subtitle="실시간 상태 (3초 폴링)">
         <ServerBody />
@@ -334,8 +337,8 @@ function SideItem({ collapsed, icon: Icon, label, onClick, badge, active }: {
       title={collapsed ? label : undefined}
       className={`w-full flex items-center gap-3 px-2 py-2 rounded-md text-[13px] transition-colors ${
         active
-          ? "bg-blue-500/15 text-blue-200"
-          : "text-gray-300 hover:bg-gray-800/50 hover:text-blue-200"
+          ? "bg-sky-500/10 text-gray-200"
+          : "text-gray-300 hover:bg-gray-800/50 hover:text-gray-200"
       }`}
     >
       <Icon className="w-4 h-4 shrink-0" />
@@ -349,25 +352,9 @@ function SideItem({ collapsed, icon: Icon, label, onClick, badge, active }: {
   );
 }
 
-function QuickBtn({ icon: Icon, label, onClick, badge }: {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  onClick: () => void;
-  badge?: number;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className="flex items-center gap-1.5 px-3 h-8 rounded-md text-[12px] text-gray-400 hover:text-blue-200 hover:bg-gray-800/40 transition-colors"
-    >
-      <Icon className="w-3.5 h-3.5" />
-      <span>{label}</span>
-      {badge != null && badge > 0 && <Badge variant="default">{badge}</Badge>}
-    </button>
-  );
-}
 
 function AgentsModalBody({ agents, onNew, onSelect }: { agents: Agent[]; onNew: () => void; onSelect: (a: Agent) => void }) {
+  const removeAgent = useAgentStore((s) => s.removeAgent);
   return (
     <div className="p-5">
       <div className="flex justify-end mb-3">
@@ -380,22 +367,31 @@ function AgentsModalBody({ agents, onNew, onSelect }: { agents: Agent[]; onNew: 
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
           {agents.map((a) => (
-            <button
+            <div
               key={a.id}
-              onClick={() => onSelect(a)}
-              className="p-3 rounded-lg border border-gray-800/60 bg-gray-900/30 hover:bg-gray-800/40 hover:border-blue-400/40 transition-all text-left"
+              className="group p-3 rounded-lg border border-gray-800/60 bg-gray-900/30 hover:bg-gray-800/40 hover:border-sky-400/30 transition-all"
             >
               <div className="flex items-start gap-2">
-                <div className="text-2xl">{a.emoji}</div>
-                <div className="flex-1 min-w-0">
+                <button onClick={() => onSelect(a)} className="text-2xl" title="채팅 열기">{a.emoji}</button>
+                <button onClick={() => onSelect(a)} className="flex-1 min-w-0 text-left">
                   <div className="text-[13px] text-gray-100 font-bold truncate">{a.name}</div>
                   <div className="text-[11px] text-gray-500 truncate">{a.role}</div>
-                </div>
+                </button>
                 <Badge variant={a.status === "working" ? "warning" : a.status === "error" ? "destructive" : "secondary"}>
                   {a.status}
                 </Badge>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (window.confirm(`"${a.name}" 에이전트를 삭제할까요?`)) removeAgent(a.id);
+                  }}
+                  className="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-red-400 transition-opacity shrink-0"
+                  title="삭제"
+                >
+                  <X className="w-4 h-4" />
+                </button>
               </div>
-            </button>
+            </div>
           ))}
         </div>
       )}
@@ -444,7 +440,7 @@ function NewAgentBody({ onDone }: { onDone: () => void }) {
           onChange={(e) => setSystemPromptMd(e.target.value)}
           rows={6}
           placeholder="# 디자인팀&#10;&#10;## 역할&#10;- ..."
-          className="w-full rounded-md border border-gray-700 bg-gray-900/60 px-3 py-2 text-sm text-gray-100 placeholder:text-gray-500 font-mono focus:outline-none focus:ring-1 focus:ring-blue-400/50"
+          className="w-full rounded-md border border-gray-700 bg-gray-900/60 px-3 py-2 text-sm text-gray-100 placeholder:text-gray-500 font-mono focus:outline-none focus:ring-1 focus:ring-sky-400/40"
         />
       </div>
       <div className="flex justify-end">
@@ -490,7 +486,7 @@ function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className="p-3 rounded-lg border border-gray-800/60 bg-gray-900/40">
       <div className="text-[10px] text-gray-500 uppercase font-bold">{label}</div>
-      <div className="text-lg font-bold text-blue-200">{value}</div>
+      <div className="text-lg font-bold text-gray-200">{value}</div>
     </div>
   );
 }
@@ -533,7 +529,7 @@ function BugsBody() {
           onChange={(e) => setNote(e.target.value)}
           rows={3}
           placeholder="무슨 일이 있었는지 간단히..."
-          className="w-full rounded-md border border-gray-700 bg-gray-900/60 px-3 py-2 text-sm text-gray-100 placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-400/50"
+          className="w-full rounded-md border border-gray-700 bg-gray-900/60 px-3 py-2 text-sm text-gray-100 placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-sky-400/40"
         />
         <div className="flex justify-end mt-2">
           <Button size="sm" onClick={submit} disabled={!note.trim() || sending}>

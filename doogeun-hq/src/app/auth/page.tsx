@@ -69,7 +69,7 @@ export default function AuthPage() {
               <button
                 onClick={() => setMode("code")}
                 className={`flex-1 text-[12px] py-1.5 rounded transition-colors ${
-                  mode === "code" ? "bg-blue-400/20 text-blue-300 font-bold" : "text-gray-400 hover:text-gray-200"
+                  mode === "code" ? "bg-sky-400/15 text-sky-300 font-bold" : "text-gray-400 hover:text-gray-200"
                 }`}
               >
                 초대 코드
@@ -77,7 +77,7 @@ export default function AuthPage() {
               <button
                 onClick={() => setMode("owner")}
                 className={`flex-1 text-[12px] py-1.5 rounded transition-colors ${
-                  mode === "owner" ? "bg-blue-400/20 text-blue-300 font-bold" : "text-gray-400 hover:text-gray-200"
+                  mode === "owner" ? "bg-sky-400/15 text-sky-300 font-bold" : "text-gray-400 hover:text-gray-200"
                 }`}
               >
                 오너

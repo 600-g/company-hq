@@ -30,7 +30,7 @@ export default function Modal({ open, onClose, title, subtitle, children, widthC
         {(title || subtitle) && (
           <div className="flex items-start justify-between gap-2 p-4 border-b border-gray-800/60 shrink-0">
             <div>
-              {title && <div className="text-[14px] font-bold text-blue-300">{title}</div>}
+              {title && <div className="text-[14px] font-bold text-sky-300">{title}</div>}
               {subtitle && <div className="text-[12px] text-gray-500 mt-0.5">{subtitle}</div>}
             </div>
             <button onClick={onClose} className="text-gray-500 hover:text-gray-200 transition-colors">

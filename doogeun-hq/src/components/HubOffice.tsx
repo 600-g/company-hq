@@ -67,11 +67,18 @@ export default function HubOffice({ floor, agentCount }: Props) {
       }
 
       if (destroyed || !containerRef.current) return;
+      // Phaser 3.90+ 는 config.resolution 미지원. Scale 객체의 zoom 으로 고DPI.
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
       const game = new Phaser.Game({
         type: Phaser.AUTO, parent: containerRef.current,
-        width: 960, height: 420,
-        backgroundColor: "transparent", pixelArt: false, antialias: true,
-        scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
+        width: 1280, height: 800,              // 16/10 확대
+        backgroundColor: "transparent",
+        pixelArt: false, antialias: true,
+        scale: {
+          mode: Phaser.Scale.FIT,
+          autoCenter: Phaser.Scale.CENTER_BOTH,
+          zoom: dpr,
+        },
         scene: [OfficeScene],
       });
       gameRef.current = game;

@@ -6,7 +6,7 @@ export default function SetupPage() {
   return (
     <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)] flex flex-col items-center justify-center gap-6 p-8">
       <div className="text-center max-w-lg">
-        <h1 className="text-2xl font-bold text-blue-300">초기 설정</h1>
+        <h1 className="text-2xl font-bold text-sky-300">초기 설정</h1>
         <p className="text-sm text-[var(--muted)] mt-2">
           다음 세션에 API 키 / 모델 / 토큰 / 푸시 / 자동화 통합 설정이 들어옵니다.
         </p>
@@ -24,7 +24,7 @@ export default function SetupPage() {
         </ul>
       </div>
 
-      <Link href="/" className="text-[13px] text-gray-500 hover:text-blue-400">← 홈</Link>
+      <Link href="/" className="text-[13px] text-gray-500 hover:text-sky-400">← 홈</Link>
     </div>
   );
 }

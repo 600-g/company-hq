@@ -103,8 +103,36 @@ export const useWeatherStore = create<WeatherState>((set) => {
     city: "서울", hour, tod,
     skyTop: sky.top, skyBottom: sky.bottom, ambientTint: sky.ambient,
     fetch: async () => {
+      // 위치 얻기 — 브라우저 geolocation 시도, 실패/거부 시 서울 기본
+      let lat = 37.5665, lon = 126.978, cityLabel = "서울";
       try {
-        const r = await fetch("https://api.open-meteo.com/v1/forecast?latitude=37.5665&longitude=126.978&current=temperature_2m,weather_code&timezone=Asia%2FSeoul");
+        const cached = typeof window !== "undefined" ? localStorage.getItem("doogeun-hq-geo") : null;
+        if (cached) {
+          const c = JSON.parse(cached);
+          if (Number.isFinite(c.lat) && Number.isFinite(c.lon) && Date.now() - (c.ts || 0) < 24 * 60 * 60 * 1000) {
+            lat = c.lat; lon = c.lon; cityLabel = c.city || "현재 위치";
+          }
+        }
+        if (typeof navigator !== "undefined" && "geolocation" in navigator) {
+          const pos = await new Promise<GeolocationPosition | null>((resolve) => {
+            navigator.geolocation.getCurrentPosition(
+              (p) => resolve(p),
+              () => resolve(null),
+              { timeout: 5000, maximumAge: 60 * 60 * 1000 }
+            );
+          });
+          if (pos) {
+            lat = pos.coords.latitude;
+            lon = pos.coords.longitude;
+            cityLabel = "현재 위치";
+            try {
+              localStorage.setItem("doogeun-hq-geo", JSON.stringify({ lat, lon, city: cityLabel, ts: Date.now() }));
+            } catch {}
+          }
+        }
+      } catch {}
+      try {
+        const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code&timezone=auto`);
         const d = await r.json();
         const temp = d?.current?.temperature_2m ?? null;
         const code = d?.current?.weather_code ?? 0;
@@ -114,6 +142,7 @@ export const useWeatherStore = create<WeatherState>((set) => {
         const sky2 = computeSky(t, code);
         set({
           temp, code, label, iconName: icon, hour: h, tod: t,
+          city: cityLabel,
           skyTop: sky2.top, skyBottom: sky2.bottom, ambientTint: sky2.ambient,
         });
       } catch {}
@@ -137,7 +166,7 @@ export default function Weather({ compact = false }: { compact?: boolean }) {
   if (compact) {
     return (
       <div className="inline-flex items-center gap-1.5 text-[12px] text-gray-300">
-        <Icon className="w-3.5 h-3.5 text-blue-300" />
+        <Icon className="w-3.5 h-3.5 text-sky-300" />
         <span className="font-mono">{temp != null ? `${temp.toFixed(0)}°` : "-"}</span>
         <span className="text-gray-500">{label}</span>
         <span className="text-gray-600 text-[10px]">· {todLabel}</span>
@@ -147,7 +176,7 @@ export default function Weather({ compact = false }: { compact?: boolean }) {
 
   return (
     <div className="flex items-center gap-3 p-3 rounded-lg border border-gray-800/60 bg-gray-900/40">
-      <Icon className="w-8 h-8 text-blue-300" />
+      <Icon className="w-8 h-8 text-sky-300" />
       <div className="flex-1">
         <div className="text-[11px] text-gray-500">{city} · {String(hour).padStart(2, "0")}:00 · {todLabel}</div>
         <div className="flex items-baseline gap-2">
