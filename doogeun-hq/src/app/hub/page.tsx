@@ -64,7 +64,7 @@ interface HubMsg {
   images?: string[];  // data URLs (사용자 메시지 첨부)
 }
 
-type ModalKey = null | "agents" | "server" | "bugs" | "settings" | "newAgent" | "staff-stats";
+type ModalKey = null | "agents" | "server" | "bugs" | "settings" | "newAgent" | "staff-stats" | "lab";
 
 export default function HubPage() {
   const router = useRouter();
@@ -338,8 +338,7 @@ export default function HubPage() {
           />
           <WorkingAgentsStrip collapsed={sideCollapsed} onSelect={(id) => { setSelectedAgentId(id); setChatOpen(true); }} />
           <SideItem collapsed={sideCollapsed} icon={Cpu} label="서버실" onClick={() => setModalKey("server")} />
-          <SideItem collapsed={sideCollapsed} icon={Bug} label="디버그·버그" onClick={() => setShowDebug(true)} />
-          <SideItem collapsed={sideCollapsed} icon={TerminalIcon} label="터미널" onClick={() => setShowTerminal(true)} />
+          <SideItem collapsed={sideCollapsed} icon={Bug} label="연구소" onClick={() => setModalKey("lab")} />
           <SideItem collapsed={sideCollapsed} icon={Settings} label="설정" onClick={() => router.push("/settings")} />
           <div className="h-px bg-gray-800/60 my-2" />
           {/* Legacy 앱 (구 두근컴퍼니 / 팀메이커) 버튼 제거됨 — 장독대 대기 (도메인/터널 세팅 후 부활) */}
@@ -805,6 +804,13 @@ export default function HubPage() {
       <Modal open={modalKey === "bugs"} onClose={() => setModalKey(null)} title="버그 리포트" subtitle="이슈 리스트 / 리포트 작성" widthClass="max-w-2xl">
         <BugsBody />
       </Modal>
+      <Modal open={modalKey === "lab"} onClose={() => setModalKey(null)} title="🧪 연구소" subtitle="버그 · 터미널 · 디버그 통합" widthClass="max-w-4xl">
+        <LabBody
+          onCloseLab={() => setModalKey(null)}
+          onOpenDebug={() => { setModalKey(null); setShowDebug(true); }}
+          onOpenTerminal={() => { setModalKey(null); setShowTerminal(true); }}
+        />
+      </Modal>
       <StaffStatsModal open={modalKey === "staff-stats"} onClose={() => setModalKey(null)} />
 
       {showDebug && <DebugPanel onClose={() => setShowDebug(false)} />}
@@ -1190,6 +1196,35 @@ interface BugRow {
 
 type BugFilter = "open" | "in_progress" | "resolved" | "all";
 
+function LabBody({ onCloseLab, onOpenDebug, onOpenTerminal }: { onCloseLab: () => void; onOpenDebug: () => void; onOpenTerminal: () => void }) {
+  const [tab, setTab] = useState<"bugs" | "terminal" | "debug">("bugs");
+  return (
+    <div className="space-y-3">
+      <div className="flex gap-1 p-1 bg-gray-900/60 rounded-md border border-gray-800/60">
+        <button
+          onClick={() => setTab("bugs")}
+          className={`flex-1 py-1.5 text-[12px] rounded transition-colors ${tab === "bugs" ? "bg-sky-500/15 text-sky-200 font-bold" : "text-gray-400 hover:text-gray-200"}`}
+        >🐛 버그</button>
+        <button
+          onClick={() => { setTab("terminal"); onOpenTerminal(); }}
+          className={`flex-1 py-1.5 text-[12px] rounded transition-colors ${tab === "terminal" ? "bg-sky-500/15 text-sky-200 font-bold" : "text-gray-400 hover:text-gray-200"}`}
+        >💻 터미널</button>
+        <button
+          onClick={() => { setTab("debug"); onOpenDebug(); }}
+          className={`flex-1 py-1.5 text-[12px] rounded transition-colors ${tab === "debug" ? "bg-sky-500/15 text-sky-200 font-bold" : "text-gray-400 hover:text-gray-200"}`}
+        >🔧 디버그</button>
+      </div>
+      {tab === "bugs" && <BugsBody />}
+      {tab === "terminal" && (
+        <div className="text-[12px] text-gray-400 p-4 text-center">터미널을 별도 창에서 엽니다...</div>
+      )}
+      {tab === "debug" && (
+        <div className="text-[12px] text-gray-400 p-4 text-center">디버그 패널을 별도 창에서 엽니다...</div>
+      )}
+    </div>
+  );
+}
+
 function BugsBody() {
   const [rows, setRows] = useState<BugRow[]>([]);
   const [note, setNote] = useState("");
@@ -1336,14 +1371,14 @@ function BugsBody() {
         {rows.length === 0 ? (
           <div className="text-[12px] text-gray-500 text-center py-6">없음</div>
         ) : rows.slice(0, 30).map((r, i) => (
-          <TicketRow key={i} row={r} />
+          <TicketRow key={i} row={r} onChanged={load} />
         ))}
       </div>
     </div>
   );
 }
 
-function TicketRow({ row }: { row: BugRow }) {
+function TicketRow({ row, onChanged }: { row: BugRow; onChanged?: () => void }) {
   const [open, setOpen] = useState(false);
   const statusBadge = {
     open: { variant: "warning" as const, label: "열림" },
@@ -1351,16 +1386,36 @@ function TicketRow({ row }: { row: BugRow }) {
     resolved: { variant: "success" as const, label: "해결됨" },
     closed: { variant: "secondary" as const, label: "닫힘" },
   }[row.status || "open"];
+  const checked = (row.status || "open") === "resolved";
+  const toggleResolve = async () => {
+    try {
+      const r = await fetch(`${apiBase()}/api/diag/report/status`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ts: row.ts, status: checked ? "open" : "resolved" }),
+      });
+      if (r.ok) onChanged?.();
+    } catch { /* ignore */ }
+  };
 
   return (
     <div className="rounded-lg border border-gray-800/60 bg-gray-900/20">
+      <div className="flex">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={toggleResolve}
+        onClick={(e) => e.stopPropagation()}
+        className="mt-3 ml-3 w-4 h-4 cursor-pointer accent-emerald-500 shrink-0"
+        title={checked ? "해결 해제" : "해결 완료로 이동"}
+      />
       <button
         onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center gap-2 p-3 text-left hover:bg-gray-800/20 transition-colors"
+        className="flex-1 flex items-center gap-2 p-3 text-left hover:bg-gray-800/20 transition-colors min-w-0"
       >
         <Badge variant={statusBadge.variant}>{statusBadge.label}</Badge>
         {row.urgent && <Badge variant="destructive">긴급</Badge>}
-        <span className="text-[13px] text-gray-200 truncate flex-1">{row.title}</span>
+        <span className={`text-[13px] truncate flex-1 ${checked ? "text-gray-500 line-through" : "text-gray-200"}`}>{row.title}</span>
         {row.issue_number != null && (
           <a
             href={`https://github.com/600-g/company-hq/issues/${row.issue_number}`}
@@ -1373,6 +1428,7 @@ function TicketRow({ row }: { row: BugRow }) {
           </a>
         )}
       </button>
+      </div>
       {open && (
         <div className="border-t border-gray-800/60 p-3 space-y-2">
           <div className="text-[11px] text-gray-500 font-mono">{row.ts}</div>

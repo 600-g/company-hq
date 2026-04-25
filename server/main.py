@@ -1146,6 +1146,46 @@ async def diag_report(body: dict) -> dict:
 
 
 # ── F2: 자동 cleanup — closed 이슈의 첨부 이미지 + 상태 마킹 ──
+@app.post("/api/diag/report/status")
+async def diag_set_status(body: dict) -> dict:
+    """버그 리포트 상태 변경 — 체크박스 토글로 resolved/open 직접 전환.
+
+    body: { ts: "...", status: "resolved" | "open" | "in_progress" }
+    """
+    ts = body.get("ts")
+    new_status = body.get("status", "open")
+    if not ts:
+        return {"ok": False, "error": "ts 필요"}
+    if new_status not in ("open", "in_progress", "resolved", "closed"):
+        return {"ok": False, "error": "잘못된 status"}
+    try:
+        with open(DIAG_REPORTS_PATH, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+    except FileNotFoundError:
+        return {"ok": False, "error": "리포트 파일 없음"}
+
+    updated = False
+    new_lines: list[str] = []
+    for line in lines:
+        try:
+            row = json.loads(line)
+        except Exception:
+            new_lines.append(line)
+            continue
+        if row.get("ts") == ts:
+            row["status"] = new_status
+            if new_status == "resolved":
+                row["resolved_at"] = datetime.utcnow().isoformat()
+            updated = True
+        new_lines.append(json.dumps(row, ensure_ascii=False) + "\n")
+
+    if updated:
+        with open(DIAG_REPORTS_PATH, "w", encoding="utf-8") as f:
+            f.writelines(new_lines)
+        return {"ok": True, "status": new_status}
+    return {"ok": False, "error": "ts 일치하는 리포트 없음"}
+
+
 @app.post("/api/diag/cleanup")
 async def diag_cleanup() -> dict:
     """gh CLI로 closed 이슈 확인 → 연결된 report status=resolved + 첨부 이미지 삭제"""

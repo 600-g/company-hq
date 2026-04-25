@@ -20,6 +20,19 @@ interface BugRow {
   images?: string[];
 }
 
+async function setBugStatus(ts: string, status: "open" | "resolved") {
+  try {
+    const r = await fetch(`${apiBase()}/api/diag/report/status`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ts, status }),
+    });
+    return r.ok;
+  } catch {
+    return false;
+  }
+}
+
 type Filter = "open" | "in_progress" | "resolved" | "all";
 
 export default function BugsPage() {
@@ -104,16 +117,30 @@ export default function BugsPage() {
                   const isOpen = expanded === i;
                   const status = r.status || "open";
                   const priority = r.priority || (r.urgent ? "urgent" : "normal");
+                  const checked = status === "resolved";
                   return (
                     <div key={i} className="rounded-lg border border-gray-800/60 bg-gray-900/20 overflow-hidden">
-                      <button
-                        onClick={() => setExpanded(isOpen ? null : i)}
-                        className="w-full p-3 text-left hover:bg-gray-900/40 transition-colors"
-                      >
+                      <div className="w-full p-3 hover:bg-gray-900/40 transition-colors flex gap-2">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={async (e) => {
+                            e.stopPropagation();
+                            const ok = await setBugStatus(r.ts, checked ? "open" : "resolved");
+                            if (ok) load();
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                          className="mt-1 w-4 h-4 cursor-pointer accent-emerald-500"
+                          title={checked ? "해결 해제 (다시 열림)" : "해결 완료로 이동"}
+                        />
+                        <button
+                          onClick={() => setExpanded(isOpen ? null : i)}
+                          className="flex-1 text-left min-w-0"
+                        >
                         <div className="flex items-center justify-between gap-2">
                           <div className="flex items-center gap-1.5 min-w-0 flex-1">
                             {isOpen ? <ChevronDown className="w-3 h-3 text-gray-500 shrink-0" /> : <ChevronRight className="w-3 h-3 text-gray-500 shrink-0" />}
-                            <div className="text-[13px] text-gray-200 truncate">{r.title}</div>
+                            <div className={`text-[13px] truncate ${checked ? "text-gray-500 line-through" : "text-gray-200"}`}>{r.title}</div>
                           </div>
                           <div className="flex items-center gap-2 shrink-0">
                             <StatusBadge status={status} />
@@ -132,7 +159,8 @@ export default function BugsPage() {
                           </div>
                         </div>
                         <div className="text-[11px] text-gray-500 font-mono mt-0.5 ml-4">{r.ts}</div>
-                      </button>
+                        </button>
+                      </div>
 
                       {isOpen && (
                         <div className="px-4 pb-3 pt-1 space-y-2 border-t border-gray-800/50">
