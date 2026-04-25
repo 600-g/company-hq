@@ -14,7 +14,7 @@ import { apiBase } from "@/lib/utils";
 import {
   X, Users, Bug, Cpu, Settings, LogOut, Send,
   MessagesSquare, Plus, Home as HomeIcon, RefreshCw, ChevronRight, ChevronLeft,
-  Grid3x3, Pencil, Terminal as TerminalIcon, Archive, ExternalLink,
+  Grid3x3, Pencil, Terminal as TerminalIcon,
 } from "lucide-react";
 import DebugPanel from "@/components/DebugPanel";
 import MentionPopup from "@/components/chat/MentionPopup";
@@ -348,30 +348,7 @@ export default function HubPage() {
           />
           <SideItem collapsed={sideCollapsed} icon={Settings} label="설정" onClick={() => router.push("/settings")} />
           <div className="h-px bg-gray-800/60 my-2" />
-          {/* Legacy 앱 — 구버전 두근컴퍼니 / 팀메이커 분리 창으로 오픈 */}
-          <SideItem
-            collapsed={sideCollapsed}
-            icon={Archive}
-            label="구 두근컴퍼니"
-            onClick={() => {
-              const h = window.location.hostname;
-              const isLocal = h === "localhost" || h === "127.0.0.1" || h.endsWith(".local");
-              const url = isLocal ? "http://localhost:3000" : "https://legacy.600g.net";
-              window.open(url, "_blank", "noopener");
-            }}
-          />
-          <SideItem
-            collapsed={sideCollapsed}
-            icon={ExternalLink}
-            label="팀메이커"
-            onClick={() => {
-              const h = window.location.hostname;
-              const isLocal = h === "localhost" || h === "127.0.0.1" || h.endsWith(".local");
-              const url = isLocal ? "http://localhost:4827" : "https://teammaker.600g.net";
-              window.open(url, "_blank", "noopener");
-            }}
-          />
-          <div className="h-px bg-gray-800/60 my-2" />
+          {/* Legacy 앱 (구 두근컴퍼니 / 팀메이커) 버튼 제거됨 — 장독대 대기 (도메인/터널 세팅 후 부활) */}
           <SideItem collapsed={sideCollapsed} icon={RefreshCw} label="강제 새로고침" onClick={() => {
             // 모든 doogeun-hq-* 영속 데이터(layout/chat/theme/notify/...) 보존.
             // 비-앱 키(next 캐시 등) 만 제거

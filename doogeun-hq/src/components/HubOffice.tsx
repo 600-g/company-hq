@@ -1063,6 +1063,31 @@ export default function HubOffice({ floor, agentCount }: Props) {
     };
   }, []);
 
+  // 🛡 spriteKey 마이그레이션 — 마운트 1회만 (이후 useEffect 재실행 방지)
+  const migrationDoneRef = useRef(false);
+  useEffect(() => {
+    if (migrationDoneRef.current) return;
+    if (agents.length === 0) return; // 아직 로드 전
+    migrationDoneRef.current = true;
+    for (const a of agents) {
+      let newKey: string | undefined = a.spriteKey;
+      let needsUpdate = false;
+      if (newKey && newKey.startsWith("char_") && newKey !== "char_cpo") {
+        const idx = parseInt(newKey.slice(5), 10);
+        if (Number.isNaN(idx) || idx >= CHAR_COUNT) {
+          newKey = undefined;
+          needsUpdate = true;
+        }
+      }
+      if (!newKey) {
+        newKey = pickSpriteKey({ ...a, spriteKey: undefined });
+        needsUpdate = true;
+      }
+      if (needsUpdate) updateAgent(a.id, { spriteKey: newKey });
+    }
+  }, [agents, updateAgent]);
+
+  // 일반 setAgents — 무한 루프 방지 위해 분리
   useEffect(() => {
     const s = sceneRef.current as {
       setAgents?: (list: Agent[], f: number, streaming: Record<string, boolean>) => void;

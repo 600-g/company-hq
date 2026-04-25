@@ -580,14 +580,32 @@ def get_budget_status() -> dict:
     }
 
 # ── 라우팅 전용 경량 실행 (haiku, 세션 없음) ──────────
-async def run_claude_light(prompt: str, project_path: str | None = None) -> str:
-    """라우팅/분류 등 단순 판단용 — haiku 모델, 세션 없음, 토큰 절약.
+async def run_claude_light(prompt: str, project_path: str | None = None, task_type: str = "routing") -> str:
+    """라우팅/분류 등 단순 판단용 — 무료 LLM 우선 (Gemini/Gemma), 폴백 시 Claude haiku.
+
+    토큰 절감 정책:
+    1. Gemini 2.5 Flash 시도 (무료, 한도 분15/일1500)
+    2. 실패 시 Gemma 4 E4B 로컬 (무한)
+    3. 모두 실패 시 Claude haiku (기존 로직)
 
     주의:
     - cwd 는 항상 None → project_path 의 CLAUDE.md 영향 차단
     - stderr 는 로깅 (폐기 금지)
     - 토큰 예산(auto 상한) 체크 선행
     """
+    # ── 무료 LLM 우선 시도 (Claude 토큰 0)
+    try:
+        from free_llm import smart_call, _bump
+        text, provider = await smart_call(task_type, prompt, max_out=1500)
+        if provider in ("gemini", "gemma_e4b", "gemma_main") and text:
+            _bump(provider)
+            logger.info("[light/%s] 라우팅 완료 (%d자)", provider, len(text))
+            return text
+        # provider == "claude_fallback" 또는 "all_failed" → Claude로 진행
+    except Exception as e:
+        logger.warning("[light] 무료 LLM 실패, Claude 폴백: %s", e)
+
+    # ── Claude haiku 폴백 ─────────────────────────────────
     # 예산 체크 (light 도 자동 실행 상한 적용)
     ok, used = _check_budget(is_auto=True)
     if not ok:

@@ -1304,6 +1304,27 @@ def _load_doogeun_state() -> dict:
 
 def _save_doogeun_state(data: dict) -> None:
     try:
+        # 시간별 백업 로테이션 (24개 = 24시간 보존)
+        if os.path.exists(DOOGEUN_STATE_PATH):
+            backup_dir = os.path.join(os.path.dirname(DOOGEUN_STATE_PATH), "doogeun_state_backups")
+            os.makedirs(backup_dir, exist_ok=True)
+            stamp = datetime.utcnow().strftime("%Y%m%d-%H")
+            backup_path = os.path.join(backup_dir, f"doogeun_state.{stamp}.json")
+            # 같은 시간대 이미 있으면 스킵 (1시간 1개)
+            if not os.path.exists(backup_path):
+                try:
+                    shutil.copy2(DOOGEUN_STATE_PATH, backup_path)
+                    # 24개 초과 시 가장 오래된 것 삭제
+                    import glob as _glob
+                    backups = sorted(_glob.glob(os.path.join(backup_dir, "doogeun_state.*.json")))
+                    while len(backups) > 24:
+                        try:
+                            os.remove(backups[0])
+                        except OSError:
+                            pass
+                        backups.pop(0)
+                except Exception as be:
+                    logger.warning("doogeun_state backup failed: %s", be)
         with open(DOOGEUN_STATE_PATH, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
     except Exception as e:
@@ -2939,8 +2960,14 @@ async def push_119(req: dict):
 
 @app.get("/api/budget")
 async def budget_status():
-    """토큰 예산 현황"""
-    return {"ok": True, **get_budget_status()}
+    """토큰 예산 현황 + 무료 LLM 사용 통계 (Claude/Gemini/Gemma 분리)"""
+    base = get_budget_status()
+    try:
+        from free_llm import get_usage as _free_usage
+        free = _free_usage()
+    except Exception:
+        free = {}
+    return {"ok": True, **base, "free_llm_usage": free}
 
 @app.post("/api/budget/reset")
 async def budget_reset():

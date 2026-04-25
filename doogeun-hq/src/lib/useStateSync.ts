@@ -97,16 +97,25 @@ export function useStateSync() {
   function applyRemote(state: ServerState) {
     applyingRemoteRef.current = true;
     try {
-      if (Array.isArray(state.agents)) {
+      // 🛡 빈 데이터 우선 방지 — 서버가 비어있으면 로컬 보존
+      // 시나리오: 마운트 첫 GET 시 서버가 빈 상태면 로컬 가구가 날아감 → PUT 으로 빈 상태 굳음
+      const localAgents = useAgentStore.getState().agents;
+      const localFloors = useLayoutStore.getState().floors;
+      const localHasFloors = Object.keys(localFloors || {}).length > 0;
+      const remoteHasFloors = state.layout?.floors && Object.keys(state.layout.floors).length > 0;
+
+      // agents: 서버 비어있고 로컬 있으면 로컬 유지
+      if (Array.isArray(state.agents) && (state.agents.length > 0 || localAgents.length === 0)) {
         useAgentStore.setState({ agents: state.agents });
       }
-      if (state.layout?.floors && typeof state.layout.floors === "object") {
+      // floors: 서버 비어있고 로컬 있으면 로컬 유지 (가구 데이터 손실 방지 — 핵심)
+      if (state.layout?.floors && typeof state.layout.floors === "object" && (remoteHasFloors || !localHasFloors)) {
         useLayoutStore.setState({ floors: state.layout.floors as Record<number, never[]> });
       }
-      lastSyncedRef.current = JSON.stringify({
-        agents: state.agents ?? [],
-        floors: state.layout?.floors ?? {},
-      });
+      // lastSynced 기준은 "현재 로컬 상태" (서버 무시 시 즉시 PUT 트리거되도록)
+      const finalAgents = useAgentStore.getState().agents;
+      const finalFloors = useLayoutStore.getState().floors;
+      lastSyncedRef.current = JSON.stringify({ agents: finalAgents, floors: finalFloors });
     } finally {
       setTimeout(() => { applyingRemoteRef.current = false; }, 50);
     }

@@ -30,6 +30,7 @@ rm -rf "out/assets/pokemon_assets/Pokemon/Icons shiny"
 rm -rf "out/assets/pokemon_assets/Pokemon/Footprints"
 rm -rf "out/assets/pokemon_assets/Characters/Followers shiny"
 echo "   남은 파일 수: $(find out -type f | wc -l)"
-echo "🚀 Deploying..."
-wrangler pages deploy out --project-name company-hq --commit-message="deploy: $BUILD_ID" --skip-caching
+echo "🚀 Deploying to legacy.600g.net (별도 CF Pages 프로젝트)..."
+wrangler pages deploy out --project-name company-hq-legacy --commit-message="deploy: $BUILD_ID" --skip-caching
 echo "✅ Done! build=$BUILD_ID"
+echo "📌 첫 배포 시 dash.cloudflare.com → Pages → company-hq-legacy → Custom domains → legacy.600g.net 연결"

@@ -486,6 +486,33 @@ async def handle_chat(
                 # 이전 작업 유지 — 이번 메시지는 큐에 예약됨, 메인 루프는 다음 receive로
                 continue
 
+            # 🤖 비서 1차 처리 (CPO 채팅에만, Claude 토큰 절감)
+            if team_id == "cpo-claude":
+                try:
+                    from secretary import try_secretary
+                    sec_reply = await try_secretary(prompt)
+                    if sec_reply:
+                        await manager.send_json(
+                            team_id,
+                            {"type": "ai_chunk", "content": sec_reply, "session_id": current_sid},
+                            session_id=current_sid,
+                        )
+                        await manager.send_json(
+                            team_id,
+                            {"type": "ai_end", "session_id": current_sid},
+                            session_id=current_sid,
+                        )
+                        manager.add_message(team_id, "ai", sec_reply, current_sid)
+                        _update_status(team_id, working=False, tool=None,
+                                       last_active=datetime.now().strftime("%H:%M:%S"))
+                        try:
+                            sessions_store.end_job(team_id, current_sid, "done")
+                        except Exception:
+                            pass
+                        continue  # Claude 호출 스킵
+                except Exception as e:
+                    logger.warning("[secretary] 실패, Claude 폴백: %s", e)
+
             _cancel_flags[team_id] = False
             full_response = ""
             cancelled = False
