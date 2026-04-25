@@ -24,6 +24,8 @@ export default function SettingsPage() {
     tokens, setToken, clearToken,
     testMode, setTestMode,
     autoDeploy, setAutoDeploy,
+    agentLanguage, setAgentLanguage,
+    npcLanguage, setNpcLanguage,
   } = useSettingsStore();
 
   const theme = useThemeStore((s) => s.theme);
@@ -103,6 +105,44 @@ export default function SettingsPage() {
                 </div>
                 <div className="text-[11px] text-gray-400">흰 배경 + 딥블루 액센트</div>
               </button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* 언어 */}
+        <Card>
+          <CardHeader>
+            <CardTitle>언어 설정</CardTitle>
+            <CardDescription>에이전트 응답 언어 + NPC 말풍선 언어 (개별 에이전트 override 가능 — 추후 작업)</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <div className="text-[12px] text-gray-400 mb-1.5">에이전트 기본</div>
+                <select
+                  value={agentLanguage}
+                  onChange={(e) => { setAgentLanguage(e.target.value as "ko" | "en" | "ja" | "zh"); flash(`에이전트 언어: ${e.target.value}`); }}
+                  className="w-full px-3 py-2 rounded-md bg-gray-800 border border-gray-700 text-gray-100 text-[13px]"
+                >
+                  <option value="ko">한국어</option>
+                  <option value="en">English</option>
+                  <option value="ja">日本語</option>
+                  <option value="zh">中文</option>
+                </select>
+              </div>
+              <div>
+                <div className="text-[12px] text-gray-400 mb-1.5">NPC 말풍선</div>
+                <select
+                  value={npcLanguage}
+                  onChange={(e) => { setNpcLanguage(e.target.value as "ko" | "en" | "ja" | "zh"); flash(`NPC 언어: ${e.target.value}`); }}
+                  className="w-full px-3 py-2 rounded-md bg-gray-800 border border-gray-700 text-gray-100 text-[13px]"
+                >
+                  <option value="ko">한국어</option>
+                  <option value="en">English</option>
+                  <option value="ja">日本語</option>
+                  <option value="zh">中文</option>
+                </select>
+              </div>
             </div>
           </CardContent>
         </Card>

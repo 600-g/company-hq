@@ -25,6 +25,10 @@ export interface SettingsState {
   testMode: boolean;
   /** 에이전트 응답이 정상 완료되면 자동으로 배포 파이프라인 실행 */
   autoDeploy: boolean;
+  /** 에이전트 기본 응답 언어 (개별 에이전트가 spriteKey 처럼 자체 override 가능) */
+  agentLanguage: "ko" | "en" | "ja" | "zh";
+  /** NPC 기본 언어 (배경 캐릭 인사/말풍선용) */
+  npcLanguage: "ko" | "en" | "ja" | "zh";
 
   setApiKey: (key: string) => void;
   clearApiKey: () => void;
@@ -34,6 +38,8 @@ export interface SettingsState {
   setLocale: (l: "ko" | "en") => void;
   setTestMode: (b: boolean) => void;
   setAutoDeploy: (b: boolean) => void;
+  setAgentLanguage: (l: "ko" | "en" | "ja" | "zh") => void;
+  setNpcLanguage: (l: "ko" | "en" | "ja" | "zh") => void;
   reset: () => void;
 }
 
@@ -59,6 +65,8 @@ export const useSettingsStore = create<SettingsState>()(
       locale: "ko",
       testMode: false,
       autoDeploy: false,
+      agentLanguage: "ko",
+      npcLanguage: "ko",
 
       setApiKey: (key) => set({ apiKey: key, maskedApiKey: maskKey(key) }),
       clearApiKey: () => set({ apiKey: null, maskedApiKey: "" }),
@@ -72,6 +80,8 @@ export const useSettingsStore = create<SettingsState>()(
       setLocale: (l) => set({ locale: l }),
       setTestMode: (b) => set({ testMode: b }),
       setAutoDeploy: (b) => set({ autoDeploy: b }),
+      setAgentLanguage: (l) => set({ agentLanguage: l }),
+      setNpcLanguage: (l) => set({ npcLanguage: l }),
       reset: () =>
         set({
           apiKey: null,
@@ -81,6 +91,8 @@ export const useSettingsStore = create<SettingsState>()(
           locale: "ko",
           testMode: false,
           autoDeploy: false,
+          agentLanguage: "ko",
+          npcLanguage: "ko",
         }),
     }),
     { name: "doogeun-hq-settings" }
