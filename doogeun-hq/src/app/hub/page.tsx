@@ -340,13 +340,6 @@ export default function HubPage() {
           <SideItem collapsed={sideCollapsed} icon={Cpu} label="서버실" onClick={() => setModalKey("server")} />
           <SideItem collapsed={sideCollapsed} icon={Bug} label="디버그·버그" onClick={() => setShowDebug(true)} />
           <SideItem collapsed={sideCollapsed} icon={TerminalIcon} label="터미널" onClick={() => setShowTerminal(true)} />
-          <SideItem
-            collapsed={sideCollapsed}
-            icon={Pencil}
-            label={editMode ? "편집 종료" : "오피스 편집"}
-            onClick={() => setEditMode(!editMode)}
-            active={editMode}
-          />
           <SideItem collapsed={sideCollapsed} icon={Settings} label="설정" onClick={() => router.push("/settings")} />
           <div className="h-px bg-gray-800/60 my-2" />
           {/* Legacy 앱 (구 두근컴퍼니 / 팀메이커) 버튼 제거됨 — 장독대 대기 (도메인/터널 세팅 후 부활) */}
@@ -445,6 +438,19 @@ export default function HubPage() {
                 className="absolute inset-0 pointer-events-none transition-colors duration-[2s]"
                 style={{ background: ambientTint }}
               />
+              {/* 오피스 편집 버튼 — 좌상단 모서리 (씬 위 오버레이) */}
+              <button
+                onClick={() => setEditMode(!editMode)}
+                className={`absolute top-2 left-2 z-30 flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-bold transition-all border backdrop-blur ${
+                  editMode
+                    ? "bg-amber-500/90 border-amber-300 text-gray-900 shadow-lg"
+                    : "bg-gray-900/70 border-gray-600 text-gray-200 hover:bg-gray-800/90 hover:border-amber-400/50"
+                }`}
+                title={editMode ? "편집 종료" : "오피스 편집"}
+              >
+                <Pencil size={12} />
+                {editMode ? "종료" : "편집"}
+              </button>
             </div>
           </div>
 
