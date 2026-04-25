@@ -2826,8 +2826,20 @@ async def dispatch_discuss(body: dict):
                 f"1. 접근 방법 제안 (구체적으로)\n"
                 f"2. 예상 리스크 또는 주의점\n"
                 f"3. 다른 팀과의 의존성\n"
-                f"간결하게 답해 (300자 이내)."
+                f"한국어로 간결하게 답해 (300자 이내)."
             )
+            # 무료 LLM 우선 (의견 수렴은 짧고 일반적이라 Gemini 품질 충분)
+            try:
+                from free_llm import smart_call, _bump
+                text, provider = await smart_call("default", prompt, max_out=600)
+                if provider in ("gemini", "gemma_e4b", "gemma_main") and text and len(text.strip()) > 20:
+                    _bump(provider)
+                    opinions[tid] = {"name": team["name"], "emoji": team["emoji"], "opinion": text.strip()}
+                    return
+            except Exception as e:
+                logger.warning("[discuss/opinion] %s 무료 LLM 실패, Claude 폴백: %s", tid, e)
+
+            # 폴백: Claude 풀세션 (무료 LLM 다 실패 시만)
             result = ""
             try:
                 async for chunk in run_claude(prompt, team["localPath"], tid, is_auto=True):
