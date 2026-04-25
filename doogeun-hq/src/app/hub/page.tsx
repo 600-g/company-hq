@@ -12,7 +12,7 @@ import { useAgentStore, type Agent } from "@/stores/agentStore";
 import { useAuthStore } from "@/stores/authStore";
 import { apiBase } from "@/lib/utils";
 import {
-  X, Users, Bug, Cpu, Settings, LogOut, Send, BarChart3,
+  X, Users, Bug, Cpu, Settings, LogOut, Send,
   MessagesSquare, Plus, Home as HomeIcon, RefreshCw, ChevronRight, ChevronLeft,
   Grid3x3, Pencil, Terminal as TerminalIcon,
 } from "lucide-react";
@@ -347,7 +347,6 @@ export default function HubPage() {
             onClick={() => setEditMode(!editMode)}
             active={editMode}
           />
-          <SideItem collapsed={sideCollapsed} icon={BarChart3} label="스태프 통계" onClick={() => setModalKey("staff-stats")} />
           <SideItem collapsed={sideCollapsed} icon={Settings} label="설정" onClick={() => router.push("/settings")} />
           <div className="h-px bg-gray-800/60 my-2" />
           {/* Legacy 앱 (구 두근컴퍼니 / 팀메이커) 버튼 제거됨 — 장독대 대기 (도메인/터널 세팅 후 부활) */}
@@ -529,13 +528,12 @@ export default function HubPage() {
           </div>
         )}
 
-        {agents.length > 0 && (
-          <AgentSelector
-            agents={agents}
-            selectedId={selectedAgentId}
-            onSelect={(id) => setSelectedAgentId(id)}
-          />
-        )}
+        <AgentSelector
+          agents={agents}
+          selectedId={selectedAgentId}
+          onSelect={(id) => setSelectedAgentId(id)}
+          onStaffClick={() => setModalKey("staff-stats")}
+        />
 
         <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-2.5">
           {messages.length === 0 && (
@@ -913,34 +911,53 @@ function WorkingAgentsStrip({ collapsed, onSelect }: { collapsed: boolean; onSel
   );
 }
 
-function AgentSelector({ agents, selectedId, onSelect }: { agents: Agent[]; selectedId: string | null; onSelect: (id: string) => void }) {
+function AgentSelector({ agents, selectedId, onSelect, onStaffClick }: { agents: Agent[]; selectedId: string | null; onSelect: (id: string) => void; onStaffClick?: () => void }) {
   const streamingByTeam = useChatStore((s) => s.streamingByTeam);
   const unreadByTeam = useChatStore((s) => s.unreadByTeam);
+  // 🧑‍💼 스태프 항목 — 없으면 강제 prepend (서버 sync 지연 시에도 보장)
+  const hasStaff = agents.some((a) => a.id === "staff");
   return (
     <div className="border-b border-gray-800/60 max-h-40 overflow-y-auto">
+      {!hasStaff && (
+        <button
+          key="staff-virtual"
+          onClick={() => onStaffClick?.()}
+          className="w-full flex items-center gap-1.5 px-2.5 py-1.5 text-left text-[12px] transition-colors text-amber-200 hover:bg-amber-500/10 border-b border-amber-500/20"
+          title="스태프 통계"
+        >
+          <span className="text-sm leading-none">🧑‍💼</span>
+          <span className="flex-1 truncate font-bold">스태프</span>
+          <span className="text-[9px] text-amber-400">통계</span>
+        </button>
+      )}
       {agents.map((a) => {
         const active = selectedId === a.id;
         const streaming = !!streamingByTeam[a.id];
         const unread = unreadByTeam[a.id] ?? 0;
+        const isStaff = a.id === "staff";
         return (
           <button
             key={a.id}
-            onClick={() => onSelect(a.id)}
+            onClick={() => isStaff ? onStaffClick?.() : onSelect(a.id)}
             className={`w-full flex items-center gap-1.5 px-2.5 py-1.5 text-left text-[12px] transition-colors ${
-              active ? "bg-sky-500/15 text-sky-100" : "text-gray-300 hover:bg-gray-800/40"
+              isStaff
+                ? "text-amber-200 hover:bg-amber-500/10 border-b border-amber-500/20"
+                : active ? "bg-sky-500/15 text-sky-100" : "text-gray-300 hover:bg-gray-800/40"
             }`}
+            title={isStaff ? "스태프 통계 (클릭)" : undefined}
           >
             <span className="text-sm leading-none">{a.emoji}</span>
             <span className={`flex-1 truncate ${active ? "font-bold" : ""}`}>{a.name}</span>
-            {streaming && (
+            {isStaff ? (
+              <span className="text-[9px] text-amber-400">통계</span>
+            ) : streaming ? (
               <span className="flex items-center gap-0.5 text-[9px] text-amber-300">
                 <span className="w-1.5 h-1.5 bg-amber-400 rounded-full animate-pulse" />
                 작업중
               </span>
-            )}
-            {unread > 0 && !active && (
+            ) : unread > 0 && !active ? (
               <span className="text-[9px] px-1 rounded-full bg-red-500/80 text-white font-bold">{unread}</span>
-            )}
+            ) : null}
           </button>
         );
       })}
