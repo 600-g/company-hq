@@ -489,6 +489,12 @@ async def handle_chat(
             # 🧑‍💼 스태프 — 모든 응답 무료 LLM, 복잡 작업은 CPO 멘션 위임
             if team_id == "staff":
                 try:
+                    # ai_start 먼저 → 클라가 streaming 상태 인지 (말풍선 표시)
+                    await manager.send_json(
+                        team_id,
+                        {"type": "ai_start", "session_id": current_sid},
+                        session_id=current_sid,
+                    )
                     from staff_engine import handle as staff_handle
                     result = await staff_handle(prompt, language="ko")
                     reply = result.get("reply") or ""

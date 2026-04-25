@@ -639,13 +639,15 @@ export default function HubPage() {
 
         {/* refine 힌트 (모호한 요청일 때) */}
         {refineHints && refineHints.length > 0 && (
-          <div className="mx-2 mb-2 p-2.5 rounded-lg border border-amber-400/40 bg-amber-500/10 text-[11px] space-y-1">
-            <div className="flex items-center justify-between">
-              <div className="text-amber-200 font-bold">💡 요청 보완 제안</div>
-              <button onClick={forceSend} className="text-amber-300/80 hover:text-amber-200 underline">그대로 전송</button>
+          <div className="mx-2 mb-2 p-3 rounded-lg border border-amber-400/60 bg-amber-500/15 text-[12px] space-y-1.5 shadow">
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-amber-100 font-bold flex items-center gap-1">💡 요청 보완 제안</div>
+              <button onClick={forceSend} className="text-[11px] px-2 py-0.5 rounded bg-amber-500/30 hover:bg-amber-500/50 text-amber-50 font-bold border border-amber-400/50">
+                그대로 전송
+              </button>
             </div>
-            <ul className="list-disc list-inside text-amber-200/80 space-y-0.5">
-              {refineHints.map((h, i) => <li key={i}>{h}</li>)}
+            <ul className="list-disc list-inside text-amber-50 space-y-1 pl-1">
+              {refineHints.map((h, i) => <li key={i} className="leading-relaxed">{h}</li>)}
             </ul>
           </div>
         )}
@@ -804,11 +806,10 @@ export default function HubPage() {
       <Modal open={modalKey === "bugs"} onClose={() => setModalKey(null)} title="버그 리포트" subtitle="이슈 리스트 / 리포트 작성" widthClass="max-w-2xl">
         <BugsBody />
       </Modal>
-      <Modal open={modalKey === "lab"} onClose={() => setModalKey(null)} title="🧪 연구소" subtitle="버그 · 터미널 · 디버그 통합" widthClass="max-w-4xl">
+      <Modal open={modalKey === "lab"} onClose={() => setModalKey(null)} title="🧪 연구소" subtitle="버그 · 디버그 · 터미널 통합" widthClass="max-w-5xl">
         <LabBody
-          onCloseLab={() => setModalKey(null)}
-          onOpenDebug={() => { setModalKey(null); setShowDebug(true); }}
-          onOpenTerminal={() => { setModalKey(null); setShowTerminal(true); }}
+          onPopoutDebug={() => { setShowDebug(true); }}
+          onPopoutTerminal={() => { setShowTerminal(true); }}
         />
       </Modal>
       <StaffStatsModal open={modalKey === "staff-stats"} onClose={() => setModalKey(null)} />
@@ -1196,30 +1197,48 @@ interface BugRow {
 
 type BugFilter = "open" | "in_progress" | "resolved" | "all";
 
-function LabBody({ onCloseLab, onOpenDebug, onOpenTerminal }: { onCloseLab: () => void; onOpenDebug: () => void; onOpenTerminal: () => void }) {
-  const [tab, setTab] = useState<"bugs" | "terminal" | "debug">("bugs");
+function LabBody({ onPopoutDebug, onPopoutTerminal }: { onPopoutDebug: () => void; onPopoutTerminal: () => void }) {
+  const [tab, setTab] = useState<"bugs" | "debug" | "terminal">("bugs");
   return (
     <div className="space-y-3">
       <div className="flex gap-1 p-1 bg-gray-900/60 rounded-md border border-gray-800/60">
         <button
           onClick={() => setTab("bugs")}
           className={`flex-1 py-1.5 text-[12px] rounded transition-colors ${tab === "bugs" ? "bg-sky-500/15 text-sky-200 font-bold" : "text-gray-400 hover:text-gray-200"}`}
-        >🐛 버그</button>
+        >🐛 버그·티켓</button>
         <button
-          onClick={() => { setTab("terminal"); onOpenTerminal(); }}
-          className={`flex-1 py-1.5 text-[12px] rounded transition-colors ${tab === "terminal" ? "bg-sky-500/15 text-sky-200 font-bold" : "text-gray-400 hover:text-gray-200"}`}
-        >💻 터미널</button>
-        <button
-          onClick={() => { setTab("debug"); onOpenDebug(); }}
+          onClick={() => setTab("debug")}
           className={`flex-1 py-1.5 text-[12px] rounded transition-colors ${tab === "debug" ? "bg-sky-500/15 text-sky-200 font-bold" : "text-gray-400 hover:text-gray-200"}`}
         >🔧 디버그</button>
+        <button
+          onClick={() => setTab("terminal")}
+          className={`flex-1 py-1.5 text-[12px] rounded transition-colors ${tab === "terminal" ? "bg-sky-500/15 text-sky-200 font-bold" : "text-gray-400 hover:text-gray-200"}`}
+        >💻 터미널</button>
       </div>
       {tab === "bugs" && <BugsBody />}
-      {tab === "terminal" && (
-        <div className="text-[12px] text-gray-400 p-4 text-center">터미널을 별도 창에서 엽니다...</div>
-      )}
       {tab === "debug" && (
-        <div className="text-[12px] text-gray-400 p-4 text-center">디버그 패널을 별도 창에서 엽니다...</div>
+        <div className="space-y-2 p-4">
+          <div className="text-[13px] text-gray-300">실시간 클라이언트 진단 로그 + 시스템 패널</div>
+          <button
+            onClick={onPopoutDebug}
+            className="w-full py-2.5 rounded-md bg-sky-500/15 hover:bg-sky-500/25 border border-sky-400/40 text-sky-200 text-[13px] font-bold transition-colors"
+          >
+            🔧 디버그 패널 열기 (별도 창)
+          </button>
+          <div className="text-[10px] text-gray-500">디버그 패널은 화면 전체를 덮는 오버레이라 별도 창으로 분리. 닫으면 연구소로 돌아옴.</div>
+        </div>
+      )}
+      {tab === "terminal" && (
+        <div className="space-y-2 p-4">
+          <div className="text-[13px] text-gray-300">SSE 기반 쉘 실행 + AI 자동 수정 요청</div>
+          <button
+            onClick={onPopoutTerminal}
+            className="w-full py-2.5 rounded-md bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-400/40 text-emerald-200 text-[13px] font-bold transition-colors"
+          >
+            💻 터미널 패널 열기 (별도 창)
+          </button>
+          <div className="text-[10px] text-gray-500">터미널은 명령 실행 + 출력 스트리밍이라 별도 창으로 분리. 닫으면 연구소로 돌아옴.</div>
+        </div>
       )}
     </div>
   );

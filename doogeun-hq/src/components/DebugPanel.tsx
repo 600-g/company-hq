@@ -10,7 +10,7 @@ interface Props {
   onClose: () => void;
 }
 
-type Tab = "bugs" | "logs";
+type Tab = "logs";
 
 interface BugRow { ts: string; title: string; note: string; issue_number?: number; status?: string; urgent?: boolean }
 
@@ -18,10 +18,11 @@ const LEVEL_STYLE: Record<DiagLog["level"], string> = {
   log: "text-gray-300", info: "text-sky-300", warn: "text-amber-300", error: "text-red-300",
 };
 
-/** 진단 로그 + 버그 리포트 통합 패널 (탭 전환, ESC 닫기) */
+/** 진단 로그 패널 (버그 티켓은 연구소 통합으로 분리됨, ESC 닫기) */
 export default function DebugPanel({ onClose }: Props) {
-  const [tab, setTab] = useState<Tab>("bugs");
+  const [tab] = useState<Tab>("logs");
   const [showBugReport, setShowBugReport] = useState(false);
+  void tab; // 단일 탭이라 미사용
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -32,16 +33,16 @@ export default function DebugPanel({ onClose }: Props) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-2 sm:p-4" onClick={onClose}>
       <div className="w-full max-w-3xl h-[85vh] bg-[var(--background)] border border-gray-800 rounded-xl flex flex-col overflow-hidden shadow-2xl" onClick={(e) => e.stopPropagation()}>
-        <div className="h-11 shrink-0 flex items-center gap-1 px-2 border-b border-gray-800/70">
-          <TabBtn active={tab === "bugs"} onClick={() => setTab("bugs")} icon={<Bug className="w-3.5 h-3.5" />}>버그 티켓</TabBtn>
-          <TabBtn active={tab === "logs"} onClick={() => setTab("logs")} icon={<TerminalIcon className="w-3.5 h-3.5" />}>진단 로그</TabBtn>
-          <span className="text-[10px] text-gray-500 ml-2">로그는 브라우저 메모리 링버퍼 · 토큰 0</span>
+        <div className="h-11 shrink-0 flex items-center gap-2 px-3 border-b border-gray-800/70">
+          <TerminalIcon className="w-3.5 h-3.5 text-sky-300" />
+          <span className="text-[13px] font-bold text-sky-200">진단 로그</span>
+          <span className="text-[10px] text-gray-500">브라우저 메모리 링버퍼 · 토큰 0 · 버그는 연구소→버그 탭</span>
           <button onClick={onClose} className="ml-auto p-1.5 text-gray-400 hover:text-gray-200 hover:bg-gray-800 rounded">
             <X className="w-4 h-4" />
           </button>
         </div>
         <div className="flex-1 overflow-hidden">
-          {tab === "bugs" ? <BugsPane onNew={() => setShowBugReport(true)} /> : <LogsPane />}
+          <LogsPane />
         </div>
       </div>
       {showBugReport && <BugReportDialog onClose={() => setShowBugReport(false)} onSent={() => setShowBugReport(false)} />}

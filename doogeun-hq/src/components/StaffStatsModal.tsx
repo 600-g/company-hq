@@ -105,7 +105,7 @@ export default function StaffStatsModal({ open, onClose }: { open: boolean; onCl
             ) : (
               <>
                 {/* 종합 카드 */}
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                   <div className="rounded-md bg-gray-800/60 p-3">
                     <div className="text-[11px] text-gray-500">총 처리</div>
                     <div className="text-2xl font-bold text-sky-300">{total.toLocaleString()}</div>

@@ -1246,7 +1246,8 @@ async def diag_cleanup() -> dict:
 
 
 @app.get("/api/diag/reports")
-async def diag_reports(limit: int = 50) -> dict:
+async def diag_reports(limit: int = 50, status: str = "") -> dict:
+    """버그 리포트 조회. status=open|in_progress|resolved|all|"" (빈문자열=all)"""
     rows: list[dict] = []
     try:
         if os.path.exists(DIAG_REPORTS_PATH):
@@ -1256,6 +1257,9 @@ async def diag_reports(limit: int = 50) -> dict:
                     except Exception: continue
     except Exception:
         pass
+    # status 필터링 (빈 문자열 또는 "all" 이면 전체)
+    if status and status != "all":
+        rows = [r for r in rows if (r.get("status") or "open") == status]
     return {"ok": True, "rows": rows[-limit:]}
 
 
