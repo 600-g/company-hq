@@ -1,20 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import TopBar from "@/components/layout/TopBar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Zap, Brain, Sparkles, Trash2, Check, Sun, Moon } from "lucide-react";
-import { useSettingsStore, type ClaudeModel } from "@/stores/settingsStore";
+import { Trash2, Check, Sun, Moon, Server } from "lucide-react";
+import { useSettingsStore } from "@/stores/settingsStore";
 import { useThemeStore } from "@/stores/themeStore";
-
-const MODELS: { id: ClaudeModel; name: string; desc: string; icon: typeof Zap }[] = [
-  { id: "haiku",  name: "Haiku",  desc: "빠르고 저렴. 간단한 분류/답변.",              icon: Zap },
-  { id: "sonnet", name: "Sonnet", desc: "균형. 일반 코딩 기본값.",                    icon: Brain },
-  { id: "opus",   name: "Opus",   desc: "최고 품질. 복잡 아키텍처/분석.",             icon: Sparkles },
-];
+import { apiBase } from "@/lib/utils";
 
 const TOKEN_KEYS = [
   { key: "GITHUB_TOKEN",          label: "GitHub",        help: "레포 생성·푸시" },
@@ -26,9 +21,9 @@ const TOKEN_KEYS = [
 export default function SettingsPage() {
   const {
     apiKey, maskedApiKey, setApiKey, clearApiKey,
-    selectedModel, setModel,
     tokens, setToken, clearToken,
     testMode, setTestMode,
+    autoDeploy, setAutoDeploy,
   } = useSettingsStore();
 
   const theme = useThemeStore((s) => s.theme);
@@ -37,6 +32,14 @@ export default function SettingsPage() {
   const [apiInput, setApiInput] = useState("");
   const [tokenInputs, setTokenInputs] = useState<Record<string, string>>({});
   const [savedFlash, setSavedFlash] = useState<string | null>(null);
+  const [serverTokens, setServerTokens] = useState<Record<string, { configured: boolean; masked: string }>>({});
+
+  useEffect(() => {
+    fetch(`${apiBase()}/api/settings/tokens`)
+      .then((r) => r.json())
+      .then((d) => { if (d.ok && d.tokens) setServerTokens(d.tokens); })
+      .catch(() => {});
+  }, []);
 
   const flash = (msg: string) => {
     setSavedFlash(msg);
@@ -135,61 +138,52 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
 
-        {/* 모델 선택 */}
-        <Card>
-          <CardHeader>
-            <CardTitle>모델</CardTitle>
-            <CardDescription>작업마다 모델 자동 선택 (빠른 작업은 Haiku 로 다운그레이드)</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-              {MODELS.map((m) => {
-                const active = selectedModel === m.id;
-                const Icon = m.icon;
-                return (
-                  <button
-                    key={m.id}
-                    onClick={() => setModel(m.id)}
-                    className={`p-3 rounded-lg border text-left transition-all ${
-                      active
-                        ? "border-sky-400/50 bg-sky-500/10"
-                        : "border-gray-700/60 bg-gray-800/20 hover:bg-gray-700/30"
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 mb-1">
-                      <Icon className="w-4 h-4 text-sky-300" />
-                      <span className="font-bold text-[13px]">{m.name}</span>
-                      {active && <Check className="w-3 h-3 text-green-400 ml-auto" />}
-                    </div>
-                    <div className="text-[11px] text-gray-400">{m.desc}</div>
-                  </button>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
+        {/* 모델은 에이전트별 설정으로 이전 — 글로벌 모델 선택 UI 제거
+            (에이전트 카드 → 편집 → 모델 섹션에서 Haiku/Sonnet/Opus 개별 지정) */}
 
         {/* 외부 토큰 */}
         <Card>
           <CardHeader>
             <CardTitle>외부 서비스 토큰</CardTitle>
-            <CardDescription>GitHub / Vercel / Cloudflare / Supabase — 배포·프로비전 용</CardDescription>
+            <CardDescription>
+              GitHub / Vercel / Cloudflare / Supabase — 배포·프로비전 용.
+              <span className="block mt-1 text-[11px]">
+                🟢 서버 <code>.env</code> 에 설정된 토큰은 자동 사용됩니다. 브라우저 개별 키는 오버라이드용.
+              </span>
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
             {TOKEN_KEYS.map(({ key, label, help }) => {
               const entry = tokens[key];
+              const server = serverTokens[key];
+              const serverOk = server?.configured;
               return (
                 <div key={key} className="flex items-center gap-2">
                   <div className="w-28 text-[13px] text-gray-300 font-bold shrink-0">{label}</div>
-                  {entry.configured ? (
+                  {serverOk && !entry.configured && (
+                    <>
+                      <span className="text-[12px] text-gray-400 font-mono">{server.masked}</span>
+                      <Badge variant="success" className="ml-auto flex items-center gap-1">
+                        <Server className="w-3 h-3" /> 서버 .env
+                      </Badge>
+                      <Button variant="ghost" size="sm" onClick={() => {
+                        const v = prompt(`${label} 브라우저 오버라이드 (비워두면 서버 사용)`);
+                        if (v && v.trim()) { setTokenInputs((p) => ({ ...p, [key]: v.trim() })); }
+                      }}>
+                        오버라이드
+                      </Button>
+                    </>
+                  )}
+                  {entry.configured && (
                     <>
                       <span className="text-[12px] text-gray-400 font-mono">{entry.masked}</span>
-                      <Badge variant="success" className="ml-auto">설정됨</Badge>
+                      <Badge variant="default" className="ml-auto">브라우저 저장</Badge>
                       <Button variant="ghost" size="sm" onClick={() => clearToken(key)}>
                         <Trash2 className="w-3.5 h-3.5" />
                       </Button>
                     </>
-                  ) : (
+                  )}
+                  {!entry.configured && !serverOk && (
                     <>
                       <Input
                         type="password"
@@ -222,6 +216,26 @@ export default function SettingsPage() {
                 type="checkbox"
                 checked={testMode}
                 onChange={(e) => setTestMode(e.target.checked)}
+                className="w-4 h-4 accent-sky-400"
+              />
+            </label>
+
+            <div className="h-px bg-gray-800/60 my-3" />
+
+            <label className="flex items-center justify-between gap-2 cursor-pointer">
+              <div>
+                <div className="text-[13px] text-gray-300 font-bold">
+                  자동 배포 <span className="text-[10px] text-amber-400 font-normal ml-1">⚠ 실험적</span>
+                </div>
+                <div className="text-[11px] text-gray-500 leading-relaxed">
+                  에이전트 응답이 검증 통과하면 <span className="text-sky-300">즉시 GitHub push + CF 배포</span> 실행.
+                  OFF 면 🚀 배포 버튼 수동 클릭.
+                </div>
+              </div>
+              <input
+                type="checkbox"
+                checked={autoDeploy}
+                onChange={(e) => setAutoDeploy(e.target.checked)}
                 className="w-4 h-4 accent-sky-400"
               />
             </label>

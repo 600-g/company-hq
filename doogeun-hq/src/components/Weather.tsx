@@ -51,11 +51,11 @@ function computeSky(tod: TimeOfDay, code: number): { top: string; bottom: string
   else if (isFog) { top = "#64748b"; bottom = "#94a3b8"; }
   else if (isCloudy) { top = mix(top, "#64748b", 0.35); bottom = mix(bottom, "#94a3b8", 0.35); }
 
-  // ambient (전경 어두움)
+  // ambient (전경 어두움) — 사무실 내부가 너무 어두워지지 않게 크게 낮춤
   const ambient =
-    tod === "night" ? "rgba(0,0,0,0.35)"
-    : tod === "dawn" || tod === "sunset" ? "rgba(30,27,75,0.15)"
-    : isRain || isThunder ? "rgba(15,23,42,0.25)"
+    tod === "night" ? "rgba(0,0,0,0.12)"
+    : tod === "dawn" || tod === "sunset" ? "rgba(30,27,75,0.05)"
+    : isRain || isThunder ? "rgba(15,23,42,0.08)"
     : "rgba(0,0,0,0)";
 
   return { top, bottom, ambient };

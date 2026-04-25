@@ -23,6 +23,8 @@ export interface SettingsState {
 
   locale: "ko" | "en";
   testMode: boolean;
+  /** 에이전트 응답이 정상 완료되면 자동으로 배포 파이프라인 실행 */
+  autoDeploy: boolean;
 
   setApiKey: (key: string) => void;
   clearApiKey: () => void;
@@ -31,6 +33,7 @@ export interface SettingsState {
   clearToken: (key: keyof SettingsState["tokens"]) => void;
   setLocale: (l: "ko" | "en") => void;
   setTestMode: (b: boolean) => void;
+  setAutoDeploy: (b: boolean) => void;
   reset: () => void;
 }
 
@@ -55,6 +58,7 @@ export const useSettingsStore = create<SettingsState>()(
       tokens: emptyTokens,
       locale: "ko",
       testMode: false,
+      autoDeploy: false,
 
       setApiKey: (key) => set({ apiKey: key, maskedApiKey: maskKey(key) }),
       clearApiKey: () => set({ apiKey: null, maskedApiKey: "" }),
@@ -67,6 +71,7 @@ export const useSettingsStore = create<SettingsState>()(
         set((s) => ({ tokens: { ...s.tokens, [key]: { configured: false } } })),
       setLocale: (l) => set({ locale: l }),
       setTestMode: (b) => set({ testMode: b }),
+      setAutoDeploy: (b) => set({ autoDeploy: b }),
       reset: () =>
         set({
           apiKey: null,
@@ -75,6 +80,7 @@ export const useSettingsStore = create<SettingsState>()(
           tokens: emptyTokens,
           locale: "ko",
           testMode: false,
+          autoDeploy: false,
         }),
     }),
     { name: "doogeun-hq-settings" }

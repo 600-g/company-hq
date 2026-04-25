@@ -1284,6 +1284,96 @@ async def update_furniture_overrides(body: dict) -> dict:
     return {"ok": True, "saved": cleaned}
 
 
+# ── doogeun-hq 상태 동기화 (에이전트 + 레이아웃) ───────
+# 로컬 localStorage + 서버 JSON + WebSocket 실시간 브로드캐스트
+DOOGEUN_STATE_PATH = os.path.join(os.path.dirname(__file__), "doogeun_state.json")
+_doogeun_ws_clients: set = set()
+
+
+def _load_doogeun_state() -> dict:
+    if os.path.exists(DOOGEUN_STATE_PATH):
+        try:
+            with open(DOOGEUN_STATE_PATH, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, dict):
+                return data
+        except Exception as e:
+            logger.warning("doogeun_state.json load failed: %s", e)
+    return {"agents": [], "layout": {"floors": {}}, "version": 0, "updated_at": None}
+
+
+def _save_doogeun_state(data: dict) -> None:
+    try:
+        with open(DOOGEUN_STATE_PATH, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        logger.error("doogeun_state.json save failed: %s", e)
+
+
+@app.get("/api/doogeun/state")
+async def get_doogeun_state() -> dict:
+    """전체 doogeun-hq 상태 — 에이전트 + 레이아웃. 로드 시 서버 우선."""
+    return {"ok": True, "state": _load_doogeun_state()}
+
+
+@app.put("/api/doogeun/state")
+async def update_doogeun_state(body: dict, request: Request) -> dict:
+    """전체 상태 덮어쓰기 + 연결된 모든 WS 클라이언트에 브로드캐스트.
+    body: { agents: [...], layout: {floors: {...}}, client_id?: str }
+    client_id 를 같이 보내면 자기 자신에겐 WS push 스킵 (echo 방지).
+    """
+    agents = body.get("agents")
+    layout = body.get("layout")
+    client_id = body.get("client_id") or ""
+    if agents is None and layout is None:
+        return {"ok": False, "error": "agents 또는 layout 필요"}
+    prev = _load_doogeun_state()
+    new_state = {
+        "agents": agents if agents is not None else prev.get("agents", []),
+        "layout": layout if layout is not None else prev.get("layout", {"floors": {}}),
+        "version": int(prev.get("version", 0)) + 1,
+        "updated_at": datetime.utcnow().isoformat(),
+    }
+    _save_doogeun_state(new_state)
+    # WS 브로드캐스트 (sender 제외)
+    dead: list = []
+    for ws in list(_doogeun_ws_clients):
+        try:
+            if getattr(ws, "_doogeun_client_id", None) == client_id:
+                continue
+            await ws.send_json({"type": "state_update", "state": new_state})
+        except Exception:
+            dead.append(ws)
+    for ws in dead:
+        _doogeun_ws_clients.discard(ws)
+    return {"ok": True, "state": new_state}
+
+
+@app.websocket("/ws/doogeun/state")
+async def doogeun_state_ws(ws: WebSocket):
+    """실시간 상태 동기화 WS — 다른 디바이스가 변경하면 푸시 받음."""
+    await ws.accept()
+    # 클라이언트가 첫 메시지로 client_id 보냄 (자기 변경 에코 방지용)
+    try:
+        hello = await ws.receive_json()
+        ws._doogeun_client_id = hello.get("client_id") or ""  # type: ignore[attr-defined]
+    except Exception:
+        ws._doogeun_client_id = ""  # type: ignore[attr-defined]
+    _doogeun_ws_clients.add(ws)
+    try:
+        # 초기 상태 전송
+        await ws.send_json({"type": "state_update", "state": _load_doogeun_state()})
+        # keepalive 루프 — 클라이언트는 ping 만 보냄
+        while True:
+            msg = await ws.receive_json()
+            if msg.get("type") == "ping":
+                await ws.send_json({"type": "pong"})
+    except Exception:
+        pass
+    finally:
+        _doogeun_ws_clients.discard(ws)
+
+
 # ── 캐릭터 상태 API ────────────────────────────────────
 
 @app.get("/api/agents/status")
@@ -1600,6 +1690,82 @@ async def get_agent_info(team_id: str):
         "model": TEAM_MODELS.get(team_id, "sonnet"),
         "session_id": TEAM_SESSIONS.get(team_id),
         "has_session": team_id in TEAM_SESSIONS,
+    }
+
+
+@app.get("/api/agents/{team_id}/activity")
+async def get_agent_activity(team_id: str):
+    """에이전트 활동 로그 — 최근 커밋/메시지/상태 집계.
+
+    프론트 '활동 로그' 뷰어용. commits + recent_messages + current_status.
+    """
+    team = next((t for t in TEAMS if t["id"] == team_id), None)
+    if not team:
+        return {"ok": False, "error": "팀 없음"}
+    local = Path(os.path.expanduser(team.get("localPath", ""))).resolve()
+
+    commits: list[dict] = []
+    if (local / ".git").exists():
+        import subprocess
+        try:
+            out = subprocess.run(
+                ["git", "log", "--oneline", "-10", "--format=%h|%s|%ar|%an"],
+                capture_output=True, text=True, cwd=str(local), timeout=5
+            )
+            for line in out.stdout.strip().splitlines():
+                parts = line.split("|", 3)
+                if len(parts) == 4:
+                    commits.append({
+                        "hash": parts[0], "message": parts[1],
+                        "ago": parts[2], "author": parts[3],
+                    })
+        except Exception:
+            pass
+
+    # 최근 메시지 요약 (chat_history 에서 마지막 N 개 assistant 메시지)
+    recent_messages: list[dict] = []
+    try:
+        history_dir = Path("chat_history") / team_id
+        if history_dir.exists():
+            # 가장 최근 수정된 세션 파일
+            session_files = sorted(
+                history_dir.glob("*.json"),
+                key=lambda p: p.stat().st_mtime,
+                reverse=True,
+            )
+            for sf in session_files[:1]:  # 활성 세션 하나만
+                try:
+                    data = json.loads(sf.read_text(encoding="utf-8"))
+                    msgs = data.get("messages", []) if isinstance(data, dict) else data
+                    # 마지막 assistant/ai 메시지 5개, 짧은 요약 (첫 80자)
+                    for m in reversed(msgs):
+                        role = m.get("type") or m.get("role", "")
+                        if role in ("ai", "assistant"):
+                            content = str(m.get("content", ""))[:120].replace("\n", " ")
+                            recent_messages.append({
+                                "role": "assistant",
+                                "preview": content,
+                                "ts": m.get("ts") or m.get("timestamp"),
+                            })
+                            if len(recent_messages) >= 5:
+                                break
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+    # 현재 상태
+    from ws_handler import AGENT_STATUS
+    status = AGENT_STATUS.get(team_id, {})
+
+    return {
+        "ok": True,
+        "team_id": team_id,
+        "commits": commits,
+        "recent_messages": recent_messages,
+        "status": status.get("state", "idle"),
+        "current_tool": status.get("tool"),
+        "last_active": status.get("last_active"),
     }
 
 
@@ -2867,6 +3033,34 @@ async def read_notion(body: dict):
     if not url:
         return {"ok": False, "error": "url 필드가 필요합니다"}
     return await fetch_notion_page(url)
+
+
+@app.get("/api/settings/tokens")
+async def settings_tokens():
+    """외부 서비스 토큰이 서버 .env 에 설정됐는지 여부 (값은 노출 안 함)."""
+    import shutil
+    import subprocess
+    names = ["GITHUB_TOKEN", "VERCEL_TOKEN", "CF_TOKEN", "SUPABASE_ACCESS_TOKEN", "ANTHROPIC_API_KEY"]
+    result = {}
+    for n in names:
+        v = os.getenv(n, "") or ""
+        result[n] = {
+            "configured": bool(v.strip()),
+            "masked": (v[:6] + "…" + v[-4:]) if len(v) >= 12 else ("설정됨" if v else ""),
+        }
+    # CF 는 wrangler OAuth 가 있으면 "배포 가능" 으로 표시
+    if not result["CF_TOKEN"]["configured"] and shutil.which("wrangler"):
+        try:
+            r = subprocess.run(["wrangler", "whoami"], capture_output=True, text=True, timeout=5)
+            if r.returncode == 0 and "@" in (r.stdout or ""):
+                # 이메일 추출
+                import re as _re
+                m = _re.search(r"([\w.+-]+@[\w-]+\.[\w.-]+)", r.stdout)
+                email = m.group(1) if m else "OAuth"
+                result["CF_TOKEN"] = {"configured": True, "masked": f"wrangler · {email}"}
+        except Exception:
+            pass
+    return {"ok": True, "tokens": result}
 
 
 # ── WebSocket ─────────────────────────────────────────

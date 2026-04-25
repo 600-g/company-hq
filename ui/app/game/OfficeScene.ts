@@ -434,6 +434,7 @@ export default class OfficeScene extends Phaser.Scene {
 
     // 사무실 중앙에 고정 가구 (책상 열 + 의자) — 팀 위치 무관 절대 좌표
     this.renderTMLayoutFull();
+
     // 비동기 텍스처 로딩 후 한번 더 검은영역 재계산
     this.time.delayedCall(500, () => this._applyBlackAreaBlock());
   }
@@ -1245,6 +1246,54 @@ export default class OfficeScene extends Phaser.Scene {
     });
   }
 
+  private drawTamagotchiMachine() {
+    // 두 번째 아케이드: 다마고치 (벽돌 스타일)
+    const ax = 3 * TILE + TILE / 2;
+    const ay = (ROWS - 4) * TILE;
+    const g = this.add.graphics().setDepth(50);
+    this.envGroup.add(g);
+
+    // 케이스 (베이지 벽돌)
+    g.fillStyle(0xd0c4a0, 1);
+    g.fillRect(ax - 12, ay - 36, 24, 36);
+    // 케이스 테두리 (진한 베이지)
+    g.fillStyle(0x8a7a50, 1);
+    g.fillRect(ax - 12, ay - 36, 24, 2);
+    g.fillRect(ax - 12, ay - 2, 24, 2);
+    // LCD 화면 (연두색)
+    g.fillStyle(0x9cbd0e, 1);
+    g.fillRect(ax - 9, ay - 33, 18, 14);
+    // LCD 도트 (알/캐릭)
+    g.fillStyle(0x0f380f, 1);
+    g.fillRect(ax - 2, ay - 28, 2, 3);
+    g.fillRect(ax, ay - 28, 2, 3);
+    g.fillRect(ax - 3, ay - 25, 5, 2);
+    // 하단 버튼 3개 (원형)
+    g.fillStyle(0x8a7a50, 1);
+    g.fillCircle(ax - 6, ay - 12, 2);
+    g.fillCircle(ax, ay - 12, 2);
+    g.fillCircle(ax + 6, ay - 12, 2);
+    // 다리
+    g.fillStyle(0x6a5a30, 1);
+    g.fillRect(ax - 10, ay, 4, 8);
+    g.fillRect(ax + 6, ay, 4, 8);
+
+    const label = this.add.text(ax, ay - 40, "🥚 DIGIMON", {
+      fontSize: "6px", fontFamily: "Pretendard Variable, sans-serif",
+      color: "#9cbd0e", resolution: 8,
+      backgroundColor: "#00000088", padding: { x: 2, y: 1 },
+    }).setOrigin(0.5, 1).setDepth(52);
+    this.envGroup.add(label);
+
+    const hit = this.add.zone(ax, ay - 18, 32, 48)
+      .setInteractive({ useHandCursor: true }).setDepth(102);
+    this.envGroup.add(hit);
+
+    hit.on("pointerup", () => {
+      this.scene.start("TamagotchiScene");
+    });
+  }
+
   private drawCorridor() {
     const g = this.add.graphics();
     const corY = (ROWS - 3) * TILE;
@@ -1584,15 +1633,15 @@ export default class OfficeScene extends Phaser.Scene {
     if (t.chars.length >= 2) drawLaptop(topY, 60);
     if (t.chars.length >= 3) drawLaptop(botY, 65);
 
-    // 라벨 — TM 스타일 깔끔한 sans-serif
+    // 라벨 — Pretendard Variable bold + 고해상도 + shadow (스트로크 제거로 뭉침 방지)
     const nameY = ph / 2 + 4;
     const label = this.add.text(0, nameY, t.name, {
-      fontSize: "10px",
-      fontFamily: "system-ui, -apple-system, 'Helvetica Neue', sans-serif",
-      fontStyle: "600",
-      color: "#ffffff", resolution: 16,
-      stroke: "#1a1a2e", strokeThickness: 2,
+      fontSize: "11px",
+      fontFamily: "'Pretendard Variable', Pretendard, -apple-system, system-ui, sans-serif",
+      fontStyle: "bold",
+      color: "#ffffff", resolution: 32,
     }).setOrigin(0.5);
+    label.setShadow(0, 1, "#0b0b14", 3, true, true);
     container.add(label);
 
 

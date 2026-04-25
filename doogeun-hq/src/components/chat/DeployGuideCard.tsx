@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Rocket, Check, Circle, AlertTriangle, ExternalLink, RefreshCw } from "lucide-react";
+import { Rocket, Check, Circle, AlertTriangle, ExternalLink, RefreshCw, Wrench } from "lucide-react";
 import { apiBase } from "@/lib/utils";
 
 type StepKey = "verify" | "commit" | "push" | "deploy" | "done";
@@ -11,12 +11,13 @@ type StepKey = "verify" | "commit" | "push" | "deploy" | "done";
 interface Props {
   teamId: string;
   repo?: string;
+  onFixRequest?: (errorText: string, stepKey: string) => void;
 }
 
 interface Step { key: StepKey; label: string; status: "idle" | "running" | "done" | "error"; detail?: string }
 
 /** 5단계 배포 — 서버 SSE 호출 + 진행 스테퍼 */
-export default function DeployGuideCard({ teamId, repo }: Props) {
+export default function DeployGuideCard({ teamId, repo, onFixRequest }: Props) {
   const [steps, setSteps] = useState<Step[]>([
     { key: "verify", label: "프로젝트 검증", status: "idle" },
     { key: "commit", label: "커밋", status: "idle" },
@@ -86,6 +87,8 @@ export default function DeployGuideCard({ teamId, repo }: Props) {
 
   useEffect(() => { void repo; }, [repo]);
 
+  const errorStep = useMemo(() => steps.find((s) => s.status === "error"), [steps]);
+
   return (
     <div className="rounded-lg border border-sky-500/30 bg-sky-500/5 p-3 space-y-3">
       <div className="flex items-center gap-2">
@@ -117,17 +120,30 @@ export default function DeployGuideCard({ teamId, repo }: Props) {
         ))}
       </div>
 
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
         {remoteUrl && (
           <a href={remoteUrl} target="_blank" rel="noopener noreferrer" className="text-[11px] text-sky-300 hover:underline flex items-center gap-1 truncate">
             <ExternalLink className="w-3 h-3" />
             {remoteUrl}
           </a>
         )}
-        <Button size="sm" onClick={run} disabled={running} className="ml-auto">
-          <Rocket className="w-3.5 h-3.5 mr-1" />
-          {running ? "배포 중..." : "시작"}
-        </Button>
+        <div className="flex items-center gap-2 ml-auto">
+          {errorStep && onFixRequest && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => onFixRequest(`[${errorStep.label}] ${errorStep.detail || "배포 실패"}`, errorStep.key)}
+              className="border-amber-400/50 text-amber-200 hover:bg-amber-500/10"
+            >
+              <Wrench className="w-3.5 h-3.5 mr-1" />
+              AI로 수정 요청
+            </Button>
+          )}
+          <Button size="sm" onClick={run} disabled={running}>
+            <Rocket className="w-3.5 h-3.5 mr-1" />
+            {running ? "배포 중..." : errorStep ? "재시도" : "시작"}
+          </Button>
+        </div>
       </div>
     </div>
   );

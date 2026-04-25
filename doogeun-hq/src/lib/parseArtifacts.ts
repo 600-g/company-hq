@@ -19,19 +19,44 @@ export interface Artifact {
   language?: string;
 }
 
+export interface ChoiceBlock {
+  question: string;
+  options: string[];
+}
+
 export interface ParsedResult {
-  summary: string;     // 코드 블록을 제거한 설명 텍스트
+  summary: string;     // 코드 블록/choice 블록 제거한 설명 텍스트
   artifacts: Artifact[];
+  choice?: ChoiceBlock;  // 객관식 되묻기 (있을 때)
+}
+
+/** ```choice 블록 파싱 */
+export function parseChoiceBlock(text: string): { cleaned: string; choice?: ChoiceBlock } {
+  const re = /```choice\s*\n([\s\S]*?)```/;
+  const m = text.match(re);
+  if (!m) return { cleaned: text };
+  const block = m[1];
+  const lines = block.split("\n").map((l) => l.trim()).filter(Boolean);
+  const qLine = lines.find((l) => l.startsWith("?"));
+  const question = qLine ? qLine.replace(/^\?\s*/, "").trim() : "";
+  const options = lines.filter((l) => l.startsWith("-")).map((l) => l.replace(/^-\s*/, "").trim());
+  if (!question || options.length === 0) return { cleaned: text };
+  return {
+    cleaned: text.replace(re, "").trim(),
+    choice: { question, options },
+  };
 }
 
 const FENCE_RE = /```(\w+)?(?:\s+title=([^\n`]+))?\n([\s\S]*?)\n```/g;
 
 export function parseArtifacts(content: string): ParsedResult {
+  // 1) choice 블록 먼저 분리
+  const { cleaned, choice } = parseChoiceBlock(content);
+
   const artifacts: Artifact[] = [];
   let summary = "";
   let lastEnd = 0;
 
-  // 이전 줄에서 파일명 추측
   const extractTitle = (prefix: string, explicit?: string): string => {
     if (explicit) return explicit.trim();
     const lines = prefix.trim().split("\n");
@@ -44,9 +69,10 @@ export function parseArtifacts(content: string): ParsedResult {
   };
 
   let m: RegExpExecArray | null;
-  while ((m = FENCE_RE.exec(content)) !== null) {
+  while ((m = FENCE_RE.exec(cleaned)) !== null) {
     const [, lang, explicitTitle, code] = m;
-    const before = content.slice(lastEnd, m.index);
+    if (lang === "choice") { lastEnd = m.index + m[0].length; continue; }
+    const before = cleaned.slice(lastEnd, m.index);
     summary += before;
     const title = extractTitle(before, explicitTitle);
     artifacts.push({
@@ -57,6 +83,6 @@ export function parseArtifacts(content: string): ParsedResult {
     });
     lastEnd = m.index + m[0].length;
   }
-  summary += content.slice(lastEnd);
-  return { summary: summary.trim(), artifacts };
+  summary += cleaned.slice(lastEnd);
+  return { summary: summary.trim(), artifacts, choice };
 }

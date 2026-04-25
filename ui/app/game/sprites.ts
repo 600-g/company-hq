@@ -9,15 +9,16 @@ import * as Phaser from "phaser";
 import TM_TILES_LIST from "./tm-tiles.json";
 
 // NPC 풀 크기 (public/assets/npcs/ 내 npc_01.png ~ npc_NN.png)
-// 노년 + 아동 캐릭터 제외 후 30개 유지
-export const NPC_POOL_SIZE = 27;
+export const NPC_POOL_SIZE = 28;
 
 // 고유 primary 캐릭터 풀 크기
 // char_0 ~ char_(PRIMARY_CHAR_POOL_SIZE-1)
 // 0~19: 기본 RPG 캐릭터
 // 20~29: phone001~phone010 (폰 캐릭터)
-// 30~207: 이름 있는 트레이너 (RED, BLUE, GREEN, ASH, LEADER_*, ELITEFOUR_*, CHAMPION_* 등)
-export const PRIMARY_CHAR_POOL_SIZE = 208;
+// 30~207: 이름 있는 트레이너 (RED, BLUE, GREEN, ASH, LEADER_*, ELITEFOUR_* 등)
+// char_0~char_344 (비표준 해상도 12개 정리 + SWIMMER 4 + TUBER 4 + 사용자 지정 6 제거 후 재번호)
+// 전부 128x192 (32x48 프레임 4x4 grid) 검증 완료
+export const PRIMARY_CHAR_POOL_SIZE = 241;
 
 // ═══════════════════════════════════
 // 프리로드
@@ -45,7 +46,7 @@ export function preloadAssets(scene: Phaser.Scene) {
     });
   }
 
-  // NPC 풀 (npc_01~npc_30, 동일한 32×48 / 4x4 포맷)
+  // NPC 풀 (npc_01~npc_NN, 동일한 32×48 / 4x4 포맷)
   // 각 팀의 랜덤 NPC 3명 슬롯에 사용됨
   for (let i = 1; i <= NPC_POOL_SIZE; i++) {
     const key = `npc_${String(i).padStart(2, "0")}`;
@@ -54,6 +55,8 @@ export function preloadAssets(scene: Phaser.Scene) {
       frameHeight: 48,
     });
   }
+
+  // (포켓몬 마스코트 제거됨 — 크기 불일치 렌더 이슈)
 
   // 말풍선 스킨 (96x48 windowskin atlas: 좌테두리/중앙/우테두리 3프레임, 각 32x48)
   scene.load.spritesheet("speech_bubble", "/assets/pokemon_furniture/speech_bubble.png", {

@@ -4,6 +4,8 @@ import { persist } from "zustand/middleware";
 
 export type AgentStatus = "idle" | "working" | "complete" | "error";
 
+export type AgentModel = "haiku" | "sonnet" | "opus";
+
 export interface Agent {
   id: string;
   name: string;
@@ -16,10 +18,14 @@ export interface Agent {
   workingDirectory?: string;
   /** GitHub 레포 "owner/name" */
   githubRepo?: string;
+  /** 언어 모델 (에이전트별 독립 설정) */
+  model?: AgentModel;
   status: AgentStatus;
   floor: number;
   /** 오피스 내 위치 */
   position?: { x: number; y: number };
+  /** 픽셀 스프라이트 key — "char_0" ~ "char_20", "char_cpo". 없으면 자동 할당 */
+  spriteKey?: string;
   createdAt: number;
   updatedAt: number;
   /** 활동 타임라인 (스펙 정리용) */

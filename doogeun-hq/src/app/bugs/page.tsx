@@ -5,8 +5,9 @@ import TopBar from "@/components/layout/TopBar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Bug, RefreshCw, Upload } from "lucide-react";
+import { Bug, RefreshCw, Upload, ChevronRight, ChevronDown } from "lucide-react";
 import { apiBase } from "@/lib/utils";
+import BugReportDialog from "@/components/BugReportDialog";
 
 interface BugRow {
   ts: string;
@@ -15,19 +16,23 @@ interface BugRow {
   issue_number?: number;
   status?: string;
   urgent?: boolean;
-  images?: unknown[];
+  priority?: string;
+  images?: string[];
 }
+
+type Filter = "open" | "in_progress" | "resolved" | "all";
 
 export default function BugsPage() {
   const [rows, setRows] = useState<BugRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<"open" | "resolved" | "all">("open");
+  const [filter, setFilter] = useState<Filter>("open");
   const [showReport, setShowReport] = useState(false);
+  const [expanded, setExpanded] = useState<number | null>(null);
 
   const load = async () => {
     setLoading(true);
     try {
-      const r = await fetch(`${apiBase()}/api/diag/reports?status=${filter}`);
+      const r = await fetch(`${apiBase()}/api/diag/reports?status=${filter === "all" ? "" : filter}`);
       const d = await r.json();
       setRows((d.rows || []).reverse());
     } catch { setRows([]); }
@@ -35,6 +40,15 @@ export default function BugsPage() {
   };
 
   useEffect(() => { load(); }, [filter]);
+
+  const counts = rows.reduce(
+    (acc, r) => {
+      const s = (r.status || "open") as keyof typeof acc;
+      if (s in acc) acc[s]++;
+      return acc;
+    },
+    { open: 0, in_progress: 0, resolved: 0 } as Record<string, number>,
+  );
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -44,13 +58,15 @@ export default function BugsPage() {
           <CardHeader className="flex-row items-start justify-between">
             <div>
               <CardTitle className="flex items-center gap-2">
-                <Bug className="w-4 h-4" /> 버그 리포트
+                <Bug className="w-4 h-4" /> 버그 티켓
               </CardTitle>
-              <CardDescription>이미지/로그와 함께 자동 GH 이슈화. 해결되면 자동 정리.</CardDescription>
+              <CardDescription>
+                ⌘+V 이미지 붙여넣기 · 드래그드롭 · 로그 자동 첨부 · GitHub 이슈 연동
+              </CardDescription>
             </div>
             <div className="flex gap-2">
-              <Button size="sm" variant="outline" onClick={load}>
-                <RefreshCw className="w-3.5 h-3.5" />
+              <Button size="sm" variant="outline" onClick={load} disabled={loading}>
+                <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
               </Button>
               <Button size="sm" onClick={() => setShowReport(true)}>
                 <Upload className="w-3.5 h-3.5 mr-1" />
@@ -60,7 +76,7 @@ export default function BugsPage() {
           </CardHeader>
           <CardContent>
             <div className="flex gap-1 mb-3 p-1 bg-gray-900/60 rounded border border-gray-800">
-              {(["open", "resolved", "all"] as const).map((s) => (
+              {(["open", "in_progress", "resolved", "all"] as const).map((s) => (
                 <button
                   key={s}
                   onClick={() => setFilter(s)}
@@ -70,7 +86,10 @@ export default function BugsPage() {
                       : "text-gray-400 hover:text-gray-200"
                   }`}
                 >
-                  {s === "open" ? "열림" : s === "resolved" ? "해결됨" : "전체"}
+                  {s === "open" ? "열림" : s === "in_progress" ? "진행 중" : s === "resolved" ? "해결됨" : "전체"}
+                  {s !== "all" && counts[s] > 0 && (
+                    <span className="ml-1 text-[10px] text-gray-500">({counts[s]})</span>
+                  )}
                 </button>
               ))}
             </div>
@@ -78,30 +97,61 @@ export default function BugsPage() {
             {loading ? (
               <div className="py-8 text-center text-[12px] text-gray-500">로딩...</div>
             ) : rows.length === 0 ? (
-              <div className="py-8 text-center text-[12px] text-gray-500">버그 없음</div>
+              <div className="py-8 text-center text-[12px] text-gray-500">버그 없음 🎉</div>
             ) : (
               <div className="space-y-2">
-                {rows.slice(0, 30).map((r, i) => (
-                  <div key={i} className="p-3 rounded-lg border border-gray-800/60 bg-gray-900/20">
-                    <div className="flex items-center justify-between gap-2 mb-1">
-                      <div className="text-[13px] text-gray-200 truncate">{r.title}</div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        {r.urgent && <Badge variant="destructive">긴급</Badge>}
-                        {r.issue_number != null && (
-                          <a
-                            href={`https://github.com/600-g/company-hq/issues/${r.issue_number}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-[11px] text-cyan-400 hover:underline"
-                          >
-                            #{r.issue_number}
-                          </a>
-                        )}
-                      </div>
+                {rows.slice(0, 50).map((r, i) => {
+                  const isOpen = expanded === i;
+                  const status = r.status || "open";
+                  const priority = r.priority || (r.urgent ? "urgent" : "normal");
+                  return (
+                    <div key={i} className="rounded-lg border border-gray-800/60 bg-gray-900/20 overflow-hidden">
+                      <button
+                        onClick={() => setExpanded(isOpen ? null : i)}
+                        className="w-full p-3 text-left hover:bg-gray-900/40 transition-colors"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                            {isOpen ? <ChevronDown className="w-3 h-3 text-gray-500 shrink-0" /> : <ChevronRight className="w-3 h-3 text-gray-500 shrink-0" />}
+                            <div className="text-[13px] text-gray-200 truncate">{r.title}</div>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <StatusBadge status={status} />
+                            <PriorityBadge priority={priority} />
+                            {r.issue_number != null && (
+                              <a
+                                href={`https://github.com/600-g/company-hq/issues/${r.issue_number}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-[11px] text-cyan-400 hover:underline"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                #{r.issue_number}
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                        <div className="text-[11px] text-gray-500 font-mono mt-0.5 ml-4">{r.ts}</div>
+                      </button>
+
+                      {isOpen && (
+                        <div className="px-4 pb-3 pt-1 space-y-2 border-t border-gray-800/50">
+                          {r.note && (
+                            <div className="text-[12px] text-gray-300 whitespace-pre-wrap">{r.note}</div>
+                          )}
+                          {r.images && r.images.length > 0 && (
+                            <div className="flex gap-1.5 flex-wrap">
+                              {r.images.slice(0, 6).map((src, j) => (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img key={j} src={src} alt="" className="h-20 rounded border border-gray-700" />
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
-                    <div className="text-[11px] text-gray-500 font-mono">{r.ts}</div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </CardContent>
@@ -115,52 +165,16 @@ export default function BugsPage() {
   );
 }
 
-/** 버그 리포트 간이 모달 (이미지 업로드 다음 세션 추가) */
-function BugReportDialog({ onClose, onSent }: { onClose: () => void; onSent: () => void }) {
-  const [note, setNote] = useState("");
-  const [sending, setSending] = useState(false);
+function StatusBadge({ status }: { status: string }) {
+  if (status === "resolved") return <Badge variant="success">해결</Badge>;
+  if (status === "in_progress") return <Badge variant="warning">진행</Badge>;
+  if (status === "closed") return <Badge variant="secondary">닫힘</Badge>;
+  return <Badge variant="default">열림</Badge>;
+}
 
-  const send = async () => {
-    if (!note.trim()) return;
-    setSending(true);
-    try {
-      await fetch(`${apiBase()}/api/diag/report`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ note, logs: [], images: [] }),
-      });
-      onSent();
-    } catch {} finally { setSending(false); }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={onClose}>
-      <div className="w-full max-w-md" onClick={(e) => e.stopPropagation()}>
-        <Card>
-          <CardHeader>
-            <CardTitle>버그 리포트</CardTitle>
-            <CardDescription>무슨 일 있었는지 간단히 써주세요</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <textarea
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              rows={5}
-              placeholder="예: 채팅 입력 후 응답이 오지 않음..."
-              className="w-full rounded-md border border-gray-700 bg-gray-900/60 px-3 py-2 text-sm text-gray-100 placeholder:text-gray-500 focus:outline-none focus:ring-1 focus:ring-sky-400/40"
-            />
-            <div className="text-[11px] text-gray-500">
-              이미지 업로드(⌘+V) 는 다음 세션에 추가 예정
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button variant="ghost" onClick={onClose}>취소</Button>
-              <Button onClick={send} disabled={sending || !note.trim()}>
-                {sending ? "전송 중..." : "전송"}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
-  );
+function PriorityBadge({ priority }: { priority: string }) {
+  if (priority === "urgent") return <Badge variant="destructive">🔥 긴급</Badge>;
+  if (priority === "high") return <Badge variant="warning">높음</Badge>;
+  if (priority === "low") return <Badge variant="secondary">낮음</Badge>;
+  return null;
 }

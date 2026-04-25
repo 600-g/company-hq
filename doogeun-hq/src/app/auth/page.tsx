@@ -33,7 +33,8 @@ export default function AuthPage() {
         const d = await res.json();
         if (!res.ok || !d.ok) throw new Error(d.error || "로그인 실패");
         login(d.token, { id: "owner", nickname: "오너", role: "owner", loggedInAt: Date.now() });
-        router.push("/");
+        const next1 = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("next") : null;
+        router.push(next1 || "/hub");
         return;
       }
       // 초대 코드 로그인 (기존 FastAPI /api/auth/verify 가정)
@@ -45,7 +46,8 @@ export default function AuthPage() {
       const d = await res.json();
       if (!res.ok || !d.ok) throw new Error(d.error || "코드 검증 실패");
       login(d.token, { id: d.user?.id || nickname, nickname, role: d.user?.role || "member", loggedInAt: Date.now() });
-      router.push("/");
+      const next2 = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("next") : null;
+      router.push(next2 || "/hub");
     } catch (err) {
       setError(err instanceof Error ? err.message : "오류");
     } finally {

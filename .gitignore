@@ -14,3 +14,15 @@ teammaker-classic/public/assets/
 server/skills.bak-*
 doogeun-hq/node_modules/
 doogeun-hq/.next/
+
+# 민감 데이터 (자동 추가 2026-04-25)
+server/chat_history/
+server/notifications.json
+server/push_subscriptions.json
+server/diag/
+server/doogeun_state.json
+server/team_sessions.json
+server/team_evolution.json
+server/team_prompts.json
+server/teams.json
+server/furniture_overrides.json
