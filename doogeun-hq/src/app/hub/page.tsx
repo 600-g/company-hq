@@ -914,23 +914,19 @@ function WorkingAgentsStrip({ collapsed, onSelect }: { collapsed: boolean; onSel
 function AgentSelector({ agents, selectedId, onSelect, onStaffClick }: { agents: Agent[]; selectedId: string | null; onSelect: (id: string) => void; onStaffClick?: () => void }) {
   const streamingByTeam = useChatStore((s) => s.streamingByTeam);
   const unreadByTeam = useChatStore((s) => s.unreadByTeam);
-  // 🧑‍💼 스태프 항목 — 없으면 강제 prepend (서버 sync 지연 시에도 보장)
-  const hasStaff = agents.some((a) => a.id === "staff");
+  // 표시 순서 — CPO 다음에 스태프 (없으면 가상 항목 추가). agents 의 순서는 유지하되 staff 만 cpo 직후로 이동.
+  const cpoIdx = agents.findIndex((a) => a.id === "cpo-claude" || a.id.includes("cpo"));
+  const filtered = agents.filter((a) => a.id !== "staff");
+  const staffAgent = agents.find((a) => a.id === "staff");
+  const ordered: Agent[] = [...filtered];
+  // CPO 직후 위치에 스태프 삽입 (없으면 맨 앞)
+  const insertAt = cpoIdx >= 0 ? cpoIdx + 1 : 0;
+  // 가상 staff 객체 (실제 staff 없을 때 사용)
+  const virtualStaff = staffAgent ?? ({ id: "staff", name: "스태프", emoji: "🧑‍💼", role: "special", status: "idle", floor: 1, description: "", systemPromptMd: "", createdAt: 0, updatedAt: 0, activity: [] } as Agent);
+  ordered.splice(insertAt, 0, virtualStaff);
   return (
     <div className="border-b border-gray-800/60 max-h-40 overflow-y-auto">
-      {!hasStaff && (
-        <button
-          key="staff-virtual"
-          onClick={() => onStaffClick?.()}
-          className="w-full flex items-center gap-1.5 px-2.5 py-1.5 text-left text-[12px] transition-colors text-amber-200 hover:bg-amber-500/10 border-b border-amber-500/20"
-          title="스태프 통계"
-        >
-          <span className="text-sm leading-none">🧑‍💼</span>
-          <span className="flex-1 truncate font-bold">스태프</span>
-          <span className="text-[9px] text-amber-400">통계</span>
-        </button>
-      )}
-      {agents.map((a) => {
+      {ordered.map((a) => {
         const active = selectedId === a.id;
         const streaming = !!streamingByTeam[a.id];
         const unread = unreadByTeam[a.id] ?? 0;
