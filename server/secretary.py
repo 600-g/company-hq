@@ -23,12 +23,11 @@ logger = logging.getLogger("secretary")
 # ── 즉답 가능 카테고리 ─────────────────────────────────
 INSTANT_CATEGORIES = {"status", "calc", "lookup", "greeting", "summarize", "confirm"}
 
-# 사전 키워드 — Gemini 호출 전 명백히 복잡한 건 바로 Claude로 패스 (토큰 절감)
+# 명백한 코드/배포 작업만 Claude로 직행 (다른 자연어는 LLM이 의도 파악)
 SKIP_KEYWORDS = re.compile(
-    r"코드|구현|만들|수정|추가|삭제|배포|deploy|커밋|commit|푸시|push|"
-    r"리팩터|refactor|디버그|debug|에러|버그|문제|이상|"
-    r"비교|분석|설계|아키텍처|판단|결정|추천|어떻게.*할까|"
-    r"@|디스패치|dispatch|토론|discuss|회의|기획",
+    r"\b(deploy|커밋|commit|푸시|push|@\S+|디스패치|dispatch)\b|"
+    r"코드.*수정|코드.*만들|배포해|리팩터|refactor|"
+    r"버그.*고쳐|에러.*수정|실제로.*만들",
     re.IGNORECASE,
 )
 

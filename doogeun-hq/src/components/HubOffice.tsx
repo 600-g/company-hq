@@ -713,28 +713,57 @@ export default function HubOffice({ floor, agentCount }: Props) {
             dot.fillCircle(dotX, 40, 3.2);
             container.add(dot);
 
-            // 말풍선 (streaming 중일 때만) — 캐릭터 머리 위 (cell center 기준)
-            if (streaming) {
+            // 작업 인디케이터 (streaming or working) — 캐릭터 머리 위 텍스트 말풍선 + 바운스 애니
+            if (streaming || a.status === "working") {
+              // 1. 캐릭터 자체 walk_down 애니 + Y 2px 바운스 (타이핑 느낌)
+              const charSprite = container.getData("sprite") as Phaser.GameObjects.Sprite | undefined;
+              if (charSprite && spriteKey) {
+                const animKey = `${spriteKey}_walk_down`;
+                if (this.anims.exists(animKey)) charSprite.play(animKey, true);
+                this.tweens.add({
+                  targets: container,
+                  y: container.y - 2,
+                  duration: 220,
+                  yoyo: true,
+                  repeat: -1,
+                  ease: "Sine.easeInOut",
+                });
+              }
+              // 2. 머리 위 텍스트 말풍선 (loading 펄스)
+              const txt = this.add.text(16, -42, streaming ? "...생각 중" : "...작업 중", {
+                fontSize: "9px",
+                color: "#fbbf24",
+                fontFamily: "'Pretendard Variable', system-ui, sans-serif",
+                fontStyle: "italic",
+                resolution: 32,
+              }).setOrigin(0.5, 1);
+              const padW = txt.width + 10;
+              const padH = txt.height + 4;
+              const bx = 16 - padW / 2;
+              const by = -42 - padH;
               const bubble = this.add.graphics();
               bubble.fillStyle(0x0b0b14, 0.92);
-              bubble.lineStyle(1, 0xfbbf24, 0.7);
-              bubble.fillRoundedRect(-4, -54, 40, 20, 4);
-              bubble.strokeRoundedRect(-4, -54, 40, 20, 4);
-              bubble.fillTriangle(12, -34, 20, -34, 16, -28);
+              bubble.lineStyle(1, 0xfbbf24, 0.85);
+              bubble.fillRoundedRect(bx, by, padW, padH, 4);
+              bubble.strokeRoundedRect(bx, by, padW, padH, 4);
+              // 꼬리
+              bubble.fillStyle(0x0b0b14, 0.92);
+              bubble.fillTriangle(13, -42, 19, -42, 16, -36);
+              bubble.lineStyle(1, 0xfbbf24, 0.85);
+              bubble.beginPath();
+              bubble.moveTo(13, -42);
+              bubble.lineTo(16, -36);
+              bubble.lineTo(19, -42);
+              bubble.strokePath();
               container.add(bubble);
-              const dots = this.add.text(16, -44, "...", {
-                fontSize: "16px", color: "#fbbf24",
-                fontFamily: "Pretendard Variable, system-ui, sans-serif", resolution: 8,
-                fontStyle: "bold",
-              }).setOrigin(0.5);
-              container.add(dots);
-              // 깜빡이는 애니
+              container.add(txt);
               this.tweens.add({
-                targets: dots,
-                alpha: { from: 1, to: 0.3 },
-                duration: 500,
+                targets: [txt, bubble],
+                alpha: { from: 0.7, to: 1 },
+                duration: 600,
                 yoyo: true,
                 repeat: -1,
+                ease: "Sine.easeInOut",
               });
             }
 
