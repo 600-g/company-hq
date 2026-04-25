@@ -38,6 +38,7 @@ export default function AgentConfigModal({ agent, onClose }: Props) {
   const [floorChoice, setFloorChoice] = useState(agent.floor ?? 1);
   const [modelChoice, setModelChoice] = useState<AgentModel>(agent.model ?? "sonnet");
   const [spriteChoice, setSpriteChoice] = useState<string>(agent.spriteKey ?? "");
+  const [languageChoice, setLanguageChoice] = useState<"ko" | "en" | "ja" | "zh" | "">(agent.language ?? "");
   const [savedFlash, setSavedFlash] = useState(false);
 
   useEffect(() => {
@@ -53,7 +54,8 @@ export default function AgentConfigModal({ agent, onClose }: Props) {
     githubRepo !== (agent.githubRepo ?? "") ||
     floorChoice !== (agent.floor ?? 1) ||
     modelChoice !== (agent.model ?? "sonnet") ||
-    spriteChoice !== (agent.spriteKey ?? "");
+    spriteChoice !== (agent.spriteKey ?? "") ||
+    languageChoice !== (agent.language ?? "");
 
   const [saving, setSaving] = useState(false);
   const save = async () => {
@@ -70,6 +72,7 @@ export default function AgentConfigModal({ agent, onClose }: Props) {
       floor: floorChoice,
       model: modelChoice,
       spriteKey: spriteChoice || undefined,
+      language: languageChoice || undefined,
       position: floorChoice !== (agent.floor ?? 1) ? undefined : agent.position,
     });
     // 서버 동기화 — MD 프롬프트 + 모델 변경 시 서버에도 반영
@@ -207,6 +210,33 @@ export default function AgentConfigModal({ agent, onClose }: Props) {
               </div>
               <div className="text-[10px] text-gray-500 mt-0.5">
                 에이전트마다 독립 설정. 서버에 즉시 반영됨 (GET /api/agents/:id/info 로 확인)
+              </div>
+            </Field>
+
+            <Field label="응답 언어 (override)">
+              <div className="flex gap-1">
+                {([
+                  { v: "", label: "기본" },
+                  { v: "ko", label: "한국어" },
+                  { v: "en", label: "EN" },
+                  { v: "ja", label: "日本" },
+                  { v: "zh", label: "中文" },
+                ] as const).map(({ v, label }) => (
+                  <button
+                    key={v || "default"}
+                    onClick={() => setLanguageChoice(v as "" | "ko" | "en" | "ja" | "zh")}
+                    className={`flex-1 h-8 rounded-md border text-[11px] transition-colors ${
+                      languageChoice === v
+                        ? "bg-sky-500/15 text-gray-100 border-sky-400/50 font-bold"
+                        : "border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-200"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <div className="text-[10px] text-gray-500 mt-0.5">
+                기본 = 설정의 에이전트 기본 언어. 개별 override 시 시스템 프롬프트에 명시 주입.
               </div>
             </Field>
 

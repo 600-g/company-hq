@@ -816,7 +816,7 @@ async def get_floor_layout():
     for floor_str, team_ids in sorted(FLOOR_LAYOUT.items(), key=lambda x: int(x[0])):
         teams_in_floor = []
         for tid in team_ids:
-            if tid in ("cpo-claude", "server-monitor", "staff"):  # CPO/서버실/스태프는 게임에서 별도 렌더링
+            if tid in ("cpo-claude", "server-monitor"):  # CPO·서버실은 게임에서 별도 렌더링 (스태프는 일반 캐릭으로 렌더)
                 continue
             team = team_map.get(tid)
             if team:

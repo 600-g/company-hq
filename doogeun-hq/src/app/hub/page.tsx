@@ -12,7 +12,7 @@ import { useAgentStore, type Agent } from "@/stores/agentStore";
 import { useAuthStore } from "@/stores/authStore";
 import { apiBase } from "@/lib/utils";
 import {
-  X, Users, Bug, Cpu, Settings, LogOut, Send,
+  X, Users, Bug, Cpu, Settings, LogOut, Send, BarChart3,
   MessagesSquare, Plus, Home as HomeIcon, RefreshCw, ChevronRight, ChevronLeft,
   Grid3x3, Pencil, Terminal as TerminalIcon,
 } from "lucide-react";
@@ -23,6 +23,7 @@ import FurniturePalette from "@/components/office/FurniturePalette";
 import { useLayoutStore } from "@/stores/layoutStore";
 import { useSettingsStore } from "@/stores/settingsStore";
 import AgentConfigModal from "@/components/AgentConfigModal";
+import StaffStatsModal from "@/components/StaffStatsModal";
 import AgentContextMenu from "@/components/AgentContextMenu";
 import AgentActivityModal from "@/components/AgentActivityModal";
 import SessionHistoryPanel from "@/components/chat/SessionHistoryPanel";
@@ -63,7 +64,7 @@ interface HubMsg {
   images?: string[];  // data URLs (사용자 메시지 첨부)
 }
 
-type ModalKey = null | "agents" | "server" | "bugs" | "settings" | "newAgent";
+type ModalKey = null | "agents" | "server" | "bugs" | "settings" | "newAgent" | "staff-stats";
 
 export default function HubPage() {
   const router = useRouter();
@@ -346,6 +347,7 @@ export default function HubPage() {
             onClick={() => setEditMode(!editMode)}
             active={editMode}
           />
+          <SideItem collapsed={sideCollapsed} icon={BarChart3} label="스태프 통계" onClick={() => setModalKey("staff-stats")} />
           <SideItem collapsed={sideCollapsed} icon={Settings} label="설정" onClick={() => router.push("/settings")} />
           <div className="h-px bg-gray-800/60 my-2" />
           {/* Legacy 앱 (구 두근컴퍼니 / 팀메이커) 버튼 제거됨 — 장독대 대기 (도메인/터널 세팅 후 부활) */}
@@ -799,6 +801,7 @@ export default function HubPage() {
       <Modal open={modalKey === "bugs"} onClose={() => setModalKey(null)} title="버그 리포트" subtitle="이슈 리스트 / 리포트 작성" widthClass="max-w-2xl">
         <BugsBody />
       </Modal>
+      <StaffStatsModal open={modalKey === "staff-stats"} onClose={() => setModalKey(null)} />
 
       {showDebug && <DebugPanel onClose={() => setShowDebug(false)} />}
       {showTerminal && (

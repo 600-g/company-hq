@@ -26,6 +26,8 @@ export interface Agent {
   position?: { x: number; y: number };
   /** 픽셀 스프라이트 key — "char_0" ~ "char_20", "char_cpo". 없으면 자동 할당 */
   spriteKey?: string;
+  /** 응답 언어 override — 없으면 settings.agentLanguage 따름 */
+  language?: "ko" | "en" | "ja" | "zh";
   createdAt: number;
   updatedAt: number;
   /** 활동 타임라인 (스펙 정리용) */
