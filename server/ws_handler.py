@@ -486,6 +486,56 @@ async def handle_chat(
                 # 이전 작업 유지 — 이번 메시지는 큐에 예약됨, 메인 루프는 다음 receive로
                 continue
 
+            # 🧑‍💼 스태프 — 모든 응답 무료 LLM, 복잡 작업은 CPO 멘션 위임
+            if team_id == "staff":
+                try:
+                    from staff_engine import handle as staff_handle
+                    result = await staff_handle(prompt, language="ko")
+                    reply = result.get("reply") or ""
+                    await manager.send_json(
+                        team_id,
+                        {"type": "ai_chunk", "content": reply, "session_id": current_sid},
+                        session_id=current_sid,
+                    )
+                    await manager.send_json(
+                        team_id,
+                        {"type": "ai_end", "session_id": current_sid},
+                        session_id=current_sid,
+                    )
+                    manager.add_message(team_id, "ai", reply, current_sid)
+                    _update_status(team_id, working=False, tool=None,
+                                   last_active=datetime.now().strftime("%H:%M:%S"))
+                    # CPO 위임 필요 → 자동 디스패치 트리거 (스태프 채팅창에 결과 보이지 않고 별도 처리)
+                    if result.get("escalate"):
+                        try:
+                            await manager.send_json(team_id, {
+                                "type": "status",
+                                "content": "🔔 CPO에 디스패치 요청 전달 중",
+                                "session_id": current_sid,
+                            }, session_id=current_sid)
+                        except Exception:
+                            pass
+                        # 백그라운드로 CPO 직접 호출 (Claude full)
+                        async def _bg_cpo():
+                            try:
+                                cpo_team = next((t for t in __import__("main").TEAMS if t["id"] == "cpo-claude"), None)
+                                if not cpo_team:
+                                    return
+                                cpo_path = os.path.expanduser(cpo_team["localPath"])
+                                async for chunk in run_claude(result["escalate_prompt"], cpo_path, "cpo-claude"):
+                                    pass  # CPO 결과는 cpo-claude 채팅창에 자동 저장됨
+                            except Exception as e:
+                                logger.warning("[staff/escalate] %s", e)
+                        asyncio.create_task(_bg_cpo())
+                    try:
+                        sessions_store.end_job(team_id, current_sid, "done")
+                    except Exception:
+                        pass
+                    continue  # Claude 호출 스킵 (스태프는 항상 무료 LLM)
+                except Exception as e:
+                    logger.warning("[staff] 실패: %s", e)
+                    # 폴백: 기본 Claude 흐름
+
             # 🤖 비서 1차 처리 (CPO 채팅에만, Claude 토큰 절감)
             if team_id == "cpo-claude":
                 try:

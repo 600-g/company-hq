@@ -816,7 +816,7 @@ async def get_floor_layout():
     for floor_str, team_ids in sorted(FLOOR_LAYOUT.items(), key=lambda x: int(x[0])):
         teams_in_floor = []
         for tid in team_ids:
-            if tid in ("cpo-claude", "server-monitor"):  # CPO·서버실은 게임에서 별도 렌더링
+            if tid in ("cpo-claude", "server-monitor", "staff"):  # CPO/서버실/스태프는 게임에서 별도 렌더링
                 continue
             team = team_map.get(tid)
             if team:
@@ -2980,6 +2980,30 @@ async def budget_status():
     except Exception:
         free = {}
     return {"ok": True, **base, "free_llm_usage": free}
+
+
+@app.get("/api/staff/stats")
+async def staff_stats():
+    """스태프 누적 사용 통계 — 무료 LLM 비율, Claude 절감 추정, 의도/언어 분포"""
+    try:
+        from staff_engine import get_stats
+        s = get_stats()
+        total = s.get("total_handled", 0) or 1
+        provider = s.get("by_provider", {})
+        free_count = sum(v for k, v in provider.items() if k != "claude_fallback")
+        return {
+            "ok": True,
+            "total_handled": s.get("total_handled", 0),
+            "free_llm_ratio": round(free_count / total * 100, 1),
+            "claude_fallback_count": provider.get("claude_fallback", 0),
+            "claude_tokens_saved": s.get("claude_tokens_saved_estimate", 0),
+            "by_provider": provider,
+            "by_intent": s.get("by_intent", {}),
+            "by_language": s.get("by_language", {}),
+            "last_updated": s.get("last_updated"),
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 @app.post("/api/budget/reset")
 async def budget_reset():
