@@ -74,10 +74,12 @@ def get_stats() -> dict:
 # ── 의도 분류 ─────────────────────────────────────────
 ESCALATE_KEYWORDS = re.compile(
     r"\b(deploy|커밋|commit|푸시|push|@\S+|디스패치|dispatch|배포해)\b|"
-    r"코드.*수정|코드.*만들|코드.*추가|리팩터|refactor|"
-    r"버그.*고쳐|에러.*수정|구현해|기능.*추가|기능.*만들",
+    r"코드.*수정해|코드.*만들어|코드.*추가해|리팩터|refactor|"
+    r"버그.*고쳐|에러.*수정해|이거.*고쳐|기능.*추가해|기능.*만들어|"
+    r"파일.*수정|파일.*만들|레포.*만들",
     re.IGNORECASE,
 )
+# 주의: "코드 설명해줘", "이거 뭔지 설명" 같은 일반 자연어는 escalate 아님 (스태프가 직접 답)
 
 
 async def classify_intent(text: str) -> str:
@@ -151,11 +153,14 @@ async def handle(text: str, language: str = "ko") -> dict:
             _bump_stat(provider, "status", language)
             return {"handled": True, "reply": reply.strip(), "intent": intent, "provider": provider, "escalate": False}
 
-    # 일반 자연어 — Gemini 자유 응답
+    # 일반 자연어 — Gemini 자유 응답 (ChatGPT/Claude 같은 만능 챗봇 역할)
     lang_hint = {"ko": "한국어로", "en": "in English", "ja": "日本語で", "zh": "用中文"}.get(language, "한국어로")
     prompt = (
-        f"두근컴퍼니 스태프(친근한 AI 비서)로서 다음 메시지에 {lang_hint} "
-        f"3줄 이내로 간결하고 친절히 답하세요.\n"
+        f"너는 두근컴퍼니의 스태프이자 만능 AI 비서야. ChatGPT/Claude 같은 일반 챗봇 역할 + 두근컴퍼니 전담 비서 역할 동시 수행.\n\n"
+        f"답할 수 있는 것: 일반 지식 질문 (날씨/뉴스/번역/설명/계산/코드 설명/요약/창작 등)\n"
+        f"위임할 것 (이미 분류 완료, 여기는 도달 안 함): 실제 코드 수정/배포\n\n"
+        f"답변 톤: {lang_hint} 자연스럽게, 필요한 만큼 자세히 (5줄 이내 권장).\n"
+        f"모르는 건 솔직히 모른다고. 친근한 동료 톤.\n\n"
         f'메시지: "{text}"'
     )
     reply, provider = await smart_call("default", prompt, max_out=500)

@@ -1333,8 +1333,39 @@ def _save_doogeun_state(data: dict) -> None:
 
 @app.get("/api/doogeun/state")
 async def get_doogeun_state() -> dict:
-    """전체 doogeun-hq 상태 — 에이전트 + 레이아웃. 로드 시 서버 우선."""
-    return {"ok": True, "state": _load_doogeun_state()}
+    """전체 doogeun-hq 상태 — 에이전트 + 레이아웃.
+
+    GET 시 teams.json 의 새 팀(예: staff)을 자동 보충 — 클라가 빠진 팀 못 받는 문제 방지.
+    """
+    state = _load_doogeun_state()
+    existing_ids = {a.get("id") for a in state.get("agents", [])}
+    server_skip = {"server-monitor"}  # 캐릭 없는 팀
+    added = []
+    now_ts = int(time.time() * 1000)
+    for t in TEAMS:
+        tid = t.get("id")
+        if not tid or tid in existing_ids or tid in server_skip:
+            continue
+        # 새 팀 자동 추가
+        new_agent = {
+            "id": tid,
+            "name": t.get("name", tid),
+            "emoji": t.get("emoji", "🧑"),
+            "role": t.get("category", ""),
+            "description": t.get("status", ""),
+            "systemPromptMd": "",
+            "status": "idle",
+            "floor": 1,
+            "createdAt": now_ts,
+            "updatedAt": now_ts,
+            "activity": [],
+        }
+        state.setdefault("agents", []).append(new_agent)
+        added.append(tid)
+    if added:
+        _save_doogeun_state(state)
+        logger.info("[doogeun_state] 자동 보충: %s", added)
+    return {"ok": True, "state": state}
 
 
 @app.put("/api/doogeun/state")
