@@ -446,6 +446,15 @@ export default function HubPage() {
                 className="absolute inset-0 pointer-events-none transition-colors duration-[2s]"
                 style={{ background: ambientTint }}
               />
+              {/* 스태프 통계 — 우상단 모서리 (씬 위 오버레이) */}
+              <button
+                onClick={() => setModalKey("staff-stats")}
+                className="absolute top-2 right-2 z-30 flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-bold transition-all border backdrop-blur bg-gray-900/70 border-gray-600 text-amber-200 hover:bg-amber-500/20 hover:border-amber-400/60 hover:text-amber-100"
+                title="스태프 통계 — Claude 토큰 절감 / 무료 LLM 사용"
+              >
+                📊 스태프
+              </button>
+
               {/* 오피스 편집 버튼 — 좌상단 모서리 (씬 위 오버레이) */}
               <button
                 onClick={() => setEditMode(!editMode)}
@@ -546,7 +555,7 @@ export default function HubPage() {
           agents={agents}
           selectedId={selectedAgentId}
           onSelect={(id) => setSelectedAgentId(id)}
-          onStaffClick={() => setModalKey("staff-stats")}
+          onStaffStatsClick={() => setModalKey("staff-stats")}
         />
 
         <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-2.5">
@@ -933,17 +942,14 @@ function WorkingAgentsStrip({ collapsed, onSelect }: { collapsed: boolean; onSel
   );
 }
 
-function AgentSelector({ agents, selectedId, onSelect, onStaffClick }: { agents: Agent[]; selectedId: string | null; onSelect: (id: string) => void; onStaffClick?: () => void }) {
+function AgentSelector({ agents, selectedId, onSelect, onStaffStatsClick }: { agents: Agent[]; selectedId: string | null; onSelect: (id: string) => void; onStaffStatsClick?: () => void }) {
   const streamingByTeam = useChatStore((s) => s.streamingByTeam);
   const unreadByTeam = useChatStore((s) => s.unreadByTeam);
-  // 표시 순서 — CPO 다음에 스태프 (없으면 가상 항목 추가). agents 의 순서는 유지하되 staff 만 cpo 직후로 이동.
   const cpoIdx = agents.findIndex((a) => a.id === "cpo-claude" || a.id.includes("cpo"));
   const filtered = agents.filter((a) => a.id !== "staff");
   const staffAgent = agents.find((a) => a.id === "staff");
   const ordered: Agent[] = [...filtered];
-  // CPO 직후 위치에 스태프 삽입 (없으면 맨 앞)
   const insertAt = cpoIdx >= 0 ? cpoIdx + 1 : 0;
-  // 가상 staff 객체 (실제 staff 없을 때 사용)
   const virtualStaff = staffAgent ?? ({ id: "staff", name: "스태프", emoji: "🧑‍💼", role: "special", status: "idle", floor: 1, description: "", systemPromptMd: "", createdAt: 0, updatedAt: 0, activity: [] } as Agent);
   ordered.splice(insertAt, 0, virtualStaff);
   return (
@@ -954,29 +960,36 @@ function AgentSelector({ agents, selectedId, onSelect, onStaffClick }: { agents:
         const unread = unreadByTeam[a.id] ?? 0;
         const isStaff = a.id === "staff";
         return (
-          <button
-            key={a.id}
-            onClick={() => isStaff ? onStaffClick?.() : onSelect(a.id)}
-            className={`w-full flex items-center gap-1.5 px-2.5 py-1.5 text-left text-[12px] transition-colors ${
-              isStaff
-                ? "text-amber-200 hover:bg-amber-500/10 border-b border-amber-500/20"
-                : active ? "bg-sky-500/15 text-sky-100" : "text-gray-300 hover:bg-gray-800/40"
-            }`}
-            title={isStaff ? "스태프 통계 (클릭)" : undefined}
-          >
-            <span className="text-sm leading-none">{a.emoji}</span>
-            <span className={`flex-1 truncate ${active ? "font-bold" : ""}`}>{a.name}</span>
-            {isStaff ? (
-              <span className="text-[9px] text-amber-400">통계</span>
-            ) : streaming ? (
-              <span className="flex items-center gap-0.5 text-[9px] text-amber-300">
-                <span className="w-1.5 h-1.5 bg-amber-400 rounded-full animate-pulse" />
-                작업중
-              </span>
-            ) : unread > 0 && !active ? (
-              <span className="text-[9px] px-1 rounded-full bg-red-500/80 text-white font-bold">{unread}</span>
-            ) : null}
-          </button>
+          <div key={a.id} className="flex">
+            <button
+              onClick={() => onSelect(a.id)}
+              className={`flex-1 flex items-center gap-1.5 px-2.5 py-1.5 text-left text-[12px] transition-colors ${
+                active ? "bg-sky-500/15 text-sky-100" : "text-gray-300 hover:bg-gray-800/40"
+              } ${isStaff ? "border-b border-amber-500/30" : ""}`}
+            >
+              <span className="text-sm leading-none">{a.emoji}</span>
+              <span className={`flex-1 truncate ${active ? "font-bold" : ""}`}>{a.name}</span>
+              {streaming ? (
+                <span className="flex items-center gap-0.5 text-[9px] text-amber-300">
+                  <span className="w-1.5 h-1.5 bg-amber-400 rounded-full animate-pulse" />
+                  작업중
+                </span>
+              ) : unread > 0 && !active ? (
+                <span className="text-[9px] px-1 rounded-full bg-red-500/80 text-white font-bold">{unread}</span>
+              ) : null}
+            </button>
+            {isStaff && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onStaffStatsClick?.(); }}
+                className={`px-2 text-[10px] font-bold transition-colors ${
+                  active ? "text-amber-200 hover:bg-amber-500/15" : "text-amber-400/70 hover:bg-amber-500/10 hover:text-amber-200"
+                } border-l border-gray-800/60`}
+                title="스태프 통계"
+              >
+                📊
+              </button>
+            )}
+          </div>
         );
       })}
     </div>

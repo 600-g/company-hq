@@ -547,32 +547,9 @@ async def handle_chat(
                     logger.warning("[staff] 실패: %s", e)
                     # 폴백: 기본 Claude 흐름
 
-            # 🤖 비서 1차 처리 (CPO 채팅에만, Claude 토큰 절감)
-            if team_id == "cpo-claude":
-                try:
-                    from secretary import try_secretary
-                    sec_reply = await try_secretary(prompt)
-                    if sec_reply:
-                        await manager.send_json(
-                            team_id,
-                            {"type": "ai_chunk", "content": sec_reply, "session_id": current_sid},
-                            session_id=current_sid,
-                        )
-                        await manager.send_json(
-                            team_id,
-                            {"type": "ai_end", "session_id": current_sid},
-                            session_id=current_sid,
-                        )
-                        manager.add_message(team_id, "ai", sec_reply, current_sid)
-                        _update_status(team_id, working=False, tool=None,
-                                       last_active=datetime.now().strftime("%H:%M:%S"))
-                        try:
-                            sessions_store.end_job(team_id, current_sid, "done")
-                        except Exception:
-                            pass
-                        continue  # Claude 호출 스킵
-                except Exception as e:
-                    logger.warning("[secretary] 실패, Claude 폴백: %s", e)
+            # CPO 채팅 인터셉트 제거 — 사용자가 CPO 호출 시 본인(Claude)이 직접 답변
+            # 비서 역할은 staff 팀 채팅에서만 작동 (스태프 채팅 → 무료 LLM 즉답)
+            # (이전 secretary 인터셉트는 "🤖 비서:" 프리픽스 혼란 유발 → 제거)
 
             _cancel_flags[team_id] = False
             full_response = ""

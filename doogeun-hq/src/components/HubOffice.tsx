@@ -775,37 +775,37 @@ export default function HubOffice({ floor, agentCount }: Props) {
                 }
               }
               // 2. 머리 위 말풍선 — 실제 채팅 내용 표시 (없으면 "...생각 중")
-              const bubbleText = lastBubbleText || (streaming ? "...생각 중" : "...작업 중");
-              // 60자 이내로 자르고 줄바꿈 처리
-              const trimmed = bubbleText.length > 80 ? bubbleText.slice(0, 80) + "…" : bubbleText;
-              const txt = this.add.text(16, -50, trimmed, {
-                fontSize: "11px",
-                color: lastBubbleText ? "#e5e7eb" : "#fbbf24",
+              const bubbleText = lastBubbleText || (streaming ? "💭 생각 중..." : "⚙️ 작업 중...");
+              // 80자 이내로 자르고 줄바꿈 처리
+              const trimmed = bubbleText.length > 100 ? bubbleText.slice(0, 100) + "…" : bubbleText;
+              const txt = this.add.text(16, -60, trimmed, {
+                fontSize: "13px",
+                color: lastBubbleText ? "#f1f5f9" : "#fde68a",
                 fontFamily: "'Pretendard Variable', system-ui, sans-serif",
                 fontStyle: lastBubbleText ? "normal" : "italic",
                 resolution: 32,
-                wordWrap: { width: 220, useAdvancedWrap: true },
+                wordWrap: { width: 240, useAdvancedWrap: true },
                 align: "center",
               }).setOrigin(0.5, 1);
-              const padW = Math.min(txt.width + 14, 240);
-              const padH = txt.height + 8;
+              const padW = Math.min(txt.width + 16, 260);
+              const padH = txt.height + 10;
               const bx = 16 - padW / 2;
-              const by = -50 - padH;
+              const by = -60 - padH;
               const bubble = this.add.graphics();
-              const fillColor = lastBubbleText ? 0x1a1a2e : 0x0b0b14;
+              const fillColor = lastBubbleText ? 0x111827 : 0x1a1a2e;
               const borderColor = lastBubbleText ? 0x60a5fa : 0xfbbf24;
-              bubble.fillStyle(fillColor, 0.95);
-              bubble.lineStyle(1.5, borderColor, 0.95);
-              bubble.fillRoundedRect(bx, by, padW, padH, 6);
-              bubble.strokeRoundedRect(bx, by, padW, padH, 6);
+              bubble.fillStyle(fillColor, 0.96);
+              bubble.lineStyle(2, borderColor, 1);
+              bubble.fillRoundedRect(bx, by, padW, padH, 8);
+              bubble.strokeRoundedRect(bx, by, padW, padH, 8);
               // 꼬리 (말풍선 아래 가운데)
-              bubble.fillStyle(fillColor, 0.95);
-              bubble.fillTriangle(11, -50, 21, -50, 16, -42);
-              bubble.lineStyle(1.5, borderColor, 0.95);
+              bubble.fillStyle(fillColor, 0.96);
+              bubble.fillTriangle(10, -60, 22, -60, 16, -52);
+              bubble.lineStyle(2, borderColor, 1);
               bubble.beginPath();
-              bubble.moveTo(11, -50);
-              bubble.lineTo(16, -42);
-              bubble.lineTo(21, -50);
+              bubble.moveTo(10, -60);
+              bubble.lineTo(16, -52);
+              bubble.lineTo(22, -60);
               bubble.strokePath();
               container.add(bubble);
               container.add(txt);
