@@ -1769,12 +1769,22 @@ async def get_dashboard():
     }
 
 
+VALID_MODELS = {
+    "haiku", "sonnet", "opus",  # Claude (Max 플랜)
+    "gemini_flash",              # 클라우드 무료
+    "gemma_main", "gemma_e4b",   # 로컬 무한
+}
+
+
 @app.post("/api/agents/{team_id}/model")
 async def set_agent_model(team_id: str, body: dict):
-    """팀 모델 변경 (haiku|sonnet|opus)."""
+    """팀 AI 모델 변경.
+    Claude: haiku|sonnet|opus
+    무료 LLM: gemini_flash|gemma_main|gemma_e4b (Claude 토큰 0)
+    """
     model = body.get("model", "")
-    if model not in ("haiku", "sonnet", "opus"):
-        return {"ok": False, "error": "model은 haiku|sonnet|opus"}
+    if model not in VALID_MODELS:
+        return {"ok": False, "error": f"model 은 {sorted(VALID_MODELS)} 중 하나"}
     TEAM_MODELS[team_id] = model
     _log_activity(team_id, f"🔧 모델 변경: {model}")
     return {"ok": True, "team_id": team_id, "model": model}

@@ -773,7 +773,7 @@ async def run_claude(
     is_auto: bool = False,
     session_id: str | None = None,
 ):
-    """[레거시] Claude Code CLI 실행 — claude -p 방식
+    """[레거시] Claude Code CLI 실행 — claude -p 방식 + 무료 LLM 라우팅
 
     is_auto=True : 자동 트리거 → 예산 체크
     is_auto=False: 수동 대화 → 무제한
@@ -781,6 +781,27 @@ async def run_claude(
 
     Yields: dict {"kind": "text"|"status", "content": str}
     """
+    # ── 무료 LLM 라우팅 — 팀 모델이 gemini_flash / gemma_main / gemma_e4b 면 free_llm 으로 직접 호출
+    _model_pre = TEAM_MODELS.get(team_id, "sonnet")
+    if _model_pre in ("gemini_flash", "gemma_main", "gemma_e4b"):
+        try:
+            from free_llm import call_gemini, call_ollama, OLLAMA_MODEL_MAIN, OLLAMA_MODEL_FAST
+            yield {"kind": "status", "content": f"🆓 무료 LLM ({_model_pre})"}
+            if _model_pre == "gemini_flash":
+                txt = await call_gemini(prompt, max_out=2000)
+            elif _model_pre == "gemma_main":
+                txt = await call_ollama(prompt, model=OLLAMA_MODEL_MAIN, max_out=2000, timeout=180)
+            else:
+                txt = await call_ollama(prompt, model=OLLAMA_MODEL_FAST, max_out=2000, timeout=120)
+            if txt:
+                yield {"kind": "text", "content": txt}
+            else:
+                yield {"kind": "text", "content": "⚠️ 무료 LLM 응답 실패 — Claude 폴백 필요 시 모델 변경"}
+            return
+        except Exception as e:
+            logger.warning("[%s] 무료 LLM 호출 실패, Claude 폴백: %s", team_id, e)
+            # fall through to Claude path
+
     # ── 스탠바이/예산 체크 (자동 실행만 차단, 수동 대화는 무제한) ──
     if is_auto:
         if STANDBY_FLAG:

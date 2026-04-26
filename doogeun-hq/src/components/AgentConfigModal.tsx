@@ -189,17 +189,19 @@ export default function AgentConfigModal({ agent, onClose }: Props) {
               </div>
             </Field>
 
-            <Field label="모델 (언어)">
-              <div className="flex gap-1">
+            <Field label="AI 모델">
+              {/* Claude (유료, Max 플랜) */}
+              <div className="text-[10px] text-gray-500 mb-1">Claude (Max 플랜 — 토큰 소비)</div>
+              <div className="flex gap-1 mb-2">
                 {(["haiku", "sonnet", "opus"] as const).map((m) => (
                   <button
                     key={m}
                     onClick={() => setModelChoice(m)}
                     className={`flex-1 h-9 rounded-md border text-[12px] font-bold transition-colors ${
                       modelChoice === m
-                        ? m === "haiku" ? "bg-green-500/15 text-gray-100 border-green-400/50"
-                          : m === "opus" ? "bg-purple-500/15 text-gray-100 border-purple-400/50"
-                          : "bg-sky-500/15 text-gray-100 border-sky-400/50"
+                        ? m === "haiku" ? "bg-green-500/20 text-gray-100 border-green-400/60"
+                          : m === "opus" ? "bg-purple-500/20 text-gray-100 border-purple-400/60"
+                          : "bg-sky-500/20 text-gray-100 border-sky-400/60"
                         : "border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-200 bg-gray-900/40"
                     }`}
                     title={m === "haiku" ? "Haiku — 빠르고 저렴" : m === "opus" ? "Opus — 최고 품질" : "Sonnet — 균형"}
@@ -208,8 +210,32 @@ export default function AgentConfigModal({ agent, onClose }: Props) {
                   </button>
                 ))}
               </div>
-              <div className="text-[10px] text-gray-500 mt-0.5">
-                에이전트마다 독립 설정. 서버에 즉시 반영됨 (GET /api/agents/:id/info 로 확인)
+              {/* 무료 LLM */}
+              <div className="text-[10px] text-emerald-400 mb-1">🆓 무료 LLM (토큰 0)</div>
+              <div className="flex gap-1">
+                {([
+                  { v: "gemini_flash", label: "🌐 Gemini", title: "Gemini 2.5 Flash — 클라우드 무료, 분15/일1500" },
+                  { v: "gemma_main", label: "🧠 Gemma 26B", title: "Gemma 4 26B — 로컬 무한, 깊이 추론" },
+                  { v: "gemma_e4b", label: "⚡ Gemma E4B", title: "Gemma 4 E4B — 로컬 무한, 빠름" },
+                ] as const).map((opt) => (
+                  <button
+                    key={opt.v}
+                    onClick={() => setModelChoice(opt.v as AgentModel)}
+                    className={`flex-1 h-9 rounded-md border text-[11px] font-bold transition-colors ${
+                      modelChoice === opt.v
+                        ? "bg-emerald-500/20 text-emerald-100 border-emerald-400/60"
+                        : "border-gray-700 text-gray-400 hover:border-emerald-500/40 hover:text-emerald-200 bg-gray-900/40"
+                    }`}
+                    title={opt.title}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              <div className="text-[10px] text-gray-500 mt-1.5 leading-relaxed">
+                • <span className="text-emerald-400">무료 LLM</span> 선택 시 Claude 토큰 0 소비.<br />
+                • 코드 작업은 Claude 권장 (Gemma/Gemini 는 일반 대화·요약·분류 적합).<br />
+                • 에이전트마다 독립 설정.
               </div>
             </Field>
 

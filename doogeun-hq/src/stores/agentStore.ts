@@ -4,7 +4,11 @@ import { persist } from "zustand/middleware";
 
 export type AgentStatus = "idle" | "working" | "complete" | "error";
 
-export type AgentModel = "haiku" | "sonnet" | "opus";
+export type AgentModel =
+  | "haiku" | "sonnet" | "opus"
+  | "gemini_flash"      // 클라우드 무료 (분15/일1500)
+  | "gemma_main"        // 로컬 무한 — Gemma 4 26B
+  | "gemma_e4b";        // 로컬 무한 경량 — Gemma 4 E4B
 
 export interface Agent {
   id: string;
