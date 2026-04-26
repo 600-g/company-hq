@@ -17,7 +17,7 @@ export default function MarkdownContent({ content }: Props) {
             const match = /language-(\w+)/.exec(className || "");
             const inline = !match;
             if (inline) {
-              return <code className="px-1 py-0.5 rounded bg-gray-800/60 text-sky-200 text-[11px] font-mono" {...rest}>{children}</code>;
+              return <code className="md-inline-code px-1.5 py-0.5 rounded text-[11px] font-mono" {...rest}>{children}</code>;
             }
             return <CodeBlock code={String(children).replace(/\n$/, "")} language={match[1]} />;
           },

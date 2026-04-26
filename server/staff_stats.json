@@ -1,0 +1,26 @@
+{
+  "total_handled": 10,
+  "by_provider": {
+    "gemini": 8,
+    "gemma_e4b": 0,
+    "gemma_main": 0,
+    "claude_fallback": 2
+  },
+  "by_intent": {
+    "chat": 6,
+    "status": 1,
+    "lookup": 1,
+    "calc": 0,
+    "summarize": 0,
+    "escalate": 2
+  },
+  "by_language": {
+    "ko": 10,
+    "en": 0,
+    "ja": 0,
+    "zh": 0,
+    "other": 0
+  },
+  "claude_tokens_saved_estimate": 40000,
+  "last_updated": "2026-04-26T16:55:46.659622"
+}

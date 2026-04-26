@@ -19,11 +19,23 @@ interface Props {
 export default function AgentContextMenu({
   agent, x, y, onClose, onOpenConfig, onOpenChat, onOpenActivity, onDelete,
 }: Props) {
-  // 우클릭 직후 발생하는 mouseup/click 무시 — 메뉴가 즉시 닫히는 버그 방지
+  // 메뉴를 연 우클릭 제스처가 끝날 때까지 닫기 차단 — 사용자가 길게 눌러도 안전
+  // 1) 첫 mouseup(메뉴를 연 우클릭의 release) 이후 다음 프레임에 armed
+  // 2) 안전 마지노선 400ms 타이머 (mouseup 못 잡힐 때 fallback)
   const [armed, setArmed] = useState(false);
   useEffect(() => {
-    const id = setTimeout(() => setArmed(true), 150);
-    return () => clearTimeout(id);
+    let raf = 0;
+    const onUp = () => {
+      window.removeEventListener("mouseup", onUp, true);
+      raf = requestAnimationFrame(() => setArmed(true));
+    };
+    window.addEventListener("mouseup", onUp, true);
+    const fallback = setTimeout(() => setArmed(true), 400);
+    return () => {
+      window.removeEventListener("mouseup", onUp, true);
+      cancelAnimationFrame(raf);
+      clearTimeout(fallback);
+    };
   }, []);
 
   useEffect(() => {

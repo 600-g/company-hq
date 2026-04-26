@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import TopBar from "@/components/layout/TopBar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Send } from "lucide-react";
+import { Send, Copy, Check } from "lucide-react";
 import { useAgentStore } from "@/stores/agentStore";
 import { apiBase } from "@/lib/utils";
 
@@ -23,7 +23,32 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  const [copiedFlash, setCopiedFlash] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  const copyConversation = async () => {
+    if (!selected || messages.length === 0) return;
+    const text = messages
+      .map((m) => {
+        const who = m.role === "user" ? "🧑 나" : `${selected.emoji} ${selected.name}`;
+        const ts = m.ts ? new Date(m.ts).toLocaleString("ko-KR", { hour12: false }) : "";
+        return `[${who}${ts ? ` · ${ts}` : ""}]\n${(m.content ?? "").trim()}`;
+      })
+      .join("\n\n");
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed"; ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand("copy"); } catch {}
+      document.body.removeChild(ta);
+    }
+    setCopiedFlash(true);
+    setTimeout(() => setCopiedFlash(false), 1500);
+  };
 
   const selected = agents.find((a) => a.id === selectedAgentId);
 
@@ -127,11 +152,29 @@ export default function ChatPage() {
           {selected ? (
             <>
               <CardHeader className="border-b border-gray-800/60">
-                <CardTitle className="flex items-center gap-2">
-                  <span className="text-xl">{selected.emoji}</span>
-                  {selected.name}
-                </CardTitle>
-                <CardDescription>{selected.role}</CardDescription>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <CardTitle className="flex items-center gap-2">
+                      <span className="text-xl">{selected.emoji}</span>
+                      {selected.name}
+                    </CardTitle>
+                    <CardDescription>{selected.role}</CardDescription>
+                  </div>
+                  {messages.length > 0 && (
+                    <button
+                      onClick={copyConversation}
+                      className={`shrink-0 h-8 px-3 rounded-md text-[12px] flex items-center gap-1.5 transition-colors ${
+                        copiedFlash
+                          ? "bg-green-500/15 text-green-200 border border-green-400/40"
+                          : "border border-gray-700 text-gray-400 hover:text-sky-200 hover:border-sky-500/50 hover:bg-sky-500/10"
+                      }`}
+                      title={`${selected.name} 대화 전체 복사 (${messages.length}개 메시지)`}
+                    >
+                      {copiedFlash ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                      {copiedFlash ? "복사됨" : "대화 복사"}
+                    </button>
+                  )}
+                </div>
               </CardHeader>
               <div ref={scrollRef} className="flex-1 overflow-y-auto p-5 space-y-3">
                 {messages.length === 0 && (

@@ -4,7 +4,8 @@ import { useMemo } from "react";
 import MarkdownContent from "@/components/chat/MarkdownContent";
 import ArtifactCard from "@/components/chat/ArtifactCard";
 import ChoiceButtons from "@/components/chat/ChoiceButtons";
-import { parseArtifacts, type Artifact } from "@/lib/parseArtifacts";
+import HireProposalCard from "@/components/chat/HireProposalCard";
+import { parseArtifacts, type Artifact, type HireProposal } from "@/lib/parseArtifacts";
 import { Badge } from "@/components/ui/badge";
 import { Download, Copy } from "lucide-react";
 
@@ -13,10 +14,11 @@ interface Props {
   agentName?: string;
   agentEmoji?: string;
   onChooseAnswer?: (answer: string) => void;
+  onHireAgent?: (proposal: HireProposal) => Promise<{ ok: boolean; error?: string }>;
 }
 
 /** 에이전트 응답 메시지 — 요약(마크다운) + 아티팩트 카드 자동 분리 + 일괄 다운로드 */
-export default function AgentResultCard({ content, agentName, agentEmoji, onChooseAnswer }: Props) {
+export default function AgentResultCard({ content, agentName, agentEmoji, onChooseAnswer, onHireAgent }: Props) {
   const parsed = useMemo(() => parseArtifacts(content), [content]);
 
   const downloadAll = () => {
@@ -100,6 +102,9 @@ export default function AgentResultCard({ content, agentName, agentEmoji, onChoo
             onChooseAnswer(opt);
           }}
         />
+      )}
+      {parsed.hire && onHireAgent && (
+        <HireProposalCard proposal={parsed.hire} onHire={onHireAgent} />
       )}
     </div>
   );

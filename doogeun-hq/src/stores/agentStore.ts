@@ -40,7 +40,7 @@ export interface Agent {
 
 interface AgentState {
   agents: Agent[];
-  addAgent: (a: Omit<Agent, "id" | "createdAt" | "updatedAt" | "activity" | "status" | "floor">) => Agent;
+  addAgent: (a: Omit<Agent, "id" | "createdAt" | "updatedAt" | "activity" | "status" | "floor"> & { id?: string }) => Agent;
   updateAgent: (id: string, patch: Partial<Agent>) => void;
   removeAgent: (id: string) => void;
   logActivity: (id: string, text: string) => void;
@@ -53,9 +53,10 @@ export const useAgentStore = create<AgentState>()(
       agents: [],
       addAgent: (a) => {
         const now = Date.now();
+        const { id: providedId, ...rest } = a;
         const agent: Agent = {
-          ...a,
-          id: crypto.randomUUID(),
+          ...rest,
+          id: providedId ?? crypto.randomUUID(),
           status: "idle",
           floor: 1,
           createdAt: now,

@@ -173,6 +173,7 @@ export default function HubOffice({ floor, agentCount }: Props) {
         streamingMap: Record<string, boolean> = {};
         lastBubbleByTeam: Record<string, string> = {};
         bubbleClearTimers: Record<string, ReturnType<typeof setTimeout>> = {};
+        bubbleHardLimitTimers: Record<string, ReturnType<typeof setTimeout>> = {};
         wanderTimer?: Phaser.Time.TimerEvent;
         activeTweens = new Map<string, Phaser.Tweens.Tween>();
         walkingAgents = new Set<string>();
@@ -505,30 +506,49 @@ export default function HubOffice({ floor, agentCount }: Props) {
 
         /** 에이전트 머리 위 말풍선 텍스트 설정 (실제 채팅 내용 표시) */
         setBubbleText(teamId: string, text: string | null, autoHideMs: number = 0) {
-          // 기존 자동 숨김 타이머 취소
+          // 기존 소프트 자동 숨김 타이머 취소
           const prev = this.bubbleClearTimers[teamId];
           if (prev) { clearTimeout(prev); delete this.bubbleClearTimers[teamId]; }
 
           if (!text) {
             delete this.lastBubbleByTeam[teamId];
+            // 하드 리밋 타이머도 정리
+            const hp = this.bubbleHardLimitTimers[teamId];
+            if (hp) { clearTimeout(hp); delete this.bubbleHardLimitTimers[teamId]; }
             this.renderAgents();
             return;
           }
           const trimmed = text.trim();
           if (!trimmed) return;
-          const prevText = this.lastBubbleByTeam[teamId];
-          if (prevText === trimmed) return; // 동일 텍스트 스킵 (re-render 방지)
-          this.lastBubbleByTeam[teamId] = trimmed;
-          this.renderAgents();
 
-          // 자동 숨김 타이머 (응답 완료 시 6초 후 사라짐)
+          // 소프트 자동 숨김 (응답 완료 후 6초)
           if (autoHideMs > 0) {
             this.bubbleClearTimers[teamId] = setTimeout(() => {
               delete this.lastBubbleByTeam[teamId];
               delete this.bubbleClearTimers[teamId];
+              // 하드 리밋도 같이 정리 (이미 사라졌으니)
+              const hp2 = this.bubbleHardLimitTimers[teamId];
+              if (hp2) { clearTimeout(hp2); delete this.bubbleHardLimitTimers[teamId]; }
               this.renderAgents();
             }, autoHideMs);
           }
+
+          // 🔒 하드 리밋 — 어떤 상태(스트리밍 멈춤/이벤트 누락 등)든 무조건 30초 후 사라짐
+          //   매 setBubbleText 호출마다 리셋 (스트리밍 중엔 갱신되며 연장, 멈추면 마지막 호출 +30초)
+          const hardPrev = this.bubbleHardLimitTimers[teamId];
+          if (hardPrev) clearTimeout(hardPrev);
+          this.bubbleHardLimitTimers[teamId] = setTimeout(() => {
+            delete this.lastBubbleByTeam[teamId];
+            delete this.bubbleHardLimitTimers[teamId];
+            const sp = this.bubbleClearTimers[teamId];
+            if (sp) { clearTimeout(sp); delete this.bubbleClearTimers[teamId]; }
+            this.renderAgents();
+          }, 30_000);
+
+          const prevText = this.lastBubbleByTeam[teamId];
+          if (prevText === trimmed) return; // 텍스트만 동일하면 re-render 스킵 (타이머는 위에서 이미 갱신됨)
+          this.lastBubbleByTeam[teamId] = trimmed;
+          this.renderAgents();
         }
 
         renderFurniture() {
@@ -778,19 +798,19 @@ export default function HubOffice({ floor, agentCount }: Props) {
               const bubbleText = lastBubbleText || (streaming ? "💭 생각 중..." : "⚙️ 작업 중...");
               // 80자 이내로 자르고 줄바꿈 처리
               const trimmed = bubbleText.length > 100 ? bubbleText.slice(0, 100) + "…" : bubbleText;
-              const txt = this.add.text(16, -60, trimmed, {
-                fontSize: "13px",
+              const txt = this.add.text(16, -64, trimmed, {
+                fontSize: "15px",
                 color: lastBubbleText ? "#f1f5f9" : "#fde68a",
-                fontFamily: "'Pretendard Variable', system-ui, sans-serif",
+                fontFamily: "'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif",
                 fontStyle: lastBubbleText ? "normal" : "italic",
-                resolution: 32,
-                wordWrap: { width: 240, useAdvancedWrap: true },
+                resolution: Math.max(2, Math.min(4, (typeof window !== "undefined" ? window.devicePixelRatio : 2) || 2)),
+                wordWrap: { width: 280, useAdvancedWrap: true },
                 align: "center",
               }).setOrigin(0.5, 1);
-              const padW = Math.min(txt.width + 16, 260);
-              const padH = txt.height + 10;
+              const padW = Math.min(txt.width + 18, 300);
+              const padH = txt.height + 12;
               const bx = 16 - padW / 2;
-              const by = -60 - padH;
+              const by = -64 - padH;
               const bubble = this.add.graphics();
               const fillColor = lastBubbleText ? 0x111827 : 0x1a1a2e;
               const borderColor = lastBubbleText ? 0x60a5fa : 0xfbbf24;
@@ -800,12 +820,12 @@ export default function HubOffice({ floor, agentCount }: Props) {
               bubble.strokeRoundedRect(bx, by, padW, padH, 8);
               // 꼬리 (말풍선 아래 가운데)
               bubble.fillStyle(fillColor, 0.96);
-              bubble.fillTriangle(10, -60, 22, -60, 16, -52);
+              bubble.fillTriangle(10, -64, 22, -64, 16, -56);
               bubble.lineStyle(2, borderColor, 1);
               bubble.beginPath();
-              bubble.moveTo(10, -60);
-              bubble.lineTo(16, -52);
-              bubble.lineTo(22, -60);
+              bubble.moveTo(10, -64);
+              bubble.lineTo(16, -56);
+              bubble.lineTo(22, -64);
               bubble.strokePath();
               container.add(bubble);
               container.add(txt);
@@ -1180,19 +1200,43 @@ export default function HubOffice({ floor, agentCount }: Props) {
   }, [agents, floor, streamingByTeam]);
 
   // 채팅 메시지 → 씬 말풍선 (실제 발화 내용 표시)
+  // 핵심 규칙:
+  //   1) 팀별 첫 진입 시 (history sync 포함) 모든 기존 메시지를 "본 것" 으로 마킹 → 말풍선 재현 안 함
+  //   2) 새로 도착한 메시지(id 기준) 만 말풍선. 스트리밍 종료 후 seen 처리 → 재현 영구 차단
   const messagesByTeam = useChatStore((s) => s.messagesByTeam);
+  const teamSeenIdsRef = useRef<Record<string, Set<string>>>({});
   useEffect(() => {
     const s = sceneRef.current as {
       setBubbleText?: (teamId: string, text: string | null, autoHideMs?: number) => void;
     } | null;
     if (!s?.setBubbleText) return;
+
     for (const [teamId, msgs] of Object.entries(messagesByTeam)) {
       if (!msgs || msgs.length === 0) continue;
       const last = msgs[msgs.length - 1];
-      // ai 응답만 말풍선 — 사용자 메시지는 표시 안 함
-      if (last.role === "agent" && last.content?.trim()) {
-        // streaming 중에는 계속 갱신, 끝나면 6초 후 자동 사라짐
-        s.setBubbleText(teamId, last.content, last.streaming ? 0 : 6000);
+      if (last.role !== "agent" || !last.content?.trim()) continue;
+
+      let seenSet = teamSeenIdsRef.current[teamId];
+      if (!seenSet) {
+        // 처음 보는 팀 — 모든 기존 메시지 마킹 (history sync 차단). 말풍선 표시 안 함.
+        seenSet = new Set(msgs.map((m) => m.id));
+        teamSeenIdsRef.current[teamId] = seenSet;
+        continue;
+      }
+
+      const isStreaming = !!last.streaming;
+      const alreadySeen = seenSet.has(last.id);
+
+      if (alreadySeen && !isStreaming) continue; // 본 메시지 + 완료 → 무시
+
+      if (!alreadySeen) {
+        // 새 메시지 (스트리밍 시작 또는 즉시 완료)
+        s.setBubbleText(teamId, last.content, isStreaming ? 0 : 6000);
+        if (!isStreaming) seenSet.add(last.id); // 스트리밍 끝나야 seen 처리
+      } else {
+        // 같은 id, 아직 스트리밍 중 — 내용 갱신
+        s.setBubbleText(teamId, last.content, 0);
+        if (!isStreaming) seenSet.add(last.id); // 종료 시점 캐치
       }
     }
   }, [messagesByTeam]);

@@ -1,0 +1,45 @@
+{
+  "run_at": "2026-04-26T18:00:00.848382",
+  "model": "gemma4:26b",
+  "yesterday_message_count": 0,
+  "staff_stats_summary": {
+    "total_handled": 10,
+    "by_provider": {
+      "gemini": 8,
+      "gemma_e4b": 0,
+      "gemma_main": 0,
+      "claude_fallback": 2
+    },
+    "by_intent": {
+      "chat": 6,
+      "status": 1,
+      "lookup": 1,
+      "calc": 0,
+      "summarize": 0,
+      "escalate": 2
+    },
+    "by_language": {
+      "ko": 10,
+      "en": 0,
+      "ja": 0,
+      "zh": 0,
+      "other": 0
+    },
+    "claude_tokens_saved_estimate": 40000,
+    "last_updated": "2026-04-26T16:55:46.659622"
+  },
+  "savings_analysis": "(분석 실패)",
+  "log_anomalies_count": 76811,
+  "log_anomalies_sample": [
+    "company-hq.log: 2026-04-07 07:45:10,566 [ERROR] ConnectionClosedError exception in shielded future",
+    "company-hq.log: future: <Future finished exception=ConnectionClosedError(None, Close(code=<CloseCode.INTERNAL_ERROR: 1011>, reason='keepalive ping timeout'), None)>",
+    "company-hq.log: Traceback (most recent call last):",
+    "company-hq.log: 2026-04-07 07:57:20,330 [ERROR] ConnectionClosedError exception in shielded future",
+    "company-hq.log: future: <Future finished exception=ConnectionClosedError(None, Close(code=<CloseCode.INTERNAL_ERROR: 1011>, reason='keepalive ping timeout'), None)>",
+    "company-hq.log: Traceback (most recent call last):",
+    "company-hq.log: 2026-04-07 09:16:28,076 [ERROR] ConnectionClosedError exception in shielded future",
+    "company-hq.log: future: <Future finished exception=ConnectionClosedError(None, Close(code=<CloseCode.INTERNAL_ERROR: 1011>, reason='keepalive ping timeout'), None)>",
+    "company-hq.log: Traceback (most recent call last):",
+    "company-hq.log: 2026-04-07 09:35:07,632 [ERROR] ConnectionClosedError exception in shielded future"
+  ]
+}

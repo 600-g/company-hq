@@ -42,9 +42,15 @@ export async function ensureNotifyPermission(): Promise<NotificationPermission> 
   }
 }
 
-/** 로컬 알림 (서버 push 없이 SW message로) */
-export async function showLocalNotify(payload: NotifyPayload): Promise<boolean> {
-  if (typeof window === "undefined" || document.hasFocus()) return false;
+/** 로컬 알림 (서버 push 없이 SW message로)
+ *  options.skipIfFocused=true 면 탭이 포커스 됐을 때 스킵 (기본은 항상 발사 — 다른 탭/앱에 있을 수 있음)
+ */
+export async function showLocalNotify(
+  payload: NotifyPayload,
+  options: { skipIfFocused?: boolean } = {}
+): Promise<boolean> {
+  if (typeof window === "undefined") return false;
+  if (options.skipIfFocused && document.hasFocus() && document.visibilityState === "visible") return false;
   const perm = Notification.permission;
   if (perm !== "granted") return false;
   const reg = await getSW();

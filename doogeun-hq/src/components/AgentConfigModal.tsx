@@ -189,80 +189,39 @@ export default function AgentConfigModal({ agent, onClose }: Props) {
               </div>
             </Field>
 
-            <Field label="AI 모델">
-              {/* Claude (유료, Max 플랜) */}
-              <div className="text-[10px] text-gray-500 mb-1">Claude (Max 플랜 — 토큰 소비)</div>
-              <div className="flex gap-1 mb-2">
-                {(["haiku", "sonnet", "opus"] as const).map((m) => (
-                  <button
-                    key={m}
-                    onClick={() => setModelChoice(m)}
-                    className={`flex-1 h-9 rounded-md border text-[12px] font-bold transition-colors ${
-                      modelChoice === m
-                        ? m === "haiku" ? "bg-green-500/20 text-gray-100 border-green-400/60"
-                          : m === "opus" ? "bg-purple-500/20 text-gray-100 border-purple-400/60"
-                          : "bg-sky-500/20 text-gray-100 border-sky-400/60"
-                        : "border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-200 bg-gray-900/40"
-                    }`}
-                    title={m === "haiku" ? "Haiku — 빠르고 저렴" : m === "opus" ? "Opus — 최고 품질" : "Sonnet — 균형"}
-                  >
-                    {m === "haiku" ? "⚡ Haiku" : m === "opus" ? "✨ Opus" : "🧠 Sonnet"}
-                  </button>
-                ))}
-              </div>
-              {/* 무료 LLM */}
-              <div className="text-[10px] text-emerald-400 mb-1">🆓 무료 LLM (토큰 0)</div>
+            <Field label="AI 모델 (좌→우 능력 상승)">
               <div className="flex gap-1">
                 {([
-                  { v: "gemini_flash", label: "🌐 Gemini", title: "Gemini 2.5 Flash — 클라우드 무료, 분15/일1500" },
-                  { v: "gemma_main", label: "🧠 Gemma 26B", title: "Gemma 4 26B — 로컬 무한, 깊이 추론" },
-                  { v: "gemma_e4b", label: "⚡ Gemma E4B", title: "Gemma 4 E4B — 로컬 무한, 빠름" },
-                ] as const).map((opt) => (
-                  <button
-                    key={opt.v}
-                    onClick={() => setModelChoice(opt.v as AgentModel)}
-                    className={`flex-1 h-9 rounded-md border text-[11px] font-bold transition-colors ${
-                      modelChoice === opt.v
-                        ? "bg-emerald-500/20 text-emerald-100 border-emerald-400/60"
-                        : "border-gray-700 text-gray-400 hover:border-emerald-500/40 hover:text-emerald-200 bg-gray-900/40"
-                    }`}
-                    title={opt.title}
-                  >
-                    {opt.label}
-                  </button>
+                  { v: "gemma_e4b",    label: "Gemma E4B",  paid: false, speed: 5, reason: 1, code: 1, title: "Gemma 4 E4B — 로컬 무한, 빠름. 코딩 약함" },
+                  { v: "haiku",        label: "Haiku",       paid: true,  speed: 5, reason: 2, code: 3, title: "Claude Haiku — 빠르고 저렴, 짧은 코딩 작업 OK" },
+                  { v: "gemma_main",   label: "Gemma 26B",  paid: false, speed: 1, reason: 3, code: 2, title: "Gemma 4 26B — 로컬 무한, 깊이 추론. 코딩은 보통" },
+                  { v: "gemini_flash", label: "Gemini",      paid: false, speed: 5, reason: 3, code: 3, title: "Gemini 2.5 Flash — 클라우드 무료, 분15/일1500" },
+                  { v: "sonnet",       label: "Sonnet",      paid: true,  speed: 3, reason: 4, code: 5, title: "Claude Sonnet — 균형, 다파일 코딩 톱티어" },
+                  { v: "opus",         label: "Opus",        paid: true,  speed: 1, reason: 5, code: 5, title: "Claude Opus — 최고 품질" },
+                ] as const).map((m) => (
+                  <ModelButton
+                    key={m.v}
+                    label={m.label}
+                    paid={m.paid}
+                    speed={m.speed}
+                    reason={m.reason}
+                    code={m.code}
+                    title={m.title}
+                    selected={modelChoice === m.v}
+                    onClick={() => setModelChoice(m.v as AgentModel)}
+                    tone={
+                      m.v === "haiku" ? "green" :
+                      m.v === "sonnet" ? "sky" :
+                      m.v === "opus" ? "purple" :
+                      "emerald"
+                    }
+                  />
                 ))}
               </div>
               <div className="text-[10px] text-gray-500 mt-1.5 leading-relaxed">
-                • <span className="text-emerald-400">무료 LLM</span> 선택 시 Claude 토큰 0 소비.<br />
-                • 코드 작업은 Claude 권장 (Gemma/Gemini 는 일반 대화·요약·분류 적합).<br />
+                • <span className="text-emerald-400">무료</span> 표시 = Claude 토큰 0 소비.<br />
+                • 코드 작업은 <span className="text-sky-300">Claude</span> 권장 (Gemma/Gemini 는 일반 대화·요약·분류 적합).<br />
                 • 에이전트마다 독립 설정.
-              </div>
-            </Field>
-
-            <Field label="응답 언어 (override)">
-              <div className="flex gap-1">
-                {([
-                  { v: "", label: "기본" },
-                  { v: "ko", label: "한국어" },
-                  { v: "en", label: "EN" },
-                  { v: "ja", label: "日本" },
-                  { v: "zh", label: "中文" },
-                ] as const).map(({ v, label }) => (
-                  <button
-                    key={v || "default"}
-                    onClick={() => setLanguageChoice(v as "" | "ko" | "en" | "ja" | "zh")}
-                    className={`flex-1 h-8 rounded-md border text-[11px] transition-colors ${
-                      languageChoice === v
-                        ? "bg-sky-500/15 text-gray-100 border-sky-400/50 font-bold"
-                        : "border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-200"
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-              <div className="text-[10px] text-gray-500 mt-0.5">
-                기본 = 설정의 에이전트 기본 언어. 개별 override 시 시스템 프롬프트에 명시 주입.
               </div>
             </Field>
 
@@ -447,4 +406,61 @@ function TabBtn({ active, onClick, children }: { active: boolean; onClick: () =>
       {children}
     </button>
   );
+}
+
+type ModelTone = "green" | "sky" | "purple" | "emerald";
+
+interface ModelButtonProps {
+  label: string;
+  paid: boolean;
+  speed: 1 | 2 | 3 | 4 | 5;
+  reason: 1 | 2 | 3 | 4 | 5;
+  code: 1 | 2 | 3 | 4 | 5;
+  title: string;
+  selected: boolean;
+  onClick: () => void;
+  tone: ModelTone;
+}
+
+function ModelButton({ label, paid, speed, reason, code, title, selected, onClick, tone }: ModelButtonProps) {
+  const selectedCls =
+    tone === "green"   ? "model-btn--green   bg-green-500/20   text-gray-100 border-green-400/60"
+    : tone === "purple" ? "model-btn--purple  bg-purple-500/25  text-gray-100 border-purple-400/60"
+    : tone === "sky"    ? "model-btn--sky     bg-sky-500/20     text-gray-100 border-sky-400/60"
+    :                     "model-btn--emerald bg-emerald-500/20 text-gray-100 border-emerald-400/60";
+  const idleCls =
+    tone === "emerald"
+      ? "border-gray-700 text-gray-500 hover:border-emerald-500/40 hover:text-emerald-200 bg-gray-900/40"
+      : "border-gray-700 text-gray-500 hover:border-gray-500 hover:text-gray-200 bg-gray-900/40";
+  const tagCls = paid
+    ? "text-amber-400 border border-amber-500/40 bg-amber-500/10"
+    : "text-emerald-400 border border-emerald-500/40 bg-emerald-500/10";
+
+  return (
+    <button
+      onClick={onClick}
+      title={title}
+      className={`flex-1 min-w-0 h-[80px] px-1 rounded-md border transition-colors flex flex-col items-center justify-center gap-0.5 ${
+        selected ? selectedCls : idleCls
+      }`}
+    >
+      <span className="text-[11px] font-bold leading-none truncate w-full text-center">{label}</span>
+      <span className={`text-[8px] leading-none px-1 py-[1px] rounded-sm ${tagCls}`}>
+        {paid ? "Claude" : "무료"}
+      </span>
+      <span className="text-[9px] font-mono leading-none tracking-tight">
+        속 {dots(speed)}
+      </span>
+      <span className="text-[9px] font-mono leading-none tracking-tight">
+        추 {dots(reason)}
+      </span>
+      <span className="text-[9px] font-mono leading-none tracking-tight">
+        코 {dots(code)}
+      </span>
+    </button>
+  );
+}
+
+function dots(n: 1 | 2 | 3 | 4 | 5) {
+  return "●".repeat(n) + "○".repeat(5 - n);
 }

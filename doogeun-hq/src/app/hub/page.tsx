@@ -14,7 +14,7 @@ import { apiBase } from "@/lib/utils";
 import {
   X, Users, Bug, Cpu, Settings, LogOut, Send,
   MessagesSquare, Plus, Home as HomeIcon, RefreshCw, ChevronRight, ChevronLeft,
-  Grid3x3, Pencil, Terminal as TerminalIcon,
+  Grid3x3, Pencil, Terminal as TerminalIcon, Copy, Check, Trash2,
 } from "lucide-react";
 import DebugPanel, { LogsPane } from "@/components/DebugPanel";
 import MentionPopup from "@/components/chat/MentionPopup";
@@ -114,6 +114,8 @@ export default function HubPage() {
     document.documentElement.setAttribute("data-theme", theme);
   }, [theme]);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+  const [copiedFlash, setCopiedFlash] = useState(false);
+  const [celebrate, setCelebrate] = useState<{ emoji: string; name: string; phase: "in" | "out" } | null>(null);
   // 입력 영속화 — 새로고침/배포 reload 시에도 작성 중인 메시지 보존
   const [input, setInput] = useState<string>(() => {
     if (typeof window === "undefined") return "";
@@ -151,7 +153,14 @@ export default function HubPage() {
         h.dispatch_id,
       );
     },
-    onToolUse: (t: ToolEntry) => notifyPush("info", `🛠 ${t.tool}`, t.summary, selected?.name || "tool"),
+    // 도구 사용 (Bash/Read/Write 등) 은 토스트 노출 X — 너무 자주 발생해 알림 폭주 유발.
+    //   채팅 패널의 메시지 카드 안에 m.tools 로 이미 인라인 표시되니 거기서 확인 가능.
+    //   디버깅 시 콘솔 로그로만 남김.
+    onToolUse: (t: ToolEntry) => {
+      if (typeof console !== "undefined") {
+        console.debug("[tool]", t.tool, t.summary?.slice?.(0, 80) || "");
+      }
+    },
   });
 
   const [dragOver, setDragOver] = useState(false);
@@ -206,6 +215,7 @@ export default function HubPage() {
       if (currentSelected === teamId) return; // 지금 보는 팀이면 UI 에 이미 보임
       useChatStore.getState().markUnread(teamId, 1);
       notifyPush("success", `${team.emoji} ${team.name} 완료`, preview, team.name);
+      // 다른 팀이 끝났으니 무조건 데스크톱 알림 (탭 포커스 무관)
       showLocalNotify({
         title: `${team.emoji} ${team.name} · 작업 완료`,
         body: preview || "결과 확인 필요",
@@ -214,6 +224,21 @@ export default function HubPage() {
       });
     });
   }, [selectedAgentId, notifyPush]);
+
+  // 팀 선택 시 해당 팀 unread + 관련 토스트/알림 자동 읽음 처리
+  useEffect(() => {
+    if (!selectedAgentId) return;
+    const team = useAgentStore.getState().agents.find((a) => a.id === selectedAgentId);
+    if (!team) return;
+    useChatStore.getState().clearUnread(selectedAgentId);
+    // 해당 팀이 source 인 미읽음 알림 항목 일괄 읽음
+    const items = useNotifStore.getState().items;
+    items.forEach((it) => {
+      if (!it.read && (it.source === team.name || it.source === selectedAgentId)) {
+        useNotifStore.getState().markRead(it.id);
+      }
+    });
+  }, [selectedAgentId]);
 
   // 매 마운트마다: 에이전트 없으면 import, 1F 아닌 에이전트는 전부 1F 강제 이동
   useEffect(() => {
@@ -255,12 +280,13 @@ export default function HubPage() {
       const last = wsMessages[wsMessages.length - 1];
       if (last?.role === "agent") {
         const preview = last.content.slice(0, 120).replace(/\n+/g, " ");
+        // 현재 보고 있는 팀의 응답이면 탭 포커스 시 데스크톱 알림 스킵 (이미 화면에 표시됨)
         showLocalNotify({
           title: `${selected.emoji} ${selected.name} · 응답 완료`,
           body: preview || "결과 확인",
           tag: `agent-${selected.id}`,
           url: "/hub",
-        });
+        }, { skipIfFocused: true });
         // 자동 배포 — 툴 사용이 있었고(= 실제 파일 변경 가능성) + 에러 없을 때만
         if (autoDeploy && last.tools && last.tools.length > 0) {
           const hasError = last.tools.some((t) => t.error);
@@ -516,6 +542,61 @@ export default function HubPage() {
             )}
           </div>
           <div className="flex items-center gap-1">
+            {selected && messages.length > 0 && (
+              <button
+                onClick={async () => {
+                  const ok = await askConfirm({
+                    title: "현재 채팅 비우기",
+                    message: `${selected.name} 팀의 화면 채팅 ${messages.length}개를 지웁니다.\n\n• 서버 chat_history (영구 기록) 는 그대로 유지\n• 새 세션 시작하면 처음부터 다시 시작\n\n계속할까요?`,
+                    confirmText: "비우기",
+                    destructive: true,
+                  });
+                  if (!ok) return;
+                  useChatStore.getState().clearMessages(selected.id);
+                  notifyPush("info", "채팅 비움", `${selected.name} 화면 메시지 정리됨`, selected.name);
+                }}
+                className="h-7 px-2 rounded-md text-[11px] transition-colors flex items-center gap-1 text-gray-400 hover:text-red-300 hover:bg-red-500/10"
+                title="현재 화면 채팅 비우기 (서버 기록은 유지)"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                지우기
+              </button>
+            )}
+            {selected && messages.length > 0 && (
+              <button
+                onClick={async () => {
+                  const text = messages
+                    .filter((m) => m.role === "user" || m.role === "agent")
+                    .map((m) => {
+                      const who = m.role === "user" ? "🧑 나" : `${selected.emoji} ${selected.name}`;
+                      const ts = m.ts ? new Date(m.ts).toLocaleString("ko-KR", { hour12: false }) : "";
+                      return `[${who}${ts ? ` · ${ts}` : ""}]\n${(m.content ?? "").trim()}`;
+                    })
+                    .join("\n\n");
+                  try {
+                    await navigator.clipboard.writeText(text);
+                    setCopiedFlash(true);
+                    setTimeout(() => setCopiedFlash(false), 1500);
+                  } catch {
+                    // clipboard API 차단 환경 폴백
+                    const ta = document.createElement("textarea");
+                    ta.value = text;
+                    ta.style.position = "fixed"; ta.style.opacity = "0";
+                    document.body.appendChild(ta);
+                    ta.select();
+                    try { document.execCommand("copy"); setCopiedFlash(true); setTimeout(() => setCopiedFlash(false), 1500); } catch {}
+                    document.body.removeChild(ta);
+                  }
+                }}
+                className={`h-7 px-2 rounded-md text-[11px] transition-colors flex items-center gap-1 ${
+                  copiedFlash ? "bg-green-500/15 text-green-200" : "text-gray-400 hover:text-sky-200 hover:bg-gray-800/40"
+                }`}
+                title={`${selected.name} 대화 전체 복사 (${messages.length}개 메시지)`}
+              >
+                {copiedFlash ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                {copiedFlash ? "복사됨" : "복사"}
+              </button>
+            )}
             {selected && (
               <button
                 onClick={() => setShowSessions((v) => !v)}
@@ -546,8 +627,9 @@ export default function HubPage() {
           </div>
         </div>
         {toolStatus && (
-          <div className="px-3 py-1 border-b border-gray-800/40 bg-amber-500/5 text-[10px] text-amber-300 truncate">
-            🛠 {toolStatus}
+          <div className="tool-status-header px-3 py-1 text-[11px] font-mono truncate flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-300 animate-pulse shrink-0" />
+            <span className="truncate">{toolStatus}</span>
           </div>
         )}
 
@@ -564,7 +646,7 @@ export default function HubPage() {
               {selected ? "메시지 입력으로 시작" : agents.length === 0 ? "에이전트가 없어요 — 사이드바 [새 에이전트]" : "위에서 에이전트 선택"}
             </div>
           )}
-          {messages.map((m: WsMessage) => {
+          {messages.map((m: WsMessage, idx: number) => {
             // 핸드오프 시스템 메시지
             if (m.role === "system" && m.handoff) {
               return (
@@ -593,15 +675,39 @@ export default function HubPage() {
                 </div>
               );
             }
+            // 사용자 메시지 읽음 여부 — 이후에 agent 응답이 있으면 "읽음" 처리
+            const isUserMsg = m.role === "user";
+            const hasAgentReplyAfter = isUserMsg && messages
+              .slice(idx + 1)
+              .some((nx) => nx.role === "agent" && (nx.content?.trim().length ?? 0) > 0);
             return (
-              <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
-                <div className={`max-w-[90%] px-3 py-2 rounded-2xl text-[12px] leading-relaxed ${
+              <div key={m.id} className={`group flex flex-col ${m.role === "user" ? "items-end" : "items-start"}`}>
+                <div className={`relative max-w-[90%] px-3 py-2 rounded-2xl text-[12px] leading-relaxed ${
                   m.role === "user"
                     ? "rounded-br-md bg-[var(--chat-user-bg)] border border-[var(--chat-user-border)] text-[var(--chat-user-text)]"
                     : m.role === "system"
                     ? "rounded-bl-md bg-red-500/10 border border-red-400/30 text-red-200"
                     : "rounded-bl-md bg-[var(--chat-ai-bg)] border border-[var(--chat-ai-border)] text-[var(--chat-ai-text)]"
                 }`}>
+                  {/* 메시지별 복사 버튼 — 유저 메시지에만 (에이전트는 코드블록·다운로드 버튼 자체가 있어 중복) */}
+                  {m.role === "user" && m.content?.trim() && (
+                    <button
+                      onClick={async () => {
+                        try { await navigator.clipboard.writeText(m.content); }
+                        catch {
+                          const ta = document.createElement("textarea");
+                          ta.value = m.content; ta.style.position = "fixed"; ta.style.opacity = "0";
+                          document.body.appendChild(ta); ta.select();
+                          try { document.execCommand("copy"); } catch {}
+                          document.body.removeChild(ta);
+                        }
+                      }}
+                      title="이 메시지 복사"
+                      className={`absolute -top-2 ${m.role === "user" ? "-left-2" : "-right-2"} w-6 h-6 rounded-full border opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center bg-gray-950 border-gray-700 text-gray-300 hover:text-sky-300 hover:border-sky-500/50`}
+                    >
+                      <Copy className="w-3 h-3" />
+                    </button>
+                  )}
                   {m.images && m.images.length > 0 && (
                     <div className="flex flex-wrap gap-1 mb-1.5">
                       {m.images.map((src, j) => (
@@ -617,17 +723,84 @@ export default function HubPage() {
                         agentName={m.agentName}
                         agentEmoji={m.agentEmoji}
                         onChooseAnswer={(answer) => wsSendDirect(answer)}
+                        onHireAgent={async (proposal) => {
+                          // CPO 가 제안한 새 에이전트 채용 — generate-config로 시스템 프롬프트 생성 후 /api/teams/light 등록
+                          try {
+                            // 1) 시스템 프롬프트 자동 생성 (사용자 직접 만들기 플로우와 동일)
+                            const cfgRes = await fetch(`${apiBase()}/api/agents/generate-config`, {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({
+                                name: proposal.name,
+                                description: `${proposal.role} — ${proposal.description}`,
+                              }),
+                            });
+                            const cfg = await cfgRes.json().catch(() => ({}));
+                            const systemPrompt = (cfg?.ok && cfg.system_prompt) ? cfg.system_prompt : `# ${proposal.name} (${proposal.role})\n\n## 역할\n${proposal.description}\n\n## 채용 사유\n${proposal.reason}`;
+
+                            // 2) 서버 등록
+                            const regRes = await fetch(`${apiBase()}/api/teams/light`, {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({
+                                name: proposal.name,
+                                emoji: proposal.emoji,
+                                description: proposal.description || proposal.role,
+                                system_prompt: systemPrompt,
+                                collaborative: true,
+                              }),
+                            });
+                            const regData = await regRes.json().catch(() => ({}));
+                            if (!regRes.ok || !regData?.ok) {
+                              return { ok: false, error: regData?.error || `등록 실패 (${regRes.status})` };
+                            }
+                            const newId = regData.team?.id || regData.id;
+                            if (!newId) return { ok: false, error: "team_id 누락" };
+
+                            // 3) 로컬 store 추가
+                            useAgentStore.getState().addAgent({
+                              id: newId,
+                              name: proposal.name,
+                              emoji: proposal.emoji,
+                              role: proposal.role,
+                              description: proposal.description,
+                              systemPromptMd: systemPrompt,
+                              workingDirectory: undefined,
+                              githubRepo: undefined,
+                            });
+
+                            // 4) 즉시 서버 state 동기화 (race 차단)
+                            try {
+                              const allAgents = useAgentStore.getState().agents;
+                              const allFloors = useLayoutStore.getState().floors;
+                              await fetch(`${apiBase()}/api/doogeun/state`, {
+                                method: "PUT",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ agents: allAgents, layout: { floors: allFloors } }),
+                              });
+                            } catch { /* 폴백: useStateSync 디바운스 */ }
+
+                            // 5) 폭죽 + 토스트 (UI 자동 선택은 안 함 — CPO 채팅 유지)
+                            setCelebrate({ emoji: proposal.emoji, name: proposal.name, phase: "in" });
+                            notifyPush("success", `${proposal.emoji} ${proposal.name} 입사`, "CPO 가 채용한 신규 팀원 — 우측 목록에서 바로 채팅 가능", proposal.name);
+                            setTimeout(() => {
+                              setCelebrate((c) => (c ? { ...c, phase: "out" } : null));
+                              setTimeout(() => setCelebrate(null), 320);
+                            }, 1600);
+
+                            return { ok: true };
+                          } catch (e) {
+                            return { ok: false, error: e instanceof Error ? e.message : "채용 실패" };
+                          }
+                        }}
                       />
                       {m.tools && m.tools.length > 0 && (
                         <div className="mt-1.5 space-y-0.5">
                           {m.tools.slice(-6).map((t) => (
-                            <div key={t.id} className={`flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] border ${
-                              t.error ? "border-red-400/40 bg-red-500/10 text-red-300"
-                              : t.done ? "border-green-700/40 bg-green-900/20 text-green-300/80"
-                              : "border-amber-400/40 bg-amber-500/10 text-amber-200"
-                            }`}>
-                              <span className={`w-1 h-1 rounded-full ${
-                                t.error ? "bg-red-400" : t.done ? "bg-green-400" : "bg-amber-300 animate-pulse"
+                            <div key={t.id} className="tool-pill flex items-center gap-1.5 px-2 py-1 rounded text-[11px] font-mono">
+                              {/* 상태 점만 색깔, 텍스트는 항상 중립 고대비 */}
+                              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                                t.error ? "bg-red-400" : t.done ? "bg-emerald-400" : "bg-amber-300 animate-pulse"
                               }`} />
                               <span className="truncate">{t.summary}</span>
                             </div>
@@ -639,6 +812,14 @@ export default function HubPage() {
                     <div className="whitespace-pre-wrap break-words">{m.content}</div>
                   ) : null}
                 </div>
+                {/* 사용자 메시지 읽음 표시 */}
+                {isUserMsg && (
+                  <div className={`text-[10px] mt-0.5 mr-1 ${
+                    hasAgentReplyAfter ? "text-sky-400" : wsStreaming ? "text-amber-300" : "text-gray-500"
+                  }`}>
+                    {hasAgentReplyAfter ? "✓✓ 읽음" : wsStreaming ? "✓ 응답 중…" : "✓ 보냄"}
+                  </div>
+                )}
               </div>
             );
           })}
@@ -816,8 +997,65 @@ export default function HubPage() {
         />
       </Modal>
       <Modal open={modalKey === "newAgent"} onClose={() => setModalKey(null)} title="에이전트 추가" subtitle="빠르게 (AI 초안) / 고도화 프로젝트" widthClass="max-w-2xl">
-        <AgentCreate onDone={() => setModalKey("agents")} />
+        <AgentCreate
+          onDone={(createdId) => {
+            if (createdId) {
+              // 새 에이전트 즉시 선택 + 채팅 패널 열기 + 폭죽 + 토스트
+              setSelectedAgentId(createdId);
+              setChatOpen(true);
+              setModalKey(null);
+              const a = useAgentStore.getState().agents.find((x) => x.id === createdId);
+              if (a) {
+                setCelebrate({ emoji: a.emoji, name: a.name, phase: "in" });
+                notifyPush("success", `${a.emoji} ${a.name} 생성됨`, "채팅에서 바로 작업 지시 가능", a.name);
+                // 1.6초 후 페이드아웃 시작 → 0.3초 후 제거
+                setTimeout(() => {
+                  setCelebrate((c) => (c ? { ...c, phase: "out" } : null));
+                  setTimeout(() => setCelebrate(null), 320);
+                }, 1600);
+              }
+            } else {
+              setModalKey("agents");
+            }
+          }}
+        />
       </Modal>
+
+      {/* 에이전트 생성 폭죽 효과 — 중앙 카드 + 사방으로 흩어지는 이모지 */}
+      {celebrate && (
+        <div className="celebrate-overlay">
+          <div className={`celebrate-card ${celebrate.phase === "out" ? "exit" : ""}`}>
+            <div className="text-6xl mb-2">{celebrate.emoji}</div>
+            <div className="text-[20px] font-bold text-sky-100 leading-tight">
+              🎉 {celebrate.name} 입사!
+            </div>
+            <div className="text-[12px] text-sky-200/80 mt-1">두근컴퍼니에 합류했습니다</div>
+          </div>
+          {/* 사방으로 흩어지는 이모지 16개 */}
+          {Array.from({ length: 16 }).map((_, i) => {
+            const angle = (i / 16) * Math.PI * 2;
+            const dist = 180 + (i % 3) * 40;
+            const dx = Math.cos(angle) * dist;
+            const dy = Math.sin(angle) * dist;
+            const rot = (i * 47) % 360;
+            const emojis = ["✨", "🎉", "🎊", "⭐", "💫", "🌟", "🎈"];
+            return (
+              <span
+                key={i}
+                className="celebrate-burst-emoji"
+                style={{
+                  ["--bx" as string]: `${dx}px`,
+                  ["--by" as string]: `${dy}px`,
+                  ["--br" as string]: `${rot}deg`,
+                  animationDelay: `${i * 0.025}s`,
+                }}
+              >
+                {emojis[i % emojis.length]}
+              </span>
+            );
+          })}
+        </div>
+      )}
       <Modal open={modalKey === "server"} onClose={() => setModalKey(null)} title="서버실" subtitle="실시간 상태 (3초 폴링)" widthClass="max-w-3xl">
         <ServerDashboard />
       </Modal>
@@ -952,15 +1190,24 @@ function AgentSelector({ agents, selectedId, onSelect, onStaffStatsClick }: { ag
   const insertAt = cpoIdx >= 0 ? cpoIdx + 1 : 0;
   const virtualStaff = staffAgent ?? ({ id: "staff", name: "스태프", emoji: "🧑‍💼", role: "special", status: "idle", floor: 1, description: "", systemPromptMd: "", createdAt: 0, updatedAt: 0, activity: [] } as Agent);
   ordered.splice(insertAt, 0, virtualStaff);
+
+  // 선택된 에이전트 자동 스크롤 — 새 에이전트가 리스트 끝쪽에 있을 때 안 보이는 문제 방지
+  const listRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!selectedId || !listRef.current) return;
+    const el = listRef.current.querySelector<HTMLElement>(`[data-agent-id="${selectedId}"]`);
+    if (el) el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [selectedId, ordered.length]);
+
   return (
-    <div className="border-b border-gray-800/60 max-h-40 overflow-y-auto">
+    <div ref={listRef} className="border-b border-gray-800/60 max-h-[42vh] overflow-y-auto">
       {ordered.map((a) => {
         const active = selectedId === a.id;
         const streaming = !!streamingByTeam[a.id];
         const unread = unreadByTeam[a.id] ?? 0;
         const isStaff = a.id === "staff";
         return (
-          <div key={a.id} className={`flex w-full ${isStaff ? "border-b border-amber-500/30" : ""}`}>
+          <div key={a.id} data-agent-id={a.id} className={`flex w-full ${isStaff ? "border-b border-amber-500/30" : ""}`}>
             <button
               onClick={() => onSelect(a.id)}
               className={`flex-1 min-w-0 flex items-center gap-1.5 px-2.5 py-1.5 text-left text-[12px] transition-colors ${
