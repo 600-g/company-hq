@@ -23,14 +23,9 @@ cd "$SERVER_DIR" || exit 1
 source "$SERVER_DIR/venv/bin/activate"
 
 # exec으로 교체: launchd가 이 프로세스를 직접 추적
-# --reload는 *.py만 감시 — chat_history/*.json, logs/*.log 저장 시 재시작 방지
-# (기존: .json/.log 저장마다 uvicorn 재시작 → WS 끊김 → 클라가 "새로고침"처럼 체감)
-exec python -m uvicorn main:app \
-    --host 0.0.0.0 --port 8000 \
-    --reload \
-    --reload-include "*.py" \
-    --reload-exclude "chat_history/*" \
-    --reload-exclude "logs/*" \
-    --reload-exclude "*.json" \
-    --reload-exclude "*.log" \
-    --reload-exclude ".claude/*"
+# 안정화 정책 (2026-04):
+# - --reload 제거 — 코드 편집 중 사용자 WS 끊김 방지
+# - 코드 변경 적용은 deploy.sh 끝의 `launchctl kickstart -k com.company-hq-server` 로만
+# - 결과: 사용자가 작업 중일 때 절대 안 끊김. 의도된 배포 시점에만 ~2초 끊김
+# - 로컬 dev: launchctl kickstart 한 줄로 즉시 반영
+exec python -m uvicorn main:app --host 0.0.0.0 --port 8000

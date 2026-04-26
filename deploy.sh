@@ -41,3 +41,10 @@ wrangler pages deploy $OUT_DIR \
   --commit-message="deploy: $BUILD_ID" \
   --skip-caching
 echo "✅ Done! build=$BUILD_ID · project=$PROJECT_NAME"
+
+# 백엔드 변경 반영 — uvicorn --reload 제거된 구조라 명시적 kickstart
+# (사용자 작업 중에는 코드 편집해도 안 끊김 / 배포 시점에만 ~2초 끊김)
+if launchctl list 2>/dev/null | grep -q "com.company-hq-server"; then
+  echo "🔄 FastAPI 재시작 (~2초)..."
+  launchctl kickstart -k "gui/$(id -u)/com.company-hq-server" 2>/dev/null || true
+fi

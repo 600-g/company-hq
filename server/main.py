@@ -1347,6 +1347,7 @@ def _load_doogeun_state() -> dict:
 
 
 def _save_doogeun_state(data: dict) -> None:
+    """원자적 쓰기 + 시간별 백업. 쓰기 도중 재시작/크래시 시에도 무결성 유지."""
     try:
         # 시간별 백업 로테이션 (24개 = 24시간 보존)
         if os.path.exists(DOOGEUN_STATE_PATH):
@@ -1354,23 +1355,25 @@ def _save_doogeun_state(data: dict) -> None:
             os.makedirs(backup_dir, exist_ok=True)
             stamp = datetime.utcnow().strftime("%Y%m%d-%H")
             backup_path = os.path.join(backup_dir, f"doogeun_state.{stamp}.json")
-            # 같은 시간대 이미 있으면 스킵 (1시간 1개)
             if not os.path.exists(backup_path):
                 try:
                     shutil.copy2(DOOGEUN_STATE_PATH, backup_path)
-                    # 24개 초과 시 가장 오래된 것 삭제
                     import glob as _glob
                     backups = sorted(_glob.glob(os.path.join(backup_dir, "doogeun_state.*.json")))
                     while len(backups) > 24:
-                        try:
-                            os.remove(backups[0])
-                        except OSError:
-                            pass
+                        try: os.remove(backups[0])
+                        except OSError: pass
                         backups.pop(0)
                 except Exception as be:
                     logger.warning("doogeun_state backup failed: %s", be)
-        with open(DOOGEUN_STATE_PATH, "w", encoding="utf-8") as f:
+        # 원자적 쓰기 — tmp 파일에 쓰고 rename (POSIX atomic)
+        # 쓰기 도중 재시작돼도 원본 파일 무결성 유지
+        tmp_path = DOOGEUN_STATE_PATH + ".tmp"
+        with open(tmp_path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
+            f.flush()
+            os.fsync(f.fileno())  # 디스크 sync 강제
+        os.replace(tmp_path, DOOGEUN_STATE_PATH)  # atomic rename
     except Exception as e:
         logger.error("doogeun_state.json save failed: %s", e)
 

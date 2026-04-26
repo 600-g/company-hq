@@ -239,6 +239,17 @@ export default function HubOffice({ floor, agentCount }: Props) {
           this.load.on("loaderror", (file: Phaser.Loader.File) => {
             console.warn("[HubOffice] load failed:", file.key, file.src);
           });
+          // 로딩 진행률 → window 이벤트로 React 측에 전달 (UX: 로딩 바 표시)
+          this.load.on("progress", (value: number) => {
+            try {
+              window.dispatchEvent(new CustomEvent("hq:phaser-progress", { detail: { value } }));
+            } catch { /* ignore */ }
+          });
+          this.load.on("complete", () => {
+            try {
+              window.dispatchEvent(new CustomEvent("hq:phaser-progress", { detail: { value: 1, done: true } }));
+            } catch { /* ignore */ }
+          });
         }
 
         create() {

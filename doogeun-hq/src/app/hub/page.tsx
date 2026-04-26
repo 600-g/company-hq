@@ -24,6 +24,7 @@ import { useLayoutStore } from "@/stores/layoutStore";
 import { useSettingsStore } from "@/stores/settingsStore";
 import AgentConfigModal from "@/components/AgentConfigModal";
 import StaffStatsModal from "@/components/StaffStatsModal";
+import PhaserLoadingOverlay from "@/components/PhaserLoadingOverlay";
 import AgentContextMenu from "@/components/AgentContextMenu";
 import AgentActivityModal from "@/components/AgentActivityModal";
 import SessionHistoryPanel from "@/components/chat/SessionHistoryPanel";
@@ -113,7 +114,14 @@ export default function HubPage() {
     document.documentElement.setAttribute("data-theme", theme);
   }, [theme]);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
-  const [input, setInput] = useState("");
+  // 입력 영속화 — 새로고침/배포 reload 시에도 작성 중인 메시지 보존
+  const [input, setInput] = useState<string>(() => {
+    if (typeof window === "undefined") return "";
+    try { return localStorage.getItem("doogeun-hq-draft-input") || ""; } catch { return ""; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem("doogeun-hq-draft-input", input); } catch { /* ignore */ }
+  }, [input]);
   const [composing, setComposing] = useState(false);
   const [attachedImages, setAttachedImages] = useState<string[]>([]);
   const [refineHints, setRefineHints] = useState<string[] | null>(null);
@@ -433,6 +441,7 @@ export default function HubPage() {
             >
               <HubOffice floor={floor} agentCount={agents.length} />
               <WorkingStatusBar />
+              <PhaserLoadingOverlay />
               <div
                 className="absolute inset-0 pointer-events-none transition-colors duration-[2s]"
                 style={{ background: ambientTint }}
