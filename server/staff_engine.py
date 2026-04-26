@@ -201,6 +201,53 @@ async def handle(text: str, language: str = "ko", history: list[dict] | None = N
             "escalate_prompt": text,
         }
 
+    # 자가 개선 + 다중 시점 (깊은 사고 필요한 질문만 — 토큰 낭비 방지)
+    meta_extra: dict = {}
+    try:
+        from multi_llm import needs_deep_thinking, critic_refine_loop, perspective_consensus, needs_final_claude
+        if needs_deep_thinking(text):
+            # Phase 1: 자가 비평 + 개선 (1회)
+            improved_reply, refine_meta = await critic_refine_loop(text, reply.strip())
+            if refine_meta.get("improved"):
+                reply = improved_reply
+                meta_extra["refined"] = True
+                meta_extra["critiques"] = refine_meta.get("critiques", [])
+
+            # Phase 2: 다중 시점 합의 (길이 80자+ 매우 복잡)
+            if len(text) > 80:
+                cons = await perspective_consensus(text)
+                if cons.get("consensus"):
+                    reply = (
+                        f"{reply.strip()}\n\n"
+                        f"---\n"
+                        f"📊 다중 시점 종합:\n{cons['consensus']}"
+                    )
+                    meta_extra["perspectives"] = [p["name"] for p in cons.get("perspectives", [])]
+
+            # Phase 3: Claude 최종 결정 필요?
+            if needs_final_claude(text, reply):
+                meta_extra["recommend_claude"] = True
+                # escalate_prompt 에 무료 LLM 종합 결과 첨부 — Claude 가 합의 위에서 최종 결정
+                _bump_stat("claude_fallback", "escalate", language)
+                return {
+                    "handled": True,
+                    "reply": (
+                        f"{reply}\n\n"
+                        f"💡 최종 결정·실행은 CPO(Claude)에게 부탁드릴게요. 위 종합을 참고해서 결정해 주세요."
+                    ),
+                    "intent": "escalate_after_discussion",
+                    "provider": "multi_llm+claude",
+                    "escalate": True,
+                    "escalate_prompt": (
+                        f"=== 사용자 원 질문 ===\n{text}\n\n"
+                        f"=== 무료 LLM 다중 시점 종합 ===\n{reply}\n\n"
+                        f"=== 요청 ===\n위 종합을 검토하고 최종 결정·실행 방안을 제시. 동의/반대 명확히. 5줄 이내."
+                    ),
+                    "meta": meta_extra,
+                }
+    except Exception as e:
+        logger.warning("[multi_llm] 자가 개선 스킵: %s", e)
+
     _bump_stat(provider, intent, language)
     return {
         "handled": True,
@@ -208,4 +255,5 @@ async def handle(text: str, language: str = "ko", history: list[dict] | None = N
         "intent": intent,
         "provider": provider,
         "escalate": False,
+        "meta": meta_extra,
     }
