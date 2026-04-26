@@ -171,6 +171,8 @@ export default function HubOffice({ floor, agentCount }: Props) {
         editModeRef = false;
         selectedFurnId: string | null = null;
         streamingMap: Record<string, boolean> = {};
+        lastBubbleByTeam: Record<string, string> = {};
+        bubbleClearTimers: Record<string, ReturnType<typeof setTimeout>> = {};
         wanderTimer?: Phaser.Time.TimerEvent;
         activeTweens = new Map<string, Phaser.Tweens.Tween>();
         walkingAgents = new Set<string>();
@@ -490,6 +492,34 @@ export default function HubOffice({ floor, agentCount }: Props) {
           this.renderFurniture();
         }
 
+        /** 에이전트 머리 위 말풍선 텍스트 설정 (실제 채팅 내용 표시) */
+        setBubbleText(teamId: string, text: string | null, autoHideMs: number = 0) {
+          // 기존 자동 숨김 타이머 취소
+          const prev = this.bubbleClearTimers[teamId];
+          if (prev) { clearTimeout(prev); delete this.bubbleClearTimers[teamId]; }
+
+          if (!text) {
+            delete this.lastBubbleByTeam[teamId];
+            this.renderAgents();
+            return;
+          }
+          const trimmed = text.trim();
+          if (!trimmed) return;
+          const prevText = this.lastBubbleByTeam[teamId];
+          if (prevText === trimmed) return; // 동일 텍스트 스킵 (re-render 방지)
+          this.lastBubbleByTeam[teamId] = trimmed;
+          this.renderAgents();
+
+          // 자동 숨김 타이머 (응답 완료 시 6초 후 사라짐)
+          if (autoHideMs > 0) {
+            this.bubbleClearTimers[teamId] = setTimeout(() => {
+              delete this.lastBubbleByTeam[teamId];
+              delete this.bubbleClearTimers[teamId];
+              this.renderAgents();
+            }, autoHideMs);
+          }
+        }
+
         renderFurniture() {
           this.furnitureItems.forEach((i) => i.destroy());
           this.furnitureItems = [];
@@ -713,58 +743,72 @@ export default function HubOffice({ floor, agentCount }: Props) {
             dot.fillCircle(dotX, 40, 3.2);
             container.add(dot);
 
-            // 작업 인디케이터 (streaming or working) — 캐릭터 머리 위 텍스트 말풍선 + 바운스 애니
-            if (streaming || a.status === "working") {
-              // 1. 캐릭터 자체 walk_down 애니 + Y 2px 바운스 (타이핑 느낌)
-              const charSprite = container.getData("sprite") as Phaser.GameObjects.Sprite | undefined;
-              if (charSprite && spriteKey) {
-                const animKey = `${spriteKey}_walk_down`;
-                if (this.anims.exists(animKey)) charSprite.play(animKey, true);
+            // 작업 인디케이터 + 실제 채팅 말풍선 (스트리밍 중 OR 마지막 메시지 5초 이내)
+            const lastBubbleText = this.lastBubbleByTeam?.[a.id];
+            const showBubble = streaming || a.status === "working" || !!lastBubbleText;
+            if (showBubble) {
+              // 1. 캐릭터 walk_down 애니 + Y 2px 바운스 (작업 중 일 때만)
+              if (streaming || a.status === "working") {
+                const charSprite = container.getData("sprite") as Phaser.GameObjects.Sprite | undefined;
+                if (charSprite && spriteKey) {
+                  const animKey = `${spriteKey}_walk_down`;
+                  if (this.anims.exists(animKey)) charSprite.play(animKey, true);
+                  this.tweens.add({
+                    targets: container,
+                    y: container.y - 2,
+                    duration: 220,
+                    yoyo: true,
+                    repeat: -1,
+                    ease: "Sine.easeInOut",
+                  });
+                }
+              }
+              // 2. 머리 위 말풍선 — 실제 채팅 내용 표시 (없으면 "...생각 중")
+              const bubbleText = lastBubbleText || (streaming ? "...생각 중" : "...작업 중");
+              // 60자 이내로 자르고 줄바꿈 처리
+              const trimmed = bubbleText.length > 80 ? bubbleText.slice(0, 80) + "…" : bubbleText;
+              const txt = this.add.text(16, -50, trimmed, {
+                fontSize: "11px",
+                color: lastBubbleText ? "#e5e7eb" : "#fbbf24",
+                fontFamily: "'Pretendard Variable', system-ui, sans-serif",
+                fontStyle: lastBubbleText ? "normal" : "italic",
+                resolution: 32,
+                wordWrap: { width: 220, useAdvancedWrap: true },
+                align: "center",
+              }).setOrigin(0.5, 1);
+              const padW = Math.min(txt.width + 14, 240);
+              const padH = txt.height + 8;
+              const bx = 16 - padW / 2;
+              const by = -50 - padH;
+              const bubble = this.add.graphics();
+              const fillColor = lastBubbleText ? 0x1a1a2e : 0x0b0b14;
+              const borderColor = lastBubbleText ? 0x60a5fa : 0xfbbf24;
+              bubble.fillStyle(fillColor, 0.95);
+              bubble.lineStyle(1.5, borderColor, 0.95);
+              bubble.fillRoundedRect(bx, by, padW, padH, 6);
+              bubble.strokeRoundedRect(bx, by, padW, padH, 6);
+              // 꼬리 (말풍선 아래 가운데)
+              bubble.fillStyle(fillColor, 0.95);
+              bubble.fillTriangle(11, -50, 21, -50, 16, -42);
+              bubble.lineStyle(1.5, borderColor, 0.95);
+              bubble.beginPath();
+              bubble.moveTo(11, -50);
+              bubble.lineTo(16, -42);
+              bubble.lineTo(21, -50);
+              bubble.strokePath();
+              container.add(bubble);
+              container.add(txt);
+              // 응답 끝나면 펄스 X (정적 표시), 작업 중이면 펄스
+              if (streaming || a.status === "working") {
                 this.tweens.add({
-                  targets: container,
-                  y: container.y - 2,
-                  duration: 220,
+                  targets: [txt, bubble],
+                  alpha: { from: 0.75, to: 1 },
+                  duration: 600,
                   yoyo: true,
                   repeat: -1,
                   ease: "Sine.easeInOut",
                 });
               }
-              // 2. 머리 위 텍스트 말풍선 (loading 펄스)
-              const txt = this.add.text(16, -42, streaming ? "...생각 중" : "...작업 중", {
-                fontSize: "9px",
-                color: "#fbbf24",
-                fontFamily: "'Pretendard Variable', system-ui, sans-serif",
-                fontStyle: "italic",
-                resolution: 32,
-              }).setOrigin(0.5, 1);
-              const padW = txt.width + 10;
-              const padH = txt.height + 4;
-              const bx = 16 - padW / 2;
-              const by = -42 - padH;
-              const bubble = this.add.graphics();
-              bubble.fillStyle(0x0b0b14, 0.92);
-              bubble.lineStyle(1, 0xfbbf24, 0.85);
-              bubble.fillRoundedRect(bx, by, padW, padH, 4);
-              bubble.strokeRoundedRect(bx, by, padW, padH, 4);
-              // 꼬리
-              bubble.fillStyle(0x0b0b14, 0.92);
-              bubble.fillTriangle(13, -42, 19, -42, 16, -36);
-              bubble.lineStyle(1, 0xfbbf24, 0.85);
-              bubble.beginPath();
-              bubble.moveTo(13, -42);
-              bubble.lineTo(16, -36);
-              bubble.lineTo(19, -42);
-              bubble.strokePath();
-              container.add(bubble);
-              container.add(txt);
-              this.tweens.add({
-                targets: [txt, bubble],
-                alpha: { from: 0.7, to: 1 },
-                duration: 600,
-                yoyo: true,
-                repeat: -1,
-                ease: "Sine.easeInOut",
-              });
             }
 
             // 히트 영역 — 셀 중앙 기준 (container.x=cell.left, center at +16)
@@ -1123,6 +1167,24 @@ export default function HubOffice({ floor, agentCount }: Props) {
     } | null;
     s?.setAgents?.(agents, floor, streamingByTeam);
   }, [agents, floor, streamingByTeam]);
+
+  // 채팅 메시지 → 씬 말풍선 (실제 발화 내용 표시)
+  const messagesByTeam = useChatStore((s) => s.messagesByTeam);
+  useEffect(() => {
+    const s = sceneRef.current as {
+      setBubbleText?: (teamId: string, text: string | null, autoHideMs?: number) => void;
+    } | null;
+    if (!s?.setBubbleText) return;
+    for (const [teamId, msgs] of Object.entries(messagesByTeam)) {
+      if (!msgs || msgs.length === 0) continue;
+      const last = msgs[msgs.length - 1];
+      // ai 응답만 말풍선 — 사용자 메시지는 표시 안 함
+      if (last.role === "agent" && last.content?.trim()) {
+        // streaming 중에는 계속 갱신, 끝나면 6초 후 자동 사라짐
+        s.setBubbleText(teamId, last.content, last.streaming ? 0 : 6000);
+      }
+    }
+  }, [messagesByTeam]);
 
   useEffect(() => {
     const s = sceneRef.current as {

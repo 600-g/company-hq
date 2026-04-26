@@ -124,8 +124,30 @@ def _quick_status() -> str:
 
 
 # ── 메인 처리 ─────────────────────────────────────────
-async def handle(text: str, language: str = "ko") -> dict:
-    """메시지 처리. 반환: {handled: bool, reply: str, intent: str, provider: str, escalate: bool}"""
+def _format_history(history: list[dict] | None, max_turns: int = 6) -> str:
+    """최근 N턴(user+ai pair)을 프롬프트용으로 직렬화."""
+    if not history:
+        return ""
+    # 최근 max_turns*2 개 메시지 (user + ai 쌍)
+    recent = history[-(max_turns * 2):]
+    lines = []
+    for m in recent:
+        role = m.get("role") or m.get("type")
+        content = (m.get("content") or "").strip()
+        if not content:
+            continue
+        if role in ("user",):
+            lines.append(f"[유저] {content[:300]}")
+        elif role in ("agent", "ai"):
+            lines.append(f"[스태프] {content[:300]}")
+    return "\n".join(lines)
+
+
+async def handle(text: str, language: str = "ko", history: list[dict] | None = None) -> dict:
+    """메시지 처리. 반환: {handled, reply, intent, provider, escalate}.
+
+    history: 최근 대화 내역 (이어지는 대화 위해 컨텍스트 주입)
+    """
     text = text.strip()
     if not text:
         return {"handled": False, "reply": "", "intent": "empty", "provider": "", "escalate": False}
@@ -155,13 +177,16 @@ async def handle(text: str, language: str = "ko") -> dict:
 
     # 일반 자연어 — Gemini 자유 응답 (ChatGPT/Claude 같은 만능 챗봇 역할)
     lang_hint = {"ko": "한국어로", "en": "in English", "ja": "日本語で", "zh": "用中文"}.get(language, "한국어로")
+    history_block = _format_history(history)
     prompt = (
         f"너는 두근컴퍼니의 스태프이자 만능 AI 비서야. ChatGPT/Claude 같은 일반 챗봇 역할 + 두근컴퍼니 전담 비서 역할 동시 수행.\n\n"
         f"답할 수 있는 것: 일반 지식 질문 (날씨/뉴스/번역/설명/계산/코드 설명/요약/창작 등)\n"
         f"위임할 것 (이미 분류 완료, 여기는 도달 안 함): 실제 코드 수정/배포\n\n"
         f"답변 톤: {lang_hint} 자연스럽게, 필요한 만큼 자세히 (5줄 이내 권장).\n"
-        f"모르는 건 솔직히 모른다고. 친근한 동료 톤.\n\n"
-        f'메시지: "{text}"'
+        f"모르는 건 솔직히 모른다고. 친근한 동료 톤.\n"
+        f"중요: 이어지는 대화이므로 매번 인사·자기소개 반복하지 말고 바로 본론. 이전 맥락 참고해서 자연스럽게 이어가.\n\n"
+        + (f"=== 최근 대화 ===\n{history_block}\n\n" if history_block else "")
+        + f'=== 새 메시지 ===\n{text}'
     )
     reply, provider = await smart_call("default", prompt, max_out=500)
     if not reply or not reply.strip():

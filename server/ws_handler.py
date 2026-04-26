@@ -496,7 +496,12 @@ async def handle_chat(
                         session_id=current_sid,
                     )
                     from staff_engine import handle as staff_handle
-                    result = await staff_handle(prompt, language="ko")
+                    # 이어지는 대화 — 최근 히스토리 주입 (인사 반복 방지)
+                    try:
+                        prior_history = manager.get_history(team_id, current_sid) or []
+                    except Exception:
+                        prior_history = []
+                    result = await staff_handle(prompt, language="ko", history=prior_history)
                     reply = result.get("reply") or ""
                     await manager.send_json(
                         team_id,
