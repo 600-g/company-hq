@@ -960,30 +960,28 @@ function AgentSelector({ agents, selectedId, onSelect, onStaffStatsClick }: { ag
         const unread = unreadByTeam[a.id] ?? 0;
         const isStaff = a.id === "staff";
         return (
-          <div key={a.id} className="flex">
+          <div key={a.id} className={`flex w-full ${isStaff ? "border-b border-amber-500/30" : ""}`}>
             <button
               onClick={() => onSelect(a.id)}
-              className={`flex-1 flex items-center gap-1.5 px-2.5 py-1.5 text-left text-[12px] transition-colors ${
+              className={`flex-1 min-w-0 flex items-center gap-1.5 px-2.5 py-1.5 text-left text-[12px] transition-colors ${
                 active ? "bg-sky-500/15 text-sky-100" : "text-gray-300 hover:bg-gray-800/40"
-              } ${isStaff ? "border-b border-amber-500/30" : ""}`}
+              }`}
             >
-              <span className="text-sm leading-none">{a.emoji}</span>
-              <span className={`flex-1 truncate ${active ? "font-bold" : ""}`}>{a.name}</span>
+              <span className="text-sm leading-none shrink-0">{a.emoji}</span>
+              <span className={`flex-1 min-w-0 truncate ${active ? "font-bold" : ""}`}>{a.name}</span>
               {streaming ? (
-                <span className="flex items-center gap-0.5 text-[9px] text-amber-300">
+                <span className="flex items-center gap-0.5 text-[9px] text-amber-300 shrink-0">
                   <span className="w-1.5 h-1.5 bg-amber-400 rounded-full animate-pulse" />
                   작업중
                 </span>
               ) : unread > 0 && !active ? (
-                <span className="text-[9px] px-1 rounded-full bg-red-500/80 text-white font-bold">{unread}</span>
+                <span className="text-[9px] px-1 rounded-full bg-red-500/80 text-white font-bold shrink-0">{unread}</span>
               ) : null}
             </button>
             {isStaff && (
               <button
                 onClick={(e) => { e.stopPropagation(); onStaffStatsClick?.(); }}
-                className={`px-2 text-[10px] font-bold transition-colors ${
-                  active ? "text-amber-200 hover:bg-amber-500/15" : "text-amber-400/70 hover:bg-amber-500/10 hover:text-amber-200"
-                } border-l border-gray-800/60`}
+                className="shrink-0 w-8 flex items-center justify-center text-[12px] transition-colors text-amber-400 hover:bg-amber-500/15 hover:text-amber-200 border-l border-gray-800/60"
                 title="스태프 통계"
               >
                 📊
@@ -1221,43 +1219,58 @@ type BugFilter = "open" | "in_progress" | "resolved" | "all";
 
 function LabBody({ onPopoutDebug, onPopoutTerminal }: { onPopoutDebug: () => void; onPopoutTerminal: () => void }) {
   const [tab, setTab] = useState<"bugs" | "debug" | "terminal">("bugs");
-  void onPopoutDebug; // 디버그는 인라인 LogsPane 으로 통합 (별도 창 안 띄움)
+  void onPopoutDebug; // 디버그는 인라인 LogsPane
+  // 모달 일관 크기 — 항상 70vh 고정, 내부 컨텐츠는 스크롤
   return (
-    <div className="flex flex-col" style={{ minHeight: "60vh" }}>
-      <div className="flex gap-1 p-1 bg-[var(--surface-2)] rounded-md border border-[var(--border-1)] mb-2">
+    <div className="flex flex-col" style={{ height: "70vh" }}>
+      <div className="shrink-0 flex gap-1 p-1 bg-gray-900/60 dark:bg-gray-900/60 rounded-md border border-gray-700 mb-2">
         <button
           onClick={() => setTab("bugs")}
-          className={`flex-1 py-1.5 text-[12px] rounded transition-colors ${tab === "bugs" ? "bg-[var(--accent-bg)] text-[var(--text-accent)] font-bold border border-[var(--accent-border)]" : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"}`}
+          className={`flex-1 py-2 text-[13px] rounded font-bold transition-colors ${
+            tab === "bugs"
+              ? "bg-sky-600 text-white shadow"
+              : "bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-white"
+          }`}
         >🐛 버그·티켓</button>
         <button
           onClick={() => setTab("debug")}
-          className={`flex-1 py-1.5 text-[12px] rounded transition-colors ${tab === "debug" ? "bg-[var(--accent-bg)] text-[var(--text-accent)] font-bold border border-[var(--accent-border)]" : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"}`}
+          className={`flex-1 py-2 text-[13px] rounded font-bold transition-colors ${
+            tab === "debug"
+              ? "bg-sky-600 text-white shadow"
+              : "bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-white"
+          }`}
         >🔧 디버그</button>
         <button
           onClick={() => setTab("terminal")}
-          className={`flex-1 py-1.5 text-[12px] rounded transition-colors ${tab === "terminal" ? "bg-[var(--accent-bg)] text-[var(--text-accent)] font-bold border border-[var(--accent-border)]" : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"}`}
+          className={`flex-1 py-2 text-[13px] rounded font-bold transition-colors ${
+            tab === "terminal"
+              ? "bg-sky-600 text-white shadow"
+              : "bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-white"
+          }`}
         >💻 터미널</button>
       </div>
-      <div className="flex-1 min-h-[400px]">
+      {/* 컨텐츠 영역 — 고정 높이 + 스크롤 */}
+      <div className="flex-1 min-h-0 overflow-y-auto rounded-md border border-gray-700 bg-gray-950/50">
         {tab === "bugs" && <BugsBody />}
         {tab === "debug" && (
-          <div className="h-full min-h-[400px] rounded-md border border-[var(--border-1)] overflow-hidden bg-[var(--surface-2)]">
+          <div className="h-full">
             <LogsPane />
           </div>
         )}
         {tab === "terminal" && (
-          <div className="space-y-3 p-6 flex flex-col items-center justify-center min-h-[400px]">
-            <div className="text-[14px] font-bold text-[var(--text-primary)]">💻 터미널</div>
-            <div className="text-[12px] text-[var(--text-secondary)] text-center max-w-md">
-              명령 실행 + 출력 스트리밍 + AI 자동 수정 요청. 화면 가독성 위해 별도 창에서 띄워집니다.
+          <div className="h-full flex flex-col items-center justify-center gap-4 p-6">
+            <div className="text-3xl">💻</div>
+            <div className="text-[15px] font-bold text-gray-100">터미널</div>
+            <div className="text-[12px] text-gray-400 text-center max-w-md leading-relaxed">
+              명령 실행 + 출력 스트리밍 + AI 자동 수정 요청.<br />화면 가독성 위해 별도 창에서 띄워집니다.
             </div>
             <button
               onClick={onPopoutTerminal}
-              className="px-5 py-2.5 rounded-md bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/50 text-emerald-200 text-[13px] font-bold transition-colors"
+              className="px-6 py-3 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-[14px] font-bold transition-colors shadow-md"
             >
               터미널 열기
             </button>
-            <div className="text-[10px] text-[var(--muted)]">닫으면 연구소로 돌아옴</div>
+            <div className="text-[10px] text-gray-500">닫으면 연구소로 돌아옴</div>
           </div>
         )}
       </div>
