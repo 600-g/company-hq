@@ -193,13 +193,11 @@ export default function HubOffice({ floor, agentCount }: Props) {
           this.load.image("bldg_purple", "/assets/buildings/house_purple.png");
           this.load.image("bldg_mart", "/assets/buildings/house_mart.png");
           this.load.image("park_tree", "/assets/buildings/park_tree.png");
-          // 캐릭터 스프라이트 — 첫 60개만 미리 로드 (나머지는 setAgents 시 on-demand)
-          // 248개 전부 로드 → 60개 로드 (76% 감소, 첫 화면 시간 단축)
+          // 캐릭터 스프라이트 (모두 로드 — 일부만 로드 시 missing texture 로 에이전트 안 보임)
           this.load.spritesheet("char_cpo", "/assets/chars/char_cpo.png", {
             frameWidth: 32, frameHeight: 48,
           });
-          const PRELOAD_LIMIT = 60;
-          for (let i = 0; i < Math.min(CHAR_COUNT, PRELOAD_LIMIT); i++) {
+          for (let i = 0; i < CHAR_COUNT; i++) {
             this.load.spritesheet(`char_${i}`, `/assets/chars/char_${i}.png`, {
               frameWidth: 32, frameHeight: 48,
             });

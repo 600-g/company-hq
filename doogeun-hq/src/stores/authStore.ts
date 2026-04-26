@@ -28,6 +28,11 @@ export const useAuthStore = create<AuthState>()(
       isOwner: () => get().user?.role === "owner",
       isLoggedIn: () => !!get().token && !!get().user,
     }),
-    { name: "doogeun-hq-auth" }
+    {
+      name: "doogeun-hq-auth",
+      version: 1,
+      // 함수(login/logout/isOwner/isLoggedIn)는 persist 안 함 — token/user 만 영속
+      partialize: (s) => ({ token: s.token, user: s.user }),
+    }
   )
 );
