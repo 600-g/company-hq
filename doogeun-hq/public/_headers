@@ -1,0 +1,27 @@
+# CF Pages 캐시 정책 — 정적 자산 immutable 1년
+/_next/static/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# 캐릭터/타일/오브젝트 — 한 달 캐시 (자주 안 바뀜)
+/assets/chars/*
+  Cache-Control: public, max-age=2592000
+
+/assets/npcs/*
+  Cache-Control: public, max-age=2592000
+
+/assets/teammaker/*
+  Cache-Control: public, max-age=2592000
+
+/assets/buildings/*
+  Cache-Control: public, max-age=2592000
+
+/assets/floors/*
+  Cache-Control: public, max-age=2592000
+
+# 폰트 — 1년 (해시 부착됨)
+/_next/static/media/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# 버전 파일 — 캐시 안 함 (실시간 감지)
+/version.json
+  Cache-Control: no-store

@@ -16,7 +16,7 @@ import {
   MessagesSquare, Plus, Home as HomeIcon, RefreshCw, ChevronRight, ChevronLeft,
   Grid3x3, Pencil, Terminal as TerminalIcon,
 } from "lucide-react";
-import DebugPanel from "@/components/DebugPanel";
+import DebugPanel, { LogsPane } from "@/components/DebugPanel";
 import MentionPopup from "@/components/chat/MentionPopup";
 import TerminalPanel from "@/components/TerminalPanel";
 import FurniturePalette from "@/components/office/FurniturePalette";
@@ -637,16 +637,16 @@ export default function HubPage() {
           )}
         </div>
 
-        {/* refine 힌트 (모호한 요청일 때) */}
+        {/* refine 힌트 (모호한 요청일 때) — 라이트/다크 모드 양쪽 가독성 */}
         {refineHints && refineHints.length > 0 && (
-          <div className="mx-2 mb-2 p-3 rounded-lg border border-amber-400/60 bg-amber-500/15 text-[12px] space-y-1.5 shadow">
+          <div className="mx-2 mb-2 p-3 rounded-lg border-2 border-amber-500 bg-amber-100 dark:bg-amber-950/40 dark:border-amber-400/60 text-[12px] space-y-1.5 shadow-md">
             <div className="flex items-center justify-between gap-2">
-              <div className="text-amber-100 font-bold flex items-center gap-1">💡 요청 보완 제안</div>
-              <button onClick={forceSend} className="text-[11px] px-2 py-0.5 rounded bg-amber-500/30 hover:bg-amber-500/50 text-amber-50 font-bold border border-amber-400/50">
+              <div className="text-amber-900 dark:text-amber-100 font-bold flex items-center gap-1">💡 요청 보완 제안</div>
+              <button onClick={forceSend} className="text-[11px] px-2 py-1 rounded bg-amber-500 hover:bg-amber-600 text-white font-bold border border-amber-600">
                 그대로 전송
               </button>
             </div>
-            <ul className="list-disc list-inside text-amber-50 space-y-1 pl-1">
+            <ul className="list-disc list-inside text-amber-900 dark:text-amber-50 space-y-1 pl-1">
               {refineHints.map((h, i) => <li key={i} className="leading-relaxed">{h}</li>)}
             </ul>
           </div>
@@ -1199,47 +1199,46 @@ type BugFilter = "open" | "in_progress" | "resolved" | "all";
 
 function LabBody({ onPopoutDebug, onPopoutTerminal }: { onPopoutDebug: () => void; onPopoutTerminal: () => void }) {
   const [tab, setTab] = useState<"bugs" | "debug" | "terminal">("bugs");
+  void onPopoutDebug; // 디버그는 인라인 LogsPane 으로 통합 (별도 창 안 띄움)
   return (
-    <div className="space-y-3">
-      <div className="flex gap-1 p-1 bg-gray-900/60 rounded-md border border-gray-800/60">
+    <div className="flex flex-col" style={{ minHeight: "60vh" }}>
+      <div className="flex gap-1 p-1 bg-[var(--surface-2)] rounded-md border border-[var(--border-1)] mb-2">
         <button
           onClick={() => setTab("bugs")}
-          className={`flex-1 py-1.5 text-[12px] rounded transition-colors ${tab === "bugs" ? "bg-sky-500/15 text-sky-200 font-bold" : "text-gray-400 hover:text-gray-200"}`}
+          className={`flex-1 py-1.5 text-[12px] rounded transition-colors ${tab === "bugs" ? "bg-[var(--accent-bg)] text-[var(--text-accent)] font-bold border border-[var(--accent-border)]" : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"}`}
         >🐛 버그·티켓</button>
         <button
           onClick={() => setTab("debug")}
-          className={`flex-1 py-1.5 text-[12px] rounded transition-colors ${tab === "debug" ? "bg-sky-500/15 text-sky-200 font-bold" : "text-gray-400 hover:text-gray-200"}`}
+          className={`flex-1 py-1.5 text-[12px] rounded transition-colors ${tab === "debug" ? "bg-[var(--accent-bg)] text-[var(--text-accent)] font-bold border border-[var(--accent-border)]" : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"}`}
         >🔧 디버그</button>
         <button
           onClick={() => setTab("terminal")}
-          className={`flex-1 py-1.5 text-[12px] rounded transition-colors ${tab === "terminal" ? "bg-sky-500/15 text-sky-200 font-bold" : "text-gray-400 hover:text-gray-200"}`}
+          className={`flex-1 py-1.5 text-[12px] rounded transition-colors ${tab === "terminal" ? "bg-[var(--accent-bg)] text-[var(--text-accent)] font-bold border border-[var(--accent-border)]" : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"}`}
         >💻 터미널</button>
       </div>
-      {tab === "bugs" && <BugsBody />}
-      {tab === "debug" && (
-        <div className="space-y-2 p-4">
-          <div className="text-[13px] text-gray-300">실시간 클라이언트 진단 로그 + 시스템 패널</div>
-          <button
-            onClick={onPopoutDebug}
-            className="w-full py-2.5 rounded-md bg-sky-500/15 hover:bg-sky-500/25 border border-sky-400/40 text-sky-200 text-[13px] font-bold transition-colors"
-          >
-            🔧 디버그 패널 열기 (별도 창)
-          </button>
-          <div className="text-[10px] text-gray-500">디버그 패널은 화면 전체를 덮는 오버레이라 별도 창으로 분리. 닫으면 연구소로 돌아옴.</div>
-        </div>
-      )}
-      {tab === "terminal" && (
-        <div className="space-y-2 p-4">
-          <div className="text-[13px] text-gray-300">SSE 기반 쉘 실행 + AI 자동 수정 요청</div>
-          <button
-            onClick={onPopoutTerminal}
-            className="w-full py-2.5 rounded-md bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-400/40 text-emerald-200 text-[13px] font-bold transition-colors"
-          >
-            💻 터미널 패널 열기 (별도 창)
-          </button>
-          <div className="text-[10px] text-gray-500">터미널은 명령 실행 + 출력 스트리밍이라 별도 창으로 분리. 닫으면 연구소로 돌아옴.</div>
-        </div>
-      )}
+      <div className="flex-1 min-h-[400px]">
+        {tab === "bugs" && <BugsBody />}
+        {tab === "debug" && (
+          <div className="h-full min-h-[400px] rounded-md border border-[var(--border-1)] overflow-hidden bg-[var(--surface-2)]">
+            <LogsPane />
+          </div>
+        )}
+        {tab === "terminal" && (
+          <div className="space-y-3 p-6 flex flex-col items-center justify-center min-h-[400px]">
+            <div className="text-[14px] font-bold text-[var(--text-primary)]">💻 터미널</div>
+            <div className="text-[12px] text-[var(--text-secondary)] text-center max-w-md">
+              명령 실행 + 출력 스트리밍 + AI 자동 수정 요청. 화면 가독성 위해 별도 창에서 띄워집니다.
+            </div>
+            <button
+              onClick={onPopoutTerminal}
+              className="px-5 py-2.5 rounded-md bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/50 text-emerald-200 text-[13px] font-bold transition-colors"
+            >
+              터미널 열기
+            </button>
+            <div className="text-[10px] text-[var(--muted)]">닫으면 연구소로 돌아옴</div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

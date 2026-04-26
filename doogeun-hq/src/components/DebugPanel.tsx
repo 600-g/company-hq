@@ -63,7 +63,7 @@ function TabBtn({ active, onClick, icon, children }: { active: boolean; onClick:
   );
 }
 
-function LogsPane() {
+export function LogsPane() {
   const [logs, setLogs] = useState<DiagLog[]>(() => getRecentLogs(500));
   const [level, setLevel] = useState<"all" | DiagLog["level"]>("all");
   const [q, setQ] = useState("");
