@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Settings, MessageSquare, Trash2, Activity } from "lucide-react";
 import type { Agent } from "@/stores/agentStore";
 
@@ -19,6 +19,13 @@ interface Props {
 export default function AgentContextMenu({
   agent, x, y, onClose, onOpenConfig, onOpenChat, onOpenActivity, onDelete,
 }: Props) {
+  // 우클릭 직후 발생하는 mouseup/click 무시 — 메뉴가 즉시 닫히는 버그 방지
+  const [armed, setArmed] = useState(false);
+  useEffect(() => {
+    const id = setTimeout(() => setArmed(true), 150);
+    return () => clearTimeout(id);
+  }, []);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", onKey);
@@ -33,8 +40,8 @@ export default function AgentContextMenu({
     <>
       <div
         className="fixed inset-0 z-[200]"
-        onClick={onClose}
-        onContextMenu={(e) => { e.preventDefault(); onClose(); }}
+        onClick={armed ? onClose : undefined}
+        onContextMenu={(e) => { e.preventDefault(); if (armed) onClose(); }}
       />
       <div
         className="fixed z-[201] w-48 rounded-lg border border-gray-700 bg-gray-950 shadow-2xl overflow-hidden"
