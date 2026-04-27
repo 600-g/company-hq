@@ -608,12 +608,30 @@ async def add_light_agent(body: dict):
     if any(t["id"] == team_id for t in TEAMS):
         return {"ok": False, "error": f"이미 존재하는 id: {team_id}"}
 
-    # CPO 로컬패스 재사용 (경량은 별도 레포 없이 company-hq에서 실행)
-    local_path = os.path.expanduser("~/Developer/my-company/company-hq")
+    # 🛡 light 팀 격리 — 두근컴퍼니 메인 폴더 CLAUDE.md 자동 로드 차단
+    # 각 팀별 sandbox 폴더 (~/Developer/agents/{team_id}/) 자동 생성
+    # 그 안에 자기 역할만 담은 CLAUDE.md 작성 → cwd 진입 시 깔끔한 컨텍스트
+    sandbox = os.path.expanduser(f"~/Developer/agents/{team_id}")
+    os.makedirs(sandbox, exist_ok=True)
+    sandbox_md = os.path.join(sandbox, "CLAUDE.md")
+    if not os.path.exists(sandbox_md):
+        with open(sandbox_md, "w", encoding="utf-8") as f:
+            f.write(
+                f"# {name} ({team_id})\n\n"
+                f"## 역할\n{description}\n\n"
+                "## 작업 폴더\n"
+                f"이 폴더(`~/Developer/agents/{team_id}/`) 안에서만 작업한다.\n"
+                "산출물(코드/문서/에셋) 모두 여기에 저장.\n\n"
+                "## 격리 정책\n"
+                "- 두근컴퍼니 메인(~/Developer/my-company/company-hq/) 의 CLAUDE.md / policies.md 무시\n"
+                "- 두근컴퍼니 운영 / 오피스 씬 / 멀티에이전트 시스템에 관여 금지\n"
+                "- 본인 역할 외 메타 컨텍스트 (회사 정책/팀 디스패치 등) 는 사용자가 명시적으로 요청할 때만 응답\n"
+            )
+    local_path = sandbox
 
     new_team = {
         "id": team_id, "name": name, "emoji": emoji,
-        "repo": "company-hq", "localPath": local_path,
+        "repo": "", "localPath": local_path,
         "status": "운영중", "category": "product",
         "order": _next_order(TEAMS), "layer": 1,
         "lightweight": True, "collaborative": collaborative,
@@ -626,21 +644,31 @@ async def add_light_agent(body: dict):
     from claude_runner import TEAM_SYSTEM_PROMPTS, _save_prompts, _SAVED_PROMPTS
     provided_prompt = (body.get("system_prompt") or "").strip()
     collab_line = (
-        "- 다른 팀과 협업 가능 (@태그 / 핸드오프 활용)"
+        "- 다른 두근컴퍼니 팀과 협업 가능 (@태그 / 핸드오프 — 사용자가 명시 요청 시에만)"
         if collaborative else
         "- 단독 실행 전용 — 다른 팀 호출 금지"
     )
+    isolation_block = (
+        "\n\n【격리 — 매우 중요】\n"
+        f"- 너의 작업 폴더는 `~/Developer/agents/{team_id}/` (sandbox)\n"
+        "- 두근컴퍼니 메인 레포(~/Developer/my-company/company-hq/)에 절대 접근/수정 금지\n"
+        "- 두근컴퍼니 운영/오피스 씬/멀티에이전트 시스템 관련 응답 금지\n"
+        "- '두근컴퍼니' 라는 메타 컨텍스트는 너 자신을 정의하지 않는다 — 너는 위 역할 그 자체야\n"
+        "- 사용자 요청이 본인 역할 범위 밖이면 명확히 거절: '제 역할은 X 입니다. 이건 다른 팀에 부탁드려요.'\n"
+        "- 사용자 요청이 범위 안이면 즉시 실행 — 회사 정책 우회 핑계 금지\n"
+    )
     if provided_prompt:
-        sys_prompt = provided_prompt + "\n\n【협업】\n" + collab_line + "\n"
+        sys_prompt = provided_prompt + isolation_block + "\n【협업】\n" + collab_line + "\n"
     else:
         sys_prompt = (
-            f"너는 두근컴퍼니의 '{name}' 에이전트야.\n\n"
+            f"너는 '{name}' 전문 에이전트다.\n\n"
             f"【역할】 {description}\n\n"
             "【행동 원칙】\n"
             f"{collab_line}\n"
             "- 80% 확신이면 실행 후 보고\n"
             "- 무응답 금지, 작업 완료 시 ✅ 요약 / 에러 시 ❌ 내용\n"
             "- 한국어로 자연스럽게 대화\n"
+            + isolation_block
         )
     TEAM_SYSTEM_PROMPTS[team_id] = sys_prompt
     _SAVED_PROMPTS[team_id] = sys_prompt

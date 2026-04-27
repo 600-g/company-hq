@@ -924,21 +924,33 @@ async def run_claude(
     except Exception as _ctx_err:
         logger.warning(f"[{team_id}] 컨텍스트 주입 실패 (무시): {_ctx_err}")
 
-    # ── Sprint 8: 정책(policies.md) 자동 주입 ──
-    # 에이전트가 회사 정책/코드 규칙/금지사항을 매번 숙지하게 함.
+    # ── Sprint 8: 정책 자동 주입 ──
+    # 두근컴퍼니 내부 팀 → policies.md (오피스 씬/멀티에이전트 정책 등 풀 컨텍스트)
+    # light 팀 (lightweight=True) → light_policies.md (한국어/협업 정도만 — 격리)
+    # 직전 발견: light 팀이 policies.md 로 인해 두근컴퍼니 운영에 휘말림
     try:
-        pol_path = Path(__file__).parent / "policies.md"
+        # team metadata 에서 lightweight 여부 확인
+        from main import TEAMS as _ALL_TEAMS  # 순환 위험 — 함수 안에서 lazy import
+        _team_meta = next((t for t in _ALL_TEAMS if t.get("id") == team_id), None)
+        is_light = bool(_team_meta and _team_meta.get("lightweight"))
+    except Exception:
+        is_light = False
+
+    pol_filename = "light_policies.md" if is_light else "policies.md"
+    try:
+        pol_path = Path(__file__).parent / pol_filename
         if pol_path.exists():
             pol_content = pol_path.read_text(encoding="utf-8")
+            section_label = "🛡 에이전트 정책 (격리 모드)" if is_light else "🛡 회사 정책/규칙 (server/policies.md — 작업 전 필독, 위배 금지)"
             system_prompt = (
                 f"{system_prompt}\n\n"
                 f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                f"🛡 회사 정책/규칙 (server/policies.md — 작업 전 필독, 위배 금지)\n"
+                f"{section_label}\n"
                 f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
                 f"{pol_content}"
             )
     except Exception as _pol_err:
-        logger.warning(f"[{team_id}] policies.md 로드 실패 (무시): {_pol_err}")
+        logger.warning(f"[{team_id}] {pol_filename} 로드 실패 (무시): {_pol_err}")
 
     # ── SOP 자동 주입 (단, 단순 인사/한줄 질문은 스킵하여 속도 향상) ──
     _prompt_len = len(prompt.strip())
