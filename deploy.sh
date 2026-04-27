@@ -1,9 +1,9 @@
 #!/bin/bash
 # 두근컴퍼니 HQ 배포 (Cloudflare Pages → 600g.net)
-#  - 빌드 대상: doogeun-hq/ (새판)
-#  - 기존 ui/ 배포는 deploy-legacy-ui.sh 로 보존됨
+#  - 빌드 대상: teammaker-classic/ (메인, 픽셀 오피스 이식됨)
+#  - 기존 doogeun-hq/, ui/ 배포는 deploy-legacy-ui.sh 로 보존됨
 set -e
-cd "$(dirname "$0")/doogeun-hq"
+cd "$(dirname "$0")/teammaker-classic"
 
 BUILD_ID="$(git log --oneline -1 --format='%h' 2>/dev/null || date +%s)-$(date +%s)"
 
@@ -17,7 +17,7 @@ if [ "${MANUAL_MINOR_BUMP:-0}" = "1" ]; then
   PATCH=0
 fi
 APP_VERSION="${MAJOR}.${MINOR}.${PATCH}"
-echo "📦 doogeun-hq version=$APP_VERSION build=$BUILD_ID"
+echo "📦 teammaker-classic version=$APP_VERSION build=$BUILD_ID"
 
 echo "🔨 Building (NEXT_EXPORT=1)..."
 NEXT_EXPORT=1 npx next build
