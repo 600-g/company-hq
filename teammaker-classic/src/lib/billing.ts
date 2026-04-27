@@ -1,2 +1,0 @@
-export const TEAMMAKER_PRO_CHECKOUT_URL =
-  process.env.NEXT_PUBLIC_TEAMMAKER_PRO_CHECKOUT_URL || "";
