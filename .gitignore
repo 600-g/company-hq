@@ -27,3 +27,8 @@ server/team_prompts.json
 server/teams.json
 server/furniture_overrides.json
 server/doogeun_state_backups/
+
+# SQLite 런타임 DB (chat_history 통합)
+server/doogeun.db
+server/doogeun.db-shm
+server/doogeun.db-wal

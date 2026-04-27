@@ -106,9 +106,16 @@ def _load_messages(team_id: str, session_id: str) -> list[dict]:
 
 def _save_messages(team_id: str, session_id: str, messages: list[dict]) -> None:
     trimmed = messages[-_MAX_MESSAGES_PER_SESSION:]
+    # JSON 저장 (기존 호환 — 다음 cutover 단계에서 제거 예정)
     _session_path(team_id, session_id).write_text(
         json.dumps(trimmed, ensure_ascii=False), encoding="utf-8"
     )
+    # SQLite dual-write — 디스크 I/O 더 작은 row-단위 저장. read 는 다음 단계에서 DB 우선으로 cutover.
+    try:
+        import db as _db
+        _db.replace_session_messages(team_id, session_id, trimmed)
+    except Exception as e:
+        logger.warning("[sessions] sqlite dual-write 실패 %s/%s: %s", team_id, session_id, e)
 
 
 # ── 마이그레이션 ───────────────────────────────────
