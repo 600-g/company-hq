@@ -307,7 +307,38 @@ async def _auto_recovery_dispatch(
     now = time.time()
     last = _AUTO_RECOVERY_RECENT.get(key, 0)
     if now - last < 300:
-        logger.info("[auto-recovery] %s 5분 내 재시도 — 스킵 (무한 루프 방지)", key)
+        logger.warning("[auto-recovery] %s 5분 내 재발 — CPO 자동 복구도 실패 → 사용자 알림", key)
+        # 죽어도 안 되는 케이스 — 사용자에게 명시적 알림 + 푸시
+        team_info_x = _TEAM_LOOKUP.get(team_id, {})
+        try:
+            await manager.send_json(team_id, {
+                "type": "ai_chunk",
+                "content": (
+                    f"\n\n🚨 자동 복구 실패 (5분 내 같은 오류 재발)\n"
+                    f"   원인: {error_summary[:200]}\n"
+                    f"   CPO 자동 진단/수정도 효과 없음 — 사용자 직접 결정 필요.\n"
+                    f"   • 다른 표현으로 재요청\n"
+                    f"   • 이 작업이 너무 복잡하면 분할\n"
+                    f"   • 기술적 제약(모델 limit/API 한도) 가능성\n"
+                ),
+                "session_id": "default",
+            })
+        except Exception:
+            pass
+        # OS 푸시 알림
+        try:
+            from push_notifications import send_push as _spush
+            t_name = team_info_x.get("name", team_id)
+            t_emoji = team_info_x.get("emoji", "🤖")
+            _spush(
+                title=f"🚨 {t_emoji} {t_name} 자동 복구 실패",
+                body=f"{error_summary[:120]} — 직접 결정 필요",
+                tag=f"recovery-fail-{team_id}",
+                url="/hub",
+                team_id=team_id,
+            )
+        except Exception:
+            pass
         return
     _AUTO_RECOVERY_RECENT[key] = now
 
@@ -446,12 +477,37 @@ async def _route_dispatch(source_team: str, target_team: str, prompt: str, depth
         except Exception:
             pass
 
-        # target 팀 응답에도 dispatch 블록 있으면 재귀 (깊이+1)
+        # 🔁 source 팀(리드) 채팅창에도 결과 echo — 리드가 협업 진행 가시화
+        # 이미 _route_dispatch 가 다시 source 로 보내는 중첩 dispatch 면 자동 처리, 없으면 정보성 cross-channel 알림
         nested = _parse_dispatch_blocks(full)
+        if not any(nd["team"] == source_team for nd in nested):
+            # target 응답에 source 로 회신하는 dispatch 가 없으면, 진행 상황 echo
+            try:
+                target_label = f"{target_info.get('emoji','🤖')} {target_info.get('name', target_team)}"
+                preview = full[:200].replace("\n", " ")
+                await manager.send_json(source_team, {
+                    "type": "ai_chunk",
+                    "content": f"\n\n📬 [{target_label} 응답 도착]\n   {preview}{'...' if len(full) > 200 else ''}\n",
+                    "session_id": "default",
+                })
+            except Exception:
+                pass
+
+        # target 팀 응답에도 dispatch 블록 있으면 재귀 (깊이+1)
         for nd in nested:
             asyncio.create_task(_route_dispatch(target_team, nd["team"], nd["prompt"], depth + 1))
     except Exception as e:
         logger.warning("[dispatch] %s → %s 실행 실패: %s", source_team, target_team, e)
+        # 디스패치 자체 실패 → source 팀(리드) 채팅창에 ❌ 표시 (리드가 사용자에게 알림 가능)
+        try:
+            target_label = target_info.get('name', target_team) if target_info else target_team
+            await manager.send_json(source_team, {
+                "type": "ai_chunk",
+                "content": f"\n\n❌ [협업 실패: → {target_label}] {str(e)[:200]}\n   리드는 이 사실을 사용자에게 알리고 우회안 제시 권장.\n",
+                "session_id": "default",
+            })
+        except Exception:
+            pass
 
 
 async def handle_chat(
