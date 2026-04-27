@@ -3211,6 +3211,184 @@ async def admin_deploy_trigger(background_tasks: BackgroundTasks):
     return {"ok": True, "started": True}
 
 
+# ── 메모리 최적화 (외부 앱 graceful quit) ─────────────────────────────────
+
+# 절대 종료 금지 — 우리 시스템 + macOS 코어
+_PROTECTED_APP_KEYWORDS = {
+    "Claude", "claude", "Python", "python", "uvicorn", "ollama", "cloudflared",
+    "Terminal", "iTerm", "iTerm2", "bash", "zsh", "Finder",
+    "WindowServer", "kernel_task", "launchd", "loginwindow", "Dock",
+    "Spotlight", "SystemUIServer", "ControlCenter", "NotificationCenter",
+    "ps", "top", "Activity Monitor",
+    "company-hq", "doogeun", "coinbot", "trading",
+}
+
+# 종료 가능 화이트리스트 (사용자 일반 앱)
+_TERMINATABLE_APP_KEYWORDS = {
+    "Google Chrome", "Chrome", "Whale", "Safari", "Firefox", "Edge", "Brave",
+    "Steam", "Slack", "Discord", "Spotify", "Music", "Photos", "Notion",
+    "Figma", "Code", "VSCode", "Mail", "Calendar", "Notes", "Reminders",
+    "Sketch", "Photoshop", "Illustrator", "Zoom", "Teams",
+}
+
+
+def _categorize_app(name: str) -> str:
+    """protected / terminable / other 분류."""
+    for k in _PROTECTED_APP_KEYWORDS:
+        if k.lower() in name.lower():
+            return "protected"
+    for k in _TERMINATABLE_APP_KEYWORDS:
+        if k.lower() in name.lower():
+            return "terminable"
+    return "other"
+
+
+def _list_app_processes(min_rss_mb: float = 30.0) -> list[dict]:
+    """RSS 30MB 이상 프로세스를 앱 단위로 집계."""
+    try:
+        result = subprocess.run(
+            ["ps", "axo", "pid,rss,comm"],
+            capture_output=True, text=True, timeout=5,
+        )
+        apps: dict[str, dict] = {}
+        for line in result.stdout.strip().split("\n")[1:]:
+            parts = line.split(None, 2)
+            if len(parts) < 3:
+                continue
+            try:
+                pid = int(parts[0])
+                rss_mb = int(parts[1]) / 1024
+            except ValueError:
+                continue
+            comm = parts[2].strip()
+            # 앱 이름 추출 (.app 또는 마지막 단어)
+            app_name = comm
+            if ".app/" in comm:
+                seg = comm.split(".app/")[0]
+                app_name = seg.split("/")[-1]
+            elif "/" in comm:
+                app_name = comm.split("/")[-1]
+            if app_name in apps:
+                apps[app_name]["rss_mb"] += rss_mb
+                apps[app_name]["pids"].append(pid)
+            else:
+                apps[app_name] = {
+                    "name": app_name,
+                    "rss_mb": rss_mb,
+                    "pids": [pid],
+                }
+        out = []
+        for a in apps.values():
+            if a["rss_mb"] < min_rss_mb:
+                continue
+            out.append({
+                "name": a["name"],
+                "rss_mb": round(a["rss_mb"], 1),
+                "pids": a["pids"][:10],  # 최대 10개만
+                "category": _categorize_app(a["name"]),
+            })
+        out.sort(key=lambda x: -x["rss_mb"])
+        return out
+    except Exception as e:
+        logger.warning("[memory] ps 실패: %s", e)
+        return []
+
+
+def _read_vm_stats() -> dict:
+    """vm_stat + sysctl 로 시스템 메모리 + 스왑."""
+    try:
+        vm = subprocess.run(["vm_stat"], capture_output=True, text=True, timeout=3).stdout
+        page_size = 16384  # Apple Silicon
+        free = active = inactive = wired = compressed = 0
+        for line in vm.split("\n"):
+            if ":" not in line:
+                continue
+            label, val = line.split(":", 1)
+            try:
+                num = int(val.strip().rstrip("."))
+            except Exception:
+                continue
+            if "Pages free" in label: free = num
+            elif "Pages active" in label: active = num
+            elif "Pages inactive" in label: inactive = num
+            elif "Pages wired down" in label: wired = num
+            elif "Pages occupied by compressor" in label: compressed = num
+        used_bytes = (active + wired + compressed) * page_size
+        free_bytes = (free + inactive) * page_size
+        # 스왑
+        swap_out = subprocess.run(["sysctl", "vm.swapusage"], capture_output=True, text=True, timeout=3).stdout
+        import re as _re
+        m = _re.search(r"used\s*=\s*([\d.]+)M", swap_out)
+        swap_mb = float(m.group(1)) if m else 0
+        return {
+            "used_mb": round(used_bytes / 1024 / 1024, 1),
+            "free_mb": round(free_bytes / 1024 / 1024, 1),
+            "total_mb": round((used_bytes + free_bytes) / 1024 / 1024, 1),
+            "swap_used_mb": round(swap_mb, 1),
+        }
+    except Exception as e:
+        logger.warning("[memory] vm_stat 실패: %s", e)
+        return {"error": str(e)}
+
+
+@app.get("/api/admin/memory/status")
+async def admin_memory_status():
+    """현재 메모리 + 분류된 앱 RSS 리스트."""
+    return {
+        "ok": True,
+        "system": _read_vm_stats(),
+        "apps": _list_app_processes(),
+    }
+
+
+@app.post("/api/admin/memory/optimize")
+async def admin_memory_optimize(body: dict):
+    """body: {names: [...앱 이름]} — 안전 화이트리스트 통과한 앱만 graceful quit.
+    - protected 카테고리는 무시 (우리 시스템 보호)
+    - osascript 'tell application X to quit' (graceful)
+    - 5초 대기 후 메모리 재측정 → 회수량 반환
+    """
+    names = body.get("names", [])
+    if not isinstance(names, list):
+        return {"ok": False, "error": "names 배열 필요"}
+
+    before = _read_vm_stats()
+    killed: list[dict] = []
+    skipped: list[dict] = []
+    for name in names:
+        cat = _categorize_app(name)
+        if cat == "protected":
+            skipped.append({"name": name, "reason": "보호된 시스템 앱"})
+            continue
+        # graceful quit 우선 (osascript)
+        try:
+            proc = subprocess.run(
+                ["osascript", "-e", f'tell application "{name}" to quit'],
+                capture_output=True, text=True, timeout=10,
+            )
+            killed.append({
+                "name": name,
+                "method": "applescript_quit",
+                "ok": proc.returncode == 0,
+                "stderr": proc.stderr.strip()[:120] if proc.stderr else "",
+            })
+        except Exception as e:
+            killed.append({"name": name, "method": "failed", "error": str(e)[:120]})
+
+    # graceful quit 진행 시간 — 5초 대기
+    await asyncio.sleep(5)
+    after = _read_vm_stats()
+    freed = (before.get("used_mb", 0) - after.get("used_mb", 0)) if before and after else 0
+    return {
+        "ok": True,
+        "killed": killed,
+        "skipped": skipped,
+        "before": before,
+        "after": after,
+        "freed_mb": round(freed, 1),
+    }
+
+
 # ── 토큰 예산 관리 ─────────────────────────────────────
 
 @app.get("/api/budget")
