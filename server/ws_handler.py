@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import re
 from datetime import datetime
 from pathlib import Path
 from fastapi import WebSocket, WebSocketDisconnect
@@ -362,6 +363,95 @@ async def _auto_recovery_dispatch(
             pass  # CPO 응답 처리는 본인 ws 채널에서 자동 표시 (handle_chat 의 cpo-claude WS)
     except Exception as e:
         logger.warning("[auto-recovery] CPO 호출 실패: %s", e)
+
+
+# ── Dispatch block 자동 라우팅 ──────────────────────────────────────────────
+# CPO 또는 다른 에이전트가 응답에 ```dispatch [{"team":"...", "prompt":"..."}, ...] ``` 블록을
+# 포함하면 백엔드가 자동 파싱해 해당 팀에 prompt 를 재발사. 깊이 제한으로 무한 루프 방지.
+_DISPATCH_RE = re.compile(r"```dispatch\s*\n([\s\S]*?)```")
+_DISPATCH_DEPTH_LIMIT = 3   # 한 사용자 요청에서 발생할 수 있는 자동 디스패치 체인 최대 깊이
+_DISPATCH_RECENT: dict[str, int] = {}    # 최근 디스패치 깊이 추적
+
+
+def _parse_dispatch_blocks(text: str) -> list[dict]:
+    """응답 본문에서 dispatch 블록 파싱. 형식 잘못이면 무시."""
+    out: list[dict] = []
+    if not text or "```dispatch" not in text:
+        return out
+    for m in _DISPATCH_RE.finditer(text):
+        try:
+            body = m.group(1).strip()
+            arr = json.loads(body)
+            if not isinstance(arr, list):
+                continue
+            for entry in arr:
+                if not isinstance(entry, dict):
+                    continue
+                team = entry.get("team")
+                prm = entry.get("prompt")
+                if not team or not prm:
+                    continue
+                out.append({"team": str(team), "prompt": str(prm)})
+        except Exception as e:
+            logger.warning("[dispatch] parse 실패: %s", e)
+    return out
+
+
+async def _route_dispatch(source_team: str, target_team: str, prompt: str, depth: int = 0):
+    """target_team 에 prompt 재발사 — 백그라운드로 run_claude + 채팅창에 메시지 표시."""
+    if depth >= _DISPATCH_DEPTH_LIMIT:
+        logger.warning("[dispatch] 깊이 한계 도달 — 추가 라우팅 스킵 (%s → %s)", source_team, target_team)
+        return
+    target_info = _TEAM_LOOKUP.get(target_team)
+    if not target_info:
+        logger.warning("[dispatch] 알 수 없는 target team: %s", target_team)
+        return
+    target_path = target_info.get("localPath", "~/Developer/my-company/company-hq")
+
+    # target 팀 채팅창에 system 메시지로 디스패치 사실 표시
+    src_info = _TEAM_LOOKUP.get(source_team, {})
+    src_label = f"{src_info.get('emoji','🤖')} {src_info.get('name', source_team)}"
+    try:
+        await manager.send_json(target_team, {
+            "type": "ai_chunk",
+            "content": f"\n\n📨 [{src_label} 으로부터 자동 디스패치]\n사용자 요청: {prompt[:300]}\n\n",
+            "session_id": "default",
+        })
+    except Exception:
+        pass
+
+    logger.info("[dispatch] %s → %s (depth=%d): %s", source_team, target_team, depth, prompt[:80])
+    full = ""
+    try:
+        async for event in run_claude(prompt, target_path, target_team):
+            if isinstance(event, dict):
+                content = event.get("content", "")
+                if content:
+                    full += content
+                    try:
+                        await manager.send_json(target_team, {
+                            "type": "ai_chunk", "content": content, "session_id": "default",
+                        })
+                    except Exception:
+                        pass
+        # 완료 시 ai_end + 메시지 저장
+        try:
+            await manager.send_json(target_team, {
+                "type": "ai_end", "content": full, "session_id": "default",
+            })
+        except Exception:
+            pass
+        try:
+            manager.add_message(target_team, "ai", full, "default")
+        except Exception:
+            pass
+
+        # target 팀 응답에도 dispatch 블록 있으면 재귀 (깊이+1)
+        nested = _parse_dispatch_blocks(full)
+        for nd in nested:
+            asyncio.create_task(_route_dispatch(target_team, nd["team"], nd["prompt"], depth + 1))
+    except Exception as e:
+        logger.warning("[dispatch] %s → %s 실행 실패: %s", source_team, target_team, e)
 
 
 async def handle_chat(
@@ -794,14 +884,25 @@ async def handle_chat(
                     except Exception:
                         pass
                 elif kind == "error":
+                    _err_msg = str(event.get('content', '알 수 없는 에러'))
                     try:
                         await manager.send_json(
                             team_id,
-                            {"type": "ai_chunk", "content": f"\n❌ 오류: {event['content']}", "session_id": current_sid},
+                            {"type": "ai_chunk", "content": f"\n❌ 오류: {_err_msg}", "session_id": current_sid},
                             session_id=current_sid,
                         )
                     except Exception:
                         pass
+                    # 자동 에러 복구 — kind=error 케이스도 커버 (Exception, timeout, claude crash 등)
+                    try:
+                        asyncio.create_task(_auto_recovery_dispatch(
+                            team_id=team_id,
+                            original_prompt=prompt,
+                            error_summary=f"run_claude 예외/오류: {_err_msg[:300]}",
+                            error_log_tail=None,
+                        ))
+                    except Exception as _e:
+                        logger.warning("[auto-recovery] error hook 실패: %s", _e)
                 else:
                     full_response += event.get("content", "")
                     try:
@@ -858,6 +959,17 @@ async def handle_chat(
             except Exception: pass
             _update_status(team_id, working=False, tool=None)
             _log_activity(team_id, f"✅ 완료 ({len(full_response)}자)")
+
+            # Dispatch 블록 자동 라우팅 — 응답 본문에 ```dispatch [...] ``` 있으면 해당 팀에 재발사
+            # CPO 자동 복구의 "재시도" 단계 + 일반 협업/오케스트레이션 동시 지원
+            try:
+                _dispatches = _parse_dispatch_blocks(full_response)
+                for _d in _dispatches:
+                    asyncio.create_task(_route_dispatch(team_id, _d["team"], _d["prompt"], depth=0))
+                if _dispatches:
+                    logger.info("[dispatch] %s 응답에서 %d개 라우팅 시작", team_id, len(_dispatches))
+            except Exception as _de:
+                logger.warning("[dispatch] 자동 라우팅 hook 실패: %s", _de)
             try:
                 await manager.send_json(
                     team_id,
