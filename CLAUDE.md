@@ -228,6 +228,51 @@ Claude (Max 플랜 — 토큰 소비)
 
 새 백엔드 상태 파일 추가 시: 사용자 데이터·토큰·자주 변경되는 state 면 gitignore.
 
+## 오케스트레이션 (2026-04-28 이후 — 7단계 룰)
+
+### 흐름
+사용자 → 에이전트 X (= **프로젝트 리드**, 끝까지 책임)
+- 자기 범위 안 → 직접 처리
+- 범위 밖 → ` ```dispatch [{"team":"cpo-claude","prompt":"[프로젝트 리드 from X] ..."}] ``` ` 로 CPO 협업 요청
+- CPO 가 적합 팀(들)에 분배 → 결과 모아서 리드 X 에게 회신
+- 리드 X 가 **종합 최종 보고**
+
+### 자동 자가 치유
+- ws_handler `_auto_recovery_dispatch` 가 빈 응답 / Exception (kind=error) / 세션 타임아웃(15분) 자동 감지
+- CPO 에 background dispatch — 진단/수정/git commit + 재시도 dispatch
+- 같은 (team, prompt) 5분 dedup — 도달 시 사용자 채팅 🚨 + OS 푸시
+- 코드 변경은 git commit 까지 — 배포는 사용자 [업데이트] 클릭 시 (절대 자동 deploy.sh X)
+
+### Light 에이전트 격리
+- `/api/teams/light` 가 만들 때 sandbox 자동 생성: `~/Developer/agents/{team_id}/`
+- localPath 메인 폴더 격리 — Claude CLI 가 두근컴퍼니 CLAUDE.md 못 로드
+- `light_policies.md` 만 prepend (`policies.md` 두근컴퍼니 메타 컨텍스트 차단)
+- 시스템 프롬프트에 [격리 — 매우 중요] 블록 강제
+
+### Dispatch block 자동 라우팅
+`ws_handler._parse_dispatch_blocks` 가 응답 본문에서 정규식 추출:
+- 깊이 한계 3 (무한 루프 방지)
+- target 응답을 source 채팅창에 echo (cross-channel 진행 가시화)
+- 중첩 dispatch 재귀 (depth+1)
+
+### 무중단 배포
+- Claude(나)는 `bash deploy.sh` 직접 X — git commit/push 만
+- VersionBanner 가 `/api/admin/git-head` polling → production build vs HEAD 비교
+- 사용자 [지금 업데이트] 클릭 시 background `/api/admin/deploy` → 진행 게이지 → 1.5초 후 reload
+- 사이드바 하단 [업데이트] 칩이 dismiss 후 모달 재열기 (zustand `versionStore`)
+
+### `/api/admin/*` 엔드포인트 (이번 세션 신규)
+| endpoint | 용도 |
+|---|---|
+| GET `/git-head` | main HEAD commit + next_version 계산 |
+| POST `/deploy` + GET `/deploy/status` | 무중단 배포 트리거 + 진행률 |
+| GET `/memory/status` + POST `/memory/optimize` | 외부 앱 graceful quit |
+
+### SQLite (진행 중)
+- `server/db.py` (외부 의존 0): `messages` / `sessions` / `state_kv`
+- `sessions_store._save_messages` 가 JSON + SQLite **dual-write**
+- 다음 단계: read cutover + JSON 제거
+
 ## 운영 노트 (반복 발생 패턴)
 
 ### 8000 포트 squatter
