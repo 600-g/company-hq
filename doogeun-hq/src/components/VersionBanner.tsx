@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Sparkles, RefreshCw, X, Loader2, GitCommit } from "lucide-react";
+import { Sparkles, RefreshCw, X, Loader2 } from "lucide-react";
 import { apiBase } from "@/lib/utils";
 
 declare global {
@@ -72,7 +72,6 @@ export default function VersionBanner() {
   const [gitHead, setGitHead] = useState<GitHead | null>(null);
   const [deploy, setDeploy] = useState<DeployStatus | null>(null);
   const [dismissed, setDismissed] = useState(false);
-  const [expanded, setExpanded] = useState(false);
   const [progressPct, setProgressPct] = useState(0); // 단조 증가
   const [progressStage, setProgressStage] = useState<string>("");
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -173,154 +172,133 @@ export default function VersionBanner() {
 
   if (!loaded && !latestBuild) return null;
 
-  const showBuild = loaded?.build || latestBuild?.build || "";
-  const showVer = latestBuild?.version || "?";
-
-  const showCard = (hasPending && !dismissed) || deploy?.running || deploy?.error;
+  // 모달 표시 조건 — 진행 중 / 에러 / 미반영 알림
+  const showModal = deploy?.running || deploy?.error || (hasPending && !dismissed);
+  if (!showModal) return null;
 
   return (
-    <>
-      {/* 항상 작은 버전 배지 — 좌하단 */}
-      <div
-        onClick={() => setExpanded((v) => !v)}
-        className="fixed bottom-2 left-2 z-[60] flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-mono bg-gray-900/80 border border-gray-700/60 text-gray-400 backdrop-blur cursor-pointer hover:text-gray-200 hover:border-gray-500 transition-colors select-none"
-        title="버전 정보 토글"
-      >
-        v{showVer}
-        <span className="text-gray-600">·</span>
-        <span className="text-[9px] opacity-70">{showBuild.slice(0, 9)}</span>
-        {hasPending && !dismissed && (
-          <span className="ml-1 w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" title="미반영 변경 있음" />
-        )}
-      </div>
-
-      {/* 확장 — 상세 정보 */}
-      {expanded && (
-        <div className="fixed bottom-10 left-2 z-[60] max-w-xs rounded-md border border-gray-700/80 bg-gray-950/95 backdrop-blur p-3 text-[11px] text-gray-300 shadow-xl">
-          <div className="font-bold text-gray-200 mb-1">현재 라이브 (production)</div>
-          <div className="font-mono text-gray-400">v{showVer}</div>
-          <div className="font-mono text-[10px] text-gray-500">{showBuild}</div>
-          {gitHead?.ok && (
-            <>
-              <div className="font-bold text-gray-200 mt-2 mb-1 flex items-center gap-1">
-                <GitCommit className="w-3 h-3" /> git HEAD (서버 main 브랜치)
-              </div>
-              <div className="font-mono text-gray-400">{gitHead.commit}</div>
-              <div className="text-[10px] text-gray-500 mt-0.5">{gitHead.subject}</div>
-            </>
-          )}
-          <button onClick={() => setExpanded(false)} className="mt-2 text-[10px] text-gray-500 hover:text-gray-200">닫기</button>
-        </div>
-      )}
-
-      {/* (1) 진행 중 — 화면 정중앙 큰 모달 + 진행률 게이지 (사용자가 닫을 수 없음) */}
-      {deploy?.running && (
-        <div className="fixed inset-0 z-[400] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="w-full max-w-md rounded-2xl border border-sky-400/50 bg-gray-950/98 shadow-2xl overflow-hidden">
-            <div className="p-6">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-full bg-sky-500/20 border border-sky-400/50 flex items-center justify-center">
-                  <Loader2 className="w-5 h-5 text-sky-300 animate-spin" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-[15px] font-bold text-sky-100">업데이트 적용 중</div>
-                  <div className="text-[11px] text-gray-400">{progressStage || "준비 중..."}</div>
-                </div>
-                <div className="text-[20px] font-bold font-mono text-sky-200 tabular-nums">{progressPct}%</div>
-              </div>
-
-              {/* 진행률 게이지 — sky 그라디언트 */}
-              <div className="h-3 rounded-full bg-gray-800/80 border border-gray-700/50 overflow-hidden mb-3">
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-sky-500 via-blue-400 to-cyan-300 transition-all duration-700 ease-out shadow-[0_0_12px_rgba(56,189,248,0.6)]"
-                  style={{ width: `${progressPct}%` }}
-                />
-              </div>
-
-              <div className="text-[11px] text-gray-400 leading-relaxed mb-3">
-                약 1~2분 소요. 채팅 계속 가능 — 완료 시 자동 새로고침됩니다.
-              </div>
-
-              {/* 로그 tail */}
-              {deploy.log_tail && deploy.log_tail.length > 0 && (
-                <details className="text-[10px]">
-                  <summary className="cursor-pointer text-gray-500 hover:text-gray-300">상세 로그</summary>
-                  <pre className="mt-2 p-2 rounded bg-black/60 border border-gray-800 text-[9.5px] text-gray-400 font-mono whitespace-pre-wrap max-h-40 overflow-y-auto leading-snug">
-                    {deploy.log_tail.slice(-10).join("\n")}
-                  </pre>
-                </details>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* (2) 에러 / (3) 미반영 알림 — 우하단 카드 */}
-      {!deploy?.running && (deploy?.error || (hasPending && !dismissed)) && (
-        <div className="fixed bottom-4 right-4 z-[300] max-w-sm">
-          <div className="rounded-lg border border-sky-400/50 bg-gray-950/95 backdrop-blur shadow-2xl overflow-hidden">
-            <div className="flex items-start gap-2 p-3">
-              <div className="shrink-0 w-7 h-7 rounded-full bg-sky-500/20 border border-sky-400/40 flex items-center justify-center">
-                <Sparkles className="w-3.5 h-3.5 text-sky-300" />
+    <div className="fixed inset-0 z-[400] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="w-full max-w-md rounded-2xl border border-sky-400/50 bg-gray-950/98 shadow-2xl overflow-hidden">
+        {/* (1) 진행 중 — 닫기 불가 */}
+        {deploy?.running && (
+          <div className="p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-sky-500/20 border border-sky-400/50 flex items-center justify-center">
+                <Loader2 className="w-5 h-5 text-sky-300 animate-spin" />
               </div>
               <div className="flex-1 min-w-0">
-                {deploy?.error ? (
-                  <>
-                    <div className="text-[12px] font-bold text-red-200">배포 실패</div>
-                    <div className="text-[10px] text-red-300 mt-0.5 break-all">{deploy.error}</div>
-                    <button
-                      onClick={startDeploy}
-                      className="mt-2 h-7 px-2 rounded-md text-[11px] bg-amber-500/20 border border-amber-400/60 text-amber-100 hover:bg-amber-500/30 flex items-center gap-1"
-                    >
-                      <RefreshCw className="w-3 h-3" /> 재시도
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    {/* 새 버전 숫자 강조 */}
-                    <div className="text-[13px] flex items-center gap-1.5">
-                      <span className="text-gray-400 font-mono">v{latestBuild?.version || "?"}</span>
-                      <span className="text-gray-600">→</span>
-                      <span className="text-sky-100 font-bold font-mono text-[16px]">v{gitHead?.next_version || "?"}</span>
-                    </div>
-                    <div className="text-[13px] font-bold text-sky-100 mt-1">업데이트 하세요 ✨</div>
-                    {gitHead?.subject && (
-                      <div className="text-[10px] text-gray-400 mt-1 italic break-words leading-relaxed">
-                        “{gitHead.subject.slice(0, 90)}”
-                      </div>
-                    )}
-                    <div className="text-[9px] text-gray-500 mt-1 font-mono">
-                      {productionCommit.slice(0, 8)} → {gitCommit.slice(0, 8)}
-                    </div>
-                    <div className="flex gap-1.5 mt-2.5">
-                      <button
-                        onClick={startDeploy}
-                        className="flex-1 h-8 rounded-md text-[12px] font-bold bg-sky-500/25 border border-sky-400/70 text-sky-50 hover:bg-sky-500/40 transition-colors flex items-center justify-center gap-1.5 shadow-[0_0_10px_rgba(56,189,248,0.3)]"
-                      >
-                        <RefreshCw className="w-3.5 h-3.5" />
-                        지금 업데이트
-                      </button>
-                      <button
-                        onClick={() => setDismissed(true)}
-                        className="px-2.5 h-8 rounded-md text-[11px] border border-gray-700 text-gray-400 hover:text-gray-200 hover:border-gray-500 transition-colors"
-                      >
-                        나중에
-                      </button>
-                    </div>
-                  </>
-                )}
+                <div className="text-[15px] font-bold text-sky-100">업데이트 적용 중</div>
+                <div className="text-[11px] text-gray-400">{progressStage || "준비 중..."}</div>
               </div>
+              <div className="text-[20px] font-bold font-mono text-sky-200 tabular-nums">{progressPct}%</div>
+            </div>
+
+            <div className="h-3 rounded-full bg-gray-800/80 border border-gray-700/50 overflow-hidden mb-3">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-sky-500 via-blue-400 to-cyan-300 transition-all duration-700 ease-out shadow-[0_0_12px_rgba(56,189,248,0.6)]"
+                style={{ width: `${progressPct}%` }}
+              />
+            </div>
+
+            <div className="text-[11px] text-gray-400 leading-relaxed mb-3">
+              약 1~2분 소요. 채팅 계속 가능 — 완료 시 자동 새로고침됩니다.
+            </div>
+
+            {deploy.log_tail && deploy.log_tail.length > 0 && (
+              <details className="text-[10px]">
+                <summary className="cursor-pointer text-gray-500 hover:text-gray-300">상세 로그</summary>
+                <pre className="mt-2 p-2 rounded bg-black/60 border border-gray-800 text-[9.5px] text-gray-400 font-mono whitespace-pre-wrap max-h-40 overflow-y-auto leading-snug">
+                  {deploy.log_tail.slice(-10).join("\n")}
+                </pre>
+              </details>
+            )}
+          </div>
+        )}
+
+        {/* (2) 에러 */}
+        {!deploy?.running && deploy?.error && (
+          <div className="p-6">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 rounded-full bg-red-500/20 border border-red-400/50 flex items-center justify-center text-[18px]">
+                ❌
+              </div>
+              <div className="flex-1">
+                <div className="text-[15px] font-bold text-red-200">업데이트 실패</div>
+                <div className="text-[11px] text-red-300/80 mt-0.5 break-all">{deploy.error}</div>
+              </div>
+            </div>
+            <div className="flex gap-2 mt-4">
+              <button
+                onClick={startDeploy}
+                className="flex-1 h-10 rounded-md text-[13px] font-bold bg-amber-500/20 border border-amber-400/60 text-amber-100 hover:bg-amber-500/30 flex items-center justify-center gap-1.5"
+              >
+                <RefreshCw className="w-4 h-4" /> 재시도
+              </button>
               <button
                 onClick={() => { setDismissed(true); setDeploy(null); }}
-                className="shrink-0 text-gray-500 hover:text-gray-200"
-                title="닫기"
+                className="px-4 h-10 rounded-md text-[12px] border border-gray-700 text-gray-400 hover:text-gray-200 hover:border-gray-500"
               >
-                <X className="w-3.5 h-3.5" />
+                닫기
               </button>
             </div>
           </div>
-        </div>
-      )}
-    </>
+        )}
+
+        {/* (3) 미반영 알림 — 새 버전 강조 */}
+        {!deploy?.running && !deploy?.error && hasPending && !dismissed && (
+          <>
+            <div className="p-6 pb-4">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-full bg-sky-500/20 border border-sky-400/50 flex items-center justify-center">
+                  <Sparkles className="w-5 h-5 text-sky-300" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[12px] text-gray-400 mb-0.5">새 버전 사용 가능</div>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-[13px] font-mono text-gray-500">v{latestBuild?.version || "?"}</span>
+                    <span className="text-gray-600">→</span>
+                    <span className="text-[20px] font-bold font-mono text-sky-100">v{gitHead?.next_version || "?"}</span>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setDismissed(true)}
+                  className="shrink-0 text-gray-500 hover:text-gray-200 -mt-2 -mr-2 p-2"
+                  title="닫기"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="text-[13px] font-bold text-sky-100 mb-2">업데이트 하세요 ✨</div>
+
+              {gitHead?.subject && (
+                <div className="rounded-md border border-gray-800 bg-gray-900/40 p-3 text-[12px] text-gray-300 leading-relaxed italic mb-2">
+                  “{gitHead.subject.slice(0, 120)}”
+                </div>
+              )}
+              <div className="text-[10px] text-gray-500 font-mono mb-4">
+                {productionCommit.slice(0, 9)} → {gitCommit.slice(0, 9)}
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={startDeploy}
+                  className="flex-1 h-11 rounded-md text-[14px] font-bold bg-sky-500/25 border border-sky-400/70 text-sky-50 hover:bg-sky-500/40 transition-colors flex items-center justify-center gap-2 shadow-[0_0_14px_rgba(56,189,248,0.35)]"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  지금 업데이트
+                </button>
+                <button
+                  onClick={() => setDismissed(true)}
+                  className="px-4 h-11 rounded-md text-[12px] border border-gray-700 text-gray-400 hover:text-gray-200 hover:border-gray-500 transition-colors"
+                >
+                  나중에
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
   );
 }
