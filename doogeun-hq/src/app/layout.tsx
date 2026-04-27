@@ -3,6 +3,7 @@ import "./globals.css";
 import { ConfirmRoot } from "@/components/Confirm";
 import { ToastStack } from "@/components/NotifyRoot";
 import AuthGuard from "@/components/AuthGuard";
+import VersionBanner from "@/components/VersionBanner";
 
 export const metadata: Metadata = {
   title: "두근컴퍼니",
@@ -34,6 +35,7 @@ export default function RootLayout({
         <AuthGuard>{children}</AuthGuard>
         <ConfirmRoot />
         <ToastStack />
+        <VersionBanner />
       </body>
     </html>
   );

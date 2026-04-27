@@ -811,6 +811,19 @@ export default function HubPage() {
                   ) : m.content ? (
                     <div className="whitespace-pre-wrap break-words">{m.content}</div>
                   ) : null}
+                  {/* 시스템 에러 / 재시도 메시지에 [재시도] 버튼 — 마지막 user 메시지 다시 send */}
+                  {m.role === "system" && (m.retry || /실패|에러|타임아웃|끊김|품질|미달/.test(m.content || "")) && (
+                    <button
+                      onClick={() => {
+                        const last = [...messages].reverse().find((x) => x.role === "user" && (x.content?.trim().length ?? 0) > 0);
+                        if (last) wsSendDirect(last.content);
+                      }}
+                      className="mt-1.5 h-7 px-2.5 rounded-md text-[11px] font-bold bg-amber-500/20 border border-amber-400/60 text-amber-100 hover:bg-amber-500/30 transition-colors flex items-center gap-1"
+                      title="마지막 메시지 다시 보내기"
+                    >
+                      <RefreshCw className="w-3 h-3" /> 재시도
+                    </button>
+                  )}
                 </div>
                 {/* 사용자 메시지 읽음 표시 */}
                 {isUserMsg && (
