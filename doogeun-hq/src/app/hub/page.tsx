@@ -17,6 +17,7 @@ import {
   Grid3x3, Pencil, Terminal as TerminalIcon, Copy, Check, Trash2,
 } from "lucide-react";
 import DebugPanel, { LogsPane } from "@/components/DebugPanel";
+import VersionBadge from "@/components/VersionBadge";
 import MentionPopup from "@/components/chat/MentionPopup";
 import TerminalPanel from "@/components/TerminalPanel";
 import FurniturePalette from "@/components/office/FurniturePalette";
@@ -385,6 +386,9 @@ export default function HubPage() {
             location.reload();
           }} />
         </nav>
+
+        {/* 버전 배지 — 오너 정보 바로 위 */}
+        <VersionBadge collapsed={sideCollapsed} />
 
         {/* 하단: 오너 정보 + 로그아웃 */}
         <div className="border-t border-gray-800/60">
