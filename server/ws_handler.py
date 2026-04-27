@@ -872,13 +872,26 @@ async def handle_chat(
                     _cancel_flags[team_id] = True
                     await _do_cancel(team_id)
                     stream_task.cancel()
-                    msg_txt = f"⚠️ {_CLAUDE_IDLE_TIMEOUT // 60}분간 응답 없음 — 강제 종료."
+                    msg_txt = (
+                        f"⚠️ 세션 타임아웃 — {_CLAUDE_IDLE_TIMEOUT // 60}분간 응답 없음.\n"
+                        f"🛠 자동 진단 시작합니다..."
+                    )
                     full_response = full_response + ("\n\n" if full_response else "") + msg_txt
                     await manager.send_json(
                         team_id,
                         {"type": "ai_chunk", "content": msg_txt, "session_id": current_sid},
                         session_id=current_sid,
                     )
+                    # 자동 복구 트리거 — timeout 도 동일 흐름
+                    try:
+                        asyncio.create_task(_auto_recovery_dispatch(
+                            team_id=team_id,
+                            original_prompt=prompt,
+                            error_summary=f"세션 타임아웃 ({_CLAUDE_IDLE_TIMEOUT // 60}분 idle)",
+                            error_log_tail=None,
+                        ))
+                    except Exception as _e:
+                        logger.warning("[auto-recovery] timeout hook 실패: %s", _e)
                     break
                 try:
                     event = await asyncio.wait_for(event_queue.get(), timeout=0.5)

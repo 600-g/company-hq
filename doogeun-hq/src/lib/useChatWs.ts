@@ -114,6 +114,18 @@ function connectTeam(teamId: string, agentEmoji?: string, agentName?: string): C
       state.ws = null;
       if (!state.closed) {
         state.retry = Math.min(state.retry + 1, 5);
+        // 3회 이상 연속 끊김 → 사용자에게 시스템 메시지로 알림 (재시도 버튼 자동 노출)
+        if (state.retry >= 3) {
+          try {
+            useChatStore.getState().appendMessage(teamId, {
+              id: crypto.randomUUID(),
+              role: "system",
+              content: `❌ 연결 끊김 — 자동 재연결 ${state.retry}/5 시도 중. 응답 못 받으면 [재시도] 버튼 클릭`,
+              ts: Date.now(),
+              streaming: false,
+            });
+          } catch { /* ignore */ }
+        }
         setTimeout(connect, 1000 * state.retry);
       }
     };
