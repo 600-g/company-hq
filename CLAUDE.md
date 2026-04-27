@@ -9,8 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### 핵심 구조
 - **메인 프론트엔드**: `doogeun-hq/` (Next.js 16 + React 19 + Phaser 3, CF Pages → 600g.net)
 - **백엔드**: `server/` (FastAPI + Python 3.14 + Claude Runner + 무료 LLM 라우터, port 8000, `com.company-hq-server` launchd)
-- **레거시**: `ui/` — 이전 두근컴퍼니, **유지보수만**. 신규 기능은 모두 `doogeun-hq/` 에 추가
-- **로컬 전용**: `teammaker-classic/` (port 4827, 별도 도구)
+- (2026-04-27 정리) `ui/` (deprecated 레거시) + `teammaker-classic/` (별개 dev 도구) 둘 다 삭제. 핵심 기능은 모두 `doogeun-hq/` 로 흡수됨. 복원 필요 시 GitHub `600-g/company-hq` 의 `e2a02a6eb` 이전 commit 들에 보존.
 
 ### 멀티 LLM 절감 구조
 - Claude Max 플랜은 코드 작업 + CPO 결정에만
@@ -48,11 +47,8 @@ curl -s http://localhost:8000/api/staff/stats | python3 -m json.tool
 curl -s "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$GEMINI_API_KEY" -H "Content-Type: application/json" -d '{"contents":[{"parts":[{"text":"hi"}]}]}'
 
 # Gemma 4 로컬 (Ollama)
-ollama list                                  # gemma4:26b + gemma4:e4b
+ollama list                                  # gemma4:26b + gemma4:e4b + qwen2.5:14b (코인봇)
 curl http://localhost:11434/api/generate -d '{"model":"gemma4:26b","prompt":"안녕","stream":false}'
-
-# Legacy 배포 (ui/ → company-hq-legacy 별도 프로젝트)
-bash deploy-legacy-ui.sh
 ```
 
 ### uvicorn은 `--reload` 제거됨
@@ -145,7 +141,7 @@ HTTP-only (CF Tunnel WS 미지원으로 WS 제거):
 - 마이그레이션: 깨진 spriteKey 자동 리셋 (`migrationDoneRef` 가드, 마운트 1회)
 
 ### Phaser 씬 (`doogeun-hq/src/components/HubOffice.tsx`)
-1000+ 줄 메인 씬. ui/OfficeScene.ts 의 핵심 패턴 이식:
+1000+ 줄 메인 씬 (구 ui/OfficeScene.ts 의 핵심 패턴 모두 흡수):
 - `agentGroup`: 캐릭 컨테이너. `streamingByTeam`/`a.status` 기반 작업 인디케이터 (walk_down 애니 + Y 바운스)
 - `lastBubbleByTeam`: 채팅 메시지 머리 위 말풍선 (chatStore.messagesByTeam 변경 시 자동 갱신, 응답 완료 후 6초 자동 사라짐)
 - `setBubbleText(teamId, text, autoHideMs)`: 외부에서 말풍선 텍스트 설정
@@ -199,7 +195,7 @@ Claude (Max 플랜 — 토큰 소비)
 
 ## 에셋 작업 (마을/사무실 꾸미기)
 
-**반드시 먼저 읽기**: `ui/public/assets/pokemon_assets/ASSET_GUIDE.md`
+**참고**: 에셋 가이드는 GitHub 레포 히스토리(commit `e2a02a6eb` 이전)에서 `ui/public/assets/pokemon_assets/ASSET_GUIDE.md` 로 조회. 신규 정제 에셋은 `doogeun-hq/public/assets/` 안에서 관리.
 
 ### 핵심 규칙
 1. 원본 `Tilesets/*.png` 직접 크롭 절대 금지
@@ -250,7 +246,7 @@ HubOffice.tsx 수정 시 `npx next build` 필수 검증. 흔한 에러:
 - container 외부 변수 참조 → `container.getData("sprite")` 사용
 
 ### 캐릭 풀 무결성
-`doogeun-hq/public/assets/chars/` 와 `ui/public/assets/chars/` 는 같이 갱신. 모든 PNG 128×192. CHAR_COUNT (HubOffice.tsx) 와 PRIMARY_CHAR_POOL_SIZE (sprites.ts) 일치 필수.
+`doogeun-hq/public/assets/chars/` 만 관리 (ui/ 삭제 후 단일 디렉토리). 모든 PNG **128×192**. **CHAR_COUNT = 241** (HubOffice.tsx) 와 일치 필수. 비표준 해상도(160×192/192×192/129×192) 는 우측 잘림 발생 → 추가 시 필터링.
 
 ## 세션 복원
 
