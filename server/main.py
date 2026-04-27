@@ -1349,18 +1349,20 @@ def _load_doogeun_state() -> dict:
 def _save_doogeun_state(data: dict) -> None:
     """원자적 쓰기 + 시간별 백업. 쓰기 도중 재시작/크래시 시에도 무결성 유지."""
     try:
-        # 시간별 백업 로테이션 (24개 = 24시간 보존)
+        # 4시간 단위 백업 로테이션 (6개 = 24시간 보존, 디스크 I/O 1/4)
         if os.path.exists(DOOGEUN_STATE_PATH):
             backup_dir = os.path.join(os.path.dirname(DOOGEUN_STATE_PATH), "doogeun_state_backups")
             os.makedirs(backup_dir, exist_ok=True)
-            stamp = datetime.utcnow().strftime("%Y%m%d-%H")
+            now = datetime.utcnow()
+            bucket = (now.hour // 4) * 4
+            stamp = f"{now.strftime('%Y%m%d')}-{bucket:02d}"
             backup_path = os.path.join(backup_dir, f"doogeun_state.{stamp}.json")
             if not os.path.exists(backup_path):
                 try:
                     shutil.copy2(DOOGEUN_STATE_PATH, backup_path)
                     import glob as _glob
                     backups = sorted(_glob.glob(os.path.join(backup_dir, "doogeun_state.*.json")))
-                    while len(backups) > 24:
+                    while len(backups) > 6:
                         try: os.remove(backups[0])
                         except OSError: pass
                         backups.pop(0)

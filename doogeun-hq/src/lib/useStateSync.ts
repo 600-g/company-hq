@@ -59,7 +59,7 @@ export function useStateSync() {
         } catch {
           // 네트워크 에러 — 다음 변경 시 재시도
         }
-      }, 1000);
+      }, 3000);  // 1s → 3s — Mac 부담 ↓ (네트워크/디스크 I/O 1/3)
     };
 
     const unsubAgents = useAgentStore.subscribe(scheduleSync);
@@ -83,7 +83,7 @@ export function useStateSync() {
       } catch {
         // ignore
       }
-    }, 30_000);
+    }, 60_000);   // 30s → 60s — Mac FastAPI GET 호출 1/2
 
     return () => {
       mounted = false;
