@@ -281,6 +281,89 @@ async def _do_cancel(team_id: str):
 _cancel_flags: dict[str, bool] = {}
 
 
+# ── 자동 에러 복구 (오케스트레이션) ──────────────────────────────────
+# 에이전트가 빈 응답/예외로 사용자 요청을 못 처리하면 CPO 에게 자동 보고.
+# CPO 가 진단 → 수정 → 원래 에이전트에게 재발사 → 결과 사용자에게 표시.
+# 같은 (team_id, original_prompt) 무한 루프 방지용 캐시.
+_AUTO_RECOVERY_RECENT: dict[str, float] = {}  # key: f"{team_id}:{prompt_hash}" → ts
+
+
+async def _auto_recovery_dispatch(
+    team_id: str,
+    original_prompt: str,
+    error_summary: str,
+    error_log_tail: list[str] | None = None,
+):
+    """에이전트 실패 시 CPO 에게 자동 보고 + 재시도 트리거.
+    - CPO 가 진단/수정 후 원래 prompt 를 해당 에이전트에 재발사
+    - 사용자 채팅창에 진행 메시지 + CPO 채팅창에도 작업 표시
+    - 무한 루프 방지: 같은 (team, prompt) 가 5분 내 재발생하면 스킵
+    """
+    import hashlib, time
+    if team_id == "cpo-claude" or team_id == "staff":
+        return  # CPO 자신은 자동 보고 안 함
+    key = f"{team_id}:{hashlib.md5(original_prompt.encode()).hexdigest()[:12]}"
+    now = time.time()
+    last = _AUTO_RECOVERY_RECENT.get(key, 0)
+    if now - last < 300:
+        logger.info("[auto-recovery] %s 5분 내 재시도 — 스킵 (무한 루프 방지)", key)
+        return
+    _AUTO_RECOVERY_RECENT[key] = now
+
+    team_info = _TEAM_LOOKUP.get(team_id, {})
+    team_name = team_info.get("name", team_id)
+    team_emoji = team_info.get("emoji", "🤖")
+
+    # 사용자 채팅창에 진행 시스템 메시지
+    try:
+        await manager.send_json(team_id, {
+            "type": "ai_chunk",
+            "content": (
+                f"\n\n🛠 자동 진단 시작 — CPO 가 처리 중...\n"
+                f"   원인 분석 + 수정 + 재시도까지 자동 진행. "
+                f"최대 1~2분 소요. 사용자 추가 작업 불필요.\n"
+            ),
+            "session_id": "default",
+        })
+    except Exception:
+        pass
+
+    # CPO 에 자동 보고 prompt 구성
+    log_section = ""
+    if error_log_tail:
+        log_section = "\n[로그 마지막]\n" + "\n".join(error_log_tail[-15:])
+    recovery_prompt = (
+        f"[자동 에러 복구]\n"
+        f"실패 에이전트: {team_emoji} {team_name} ({team_id})\n"
+        f"원본 사용자 요청: {original_prompt[:500]}\n"
+        f"에러 요약: {error_summary}\n"
+        f"{log_section}\n\n"
+        f"━━━━━ 자동 복구 절차 (반드시 따를 것) ━━━━━\n"
+        f"1. 진단: 에러 원인 분석 (시스템 프롬프트 / 작업 폴더 / 권한 / 코드 / 모델 limit 중 어디인지)\n"
+        f"2. 수정: 즉시 적용 가능한 변경 시도\n"
+        f"   - 시스템 프롬프트 문제 → server/team_prompts.json 의 {team_id} 항목 수정\n"
+        f"   - 작업 폴더 권한 문제 → ~/Developer/agents/{team_id}/ 점검\n"
+        f"   - 코드/설정 문제 → 해당 파일 수정 + git commit (배포는 X — 사용자가 결정)\n"
+        f"3. 재시도: 수정 직후 원본 사용자 요청을 해당 에이전트에 재발사\n"
+        f"   응답 본문에 정확히 다음 형식 포함 (백엔드가 자동 라우팅):\n"
+        f"   ```dispatch\n"
+        f"   [{{\"team\": \"{team_id}\", \"prompt\": \"<원본 요청 그대로>\"}}]\n"
+        f"   ```\n"
+        f"4. 결과 보고: 무엇을 진단/수정했는지 + 재시도 결과 (성공/실패) 1~2문장\n"
+        f"5. 코드 변경 했으면 git commit 명시 (사용자가 [업데이트] 버튼으로 배포할 수 있게)\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"🚨 절대 사용자에게 '다시 해보세요' 같은 핑계 거절 금지. 직접 수정+재시도까지 책임.\n"
+    )
+
+    cpo_path = "~/Developer/my-company/company-hq"
+    logger.info("[auto-recovery] CPO 에 자동 보고: team=%s prompt=%s", team_id, original_prompt[:60])
+    try:
+        async for _chunk in run_claude(recovery_prompt, cpo_path, "cpo-claude"):
+            pass  # CPO 응답 처리는 본인 ws 채널에서 자동 표시 (handle_chat 의 cpo-claude WS)
+    except Exception as e:
+        logger.warning("[auto-recovery] CPO 호출 실패: %s", e)
+
+
 async def handle_chat(
     ws: WebSocket,
     team_id: str,
@@ -753,12 +836,22 @@ async def handle_chat(
             if not full_response.strip():
                 try: sessions_store.end_job(team_id, current_sid, "failed", "빈 응답")
                 except Exception: pass
-                full_response = "⚠️ 응답이 비어있습니다. 세션이 초기화되었거나 일시적 오류일 수 있어요. 다시 메시지를 보내주세요."
+                full_response = "⚠️ 응답이 비어있습니다. 세션이 초기화되었거나 일시적 오류일 수 있어요."
                 await manager.send_json(
                     team_id,
                     {"type": "ai_chunk", "content": full_response, "session_id": current_sid},
                     session_id=current_sid,
                 )
+                # 자동 에러 복구 — CPO 에 보고 + 진단/수정/재시도 위임 (백그라운드)
+                try:
+                    asyncio.create_task(_auto_recovery_dispatch(
+                        team_id=team_id,
+                        original_prompt=prompt,
+                        error_summary="에이전트가 빈 응답 반환 — Claude 세션 초기화 또는 시스템 프롬프트 문제 의심",
+                        error_log_tail=None,
+                    ))
+                except Exception as _e:
+                    logger.warning("[auto-recovery] dispatch 실패: %s", _e)
 
             manager.add_message(team_id, "ai", full_response, current_sid)
             try: sessions_store.end_job(team_id, current_sid, "done")
