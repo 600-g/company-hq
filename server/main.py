@@ -7,9 +7,10 @@ import time
 import shutil
 import json
 import uuid
+import subprocess
 from pathlib import Path
 from datetime import datetime, timedelta
-from fastapi import FastAPI, WebSocket, UploadFile, File, Request
+from fastapi import FastAPI, WebSocket, UploadFile, File, Request, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
@@ -3084,6 +3085,120 @@ async def push_119(req: dict):
         team_id="cpo-claude",
     )
     return {"ok": True, "sent": count}
+
+
+# ── 무중단 배포 (staging → production 사용자 클릭 promote) ─────────────────────
+
+# 진행 중인 배포 상태 (단일 동시 배포만 허용)
+_DEPLOY_STATE: dict = {
+    "running": False,
+    "started_at": None,
+    "log_tail": [],          # 마지막 N 줄
+    "last_result": None,     # {ok, build, version, ts} 마지막 성공 배포
+    "error": None,
+}
+_DEPLOY_LOCK = asyncio.Lock()
+_HQ_ROOT = os.path.expanduser("~/Developer/my-company/company-hq")
+
+
+def _git_head_info() -> dict:
+    """현재 main 브랜치 HEAD commit + subject."""
+    try:
+        sha = subprocess.run(
+            ["git", "log", "-1", "--format=%h"],
+            cwd=_HQ_ROOT, capture_output=True, text=True, timeout=3,
+        ).stdout.strip()
+        subject = subprocess.run(
+            ["git", "log", "-1", "--format=%s"],
+            cwd=_HQ_ROOT, capture_output=True, text=True, timeout=3,
+        ).stdout.strip()
+        ts = subprocess.run(
+            ["git", "log", "-1", "--format=%ct"],
+            cwd=_HQ_ROOT, capture_output=True, text=True, timeout=3,
+        ).stdout.strip()
+        return {
+            "ok": True,
+            "commit": sha,
+            "subject": subject[:200],
+            "commit_ts": int(ts) if ts.isdigit() else 0,
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/api/admin/git-head")
+async def admin_git_head():
+    """현재 git HEAD — VersionBanner 가 production build 와 비교해 미반영 변경 감지."""
+    return _git_head_info()
+
+
+@app.get("/api/admin/deploy/status")
+async def admin_deploy_status():
+    """진행 중 배포 + 마지막 결과 + 최근 로그 (사용자가 적용 클릭 후 진행률 폴링)."""
+    return {
+        "ok": True,
+        "running": _DEPLOY_STATE["running"],
+        "started_at": _DEPLOY_STATE["started_at"],
+        "log_tail": _DEPLOY_STATE["log_tail"][-20:],
+        "last_result": _DEPLOY_STATE["last_result"],
+        "error": _DEPLOY_STATE["error"],
+    }
+
+
+async def _run_deploy_bg() -> None:
+    """백그라운드 배포 작업 — bash deploy.sh 실행 + 로그 캡처."""
+    _DEPLOY_STATE["running"] = True
+    _DEPLOY_STATE["started_at"] = int(time.time())
+    _DEPLOY_STATE["log_tail"] = []
+    _DEPLOY_STATE["error"] = None
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "bash", os.path.join(_HQ_ROOT, "deploy.sh"),
+            cwd=_HQ_ROOT,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+            env={**os.environ, "PATH": "/opt/homebrew/bin:/usr/local/bin:" + os.environ.get("PATH", "")},
+        )
+        # 줄단위 캡처
+        assert proc.stdout is not None
+        async for line in proc.stdout:
+            decoded = line.decode("utf-8", errors="replace").rstrip()
+            if decoded:
+                _DEPLOY_STATE["log_tail"].append(decoded)
+                if len(_DEPLOY_STATE["log_tail"]) > 200:
+                    _DEPLOY_STATE["log_tail"] = _DEPLOY_STATE["log_tail"][-200:]
+
+        rc = await proc.wait()
+        if rc == 0:
+            # /version.json 다시 읽어 build/version 파싱
+            try:
+                vpath = os.path.join(_HQ_ROOT, "doogeun-hq", "out", "version.json")
+                if os.path.exists(vpath):
+                    with open(vpath, encoding="utf-8") as f:
+                        _DEPLOY_STATE["last_result"] = json.load(f)
+            except Exception:
+                _DEPLOY_STATE["last_result"] = {"ok": True}
+        else:
+            _DEPLOY_STATE["error"] = f"deploy.sh exit code {rc}"
+    except Exception as e:
+        _DEPLOY_STATE["error"] = str(e)
+    finally:
+        _DEPLOY_STATE["running"] = False
+
+
+@app.post("/api/admin/deploy")
+async def admin_deploy_trigger(background_tasks: BackgroundTasks):
+    """사용자 [적용] 클릭 — 백그라운드로 deploy.sh 실행. 즉시 반환, 진행은 status 폴링."""
+    if _DEPLOY_LOCK.locked() or _DEPLOY_STATE["running"]:
+        return {"ok": False, "error": "이미 배포 진행 중", "running": True}
+
+    async def _run():
+        async with _DEPLOY_LOCK:
+            await _run_deploy_bg()
+
+    background_tasks.add_task(_run)
+    return {"ok": True, "started": True}
 
 
 # ── 토큰 예산 관리 ─────────────────────────────────────
