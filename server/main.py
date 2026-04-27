@@ -3102,7 +3102,9 @@ _HQ_ROOT = os.path.expanduser("~/Developer/my-company/company-hq")
 
 
 def _git_head_info() -> dict:
-    """현재 main 브랜치 HEAD commit + subject."""
+    """현재 main 브랜치 HEAD commit + subject + 적용 시 부여될 version 숫자.
+    version 계산은 deploy.sh 와 동일 (MAJOR=4, MINOR=count/10, PATCH=count%10).
+    """
     try:
         sha = subprocess.run(
             ["git", "log", "-1", "--format=%h"],
@@ -3116,11 +3118,19 @@ def _git_head_info() -> dict:
             ["git", "log", "-1", "--format=%ct"],
             cwd=_HQ_ROOT, capture_output=True, text=True, timeout=3,
         ).stdout.strip()
+        count_raw = subprocess.run(
+            ["git", "rev-list", "--count", "HEAD"],
+            cwd=_HQ_ROOT, capture_output=True, text=True, timeout=3,
+        ).stdout.strip()
+        total = int(count_raw) if count_raw.isdigit() else 0
+        next_version = f"4.{total // 10}.{total % 10}"
         return {
             "ok": True,
             "commit": sha,
             "subject": subject[:200],
             "commit_ts": int(ts) if ts.isdigit() else 0,
+            "next_version": next_version,
+            "total_commits": total,
         }
     except Exception as e:
         return {"ok": False, "error": str(e)}
