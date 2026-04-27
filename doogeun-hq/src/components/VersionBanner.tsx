@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Sparkles, RefreshCw, X, Loader2 } from "lucide-react";
 import { apiBase } from "@/lib/utils";
+import { useVersionStore } from "@/stores/versionStore";
 
 declare global {
   interface Window {
@@ -71,7 +72,8 @@ export default function VersionBanner() {
   const [latestBuild, setLatestBuild] = useState<VersionInfo | null>(null);
   const [gitHead, setGitHead] = useState<GitHead | null>(null);
   const [deploy, setDeploy] = useState<DeployStatus | null>(null);
-  const [dismissed, setDismissed] = useState(false);
+  const dismissed = useVersionStore((s) => s.dismissed);
+  const setDismissed = useVersionStore((s) => s.setDismissed);
   const [progressPct, setProgressPct] = useState(0); // 단조 증가
   const [progressStage, setProgressStage] = useState<string>("");
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
