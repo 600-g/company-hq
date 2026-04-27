@@ -5,6 +5,34 @@ import { apiBase } from "@/lib/utils";
 import { useAgentStore, type Agent } from "@/stores/agentStore";
 import { useLayoutStore } from "@/stores/layoutStore";
 
+/** 모든 zustand persist store hydrate 완료를 보장하는 헬퍼.
+ *  마운트 직후 useStateSync 가 GET 을 먼저 발사해서 빈 로컬 위에 서버 stale 데이터를 덮어쓰는 race 차단.
+ *  첫 reload 에서 만든 에이전트/가구가 사라졌다가 두번째 reload 에 보이는 패턴 → 이걸로 해결.
+ */
+function awaitAllStoresHydrated(): Promise<void> {
+  return new Promise((resolve) => {
+    const stores = [useAgentStore, useLayoutStore];
+    const allReady = () => stores.every((s) => s.persist?.hasHydrated?.());
+    if (allReady()) { resolve(); return; }
+
+    const unsubs: Array<() => void> = [];
+    const checkAndResolve = () => {
+      if (!allReady()) return;
+      unsubs.forEach((u) => { try { u(); } catch { /* ignore */ } });
+      resolve();
+    };
+    stores.forEach((s) => {
+      const unsub = s.persist?.onFinishHydration?.(checkAndResolve);
+      if (unsub) unsubs.push(unsub);
+    });
+    // 안전망: persist 미지원 환경 대비 800ms 후 강제 진행
+    setTimeout(() => {
+      unsubs.forEach((u) => { try { u(); } catch { /* ignore */ } });
+      resolve();
+    }, 800);
+  });
+}
+
 type ServerState = {
   agents: Agent[];
   layout: { floors: Record<number, unknown[]> };
@@ -27,9 +55,11 @@ export function useStateSync() {
   useEffect(() => {
     let mounted = true;
 
-    // ── 초기 로드 (서버 → 로컬). 로컬이 비어있는 게 아니라면 서버가 기준
+    // ── 초기 로드 (서버 → 로컬). 모든 store hydrate 완료 후에야 GET — race 방지
     (async () => {
       try {
+        await awaitAllStoresHydrated();
+        if (!mounted) return;
         const res = await fetch(`${apiBase()}/api/doogeun/state`, { cache: "no-store" });
         if (!res.ok) return;
         const data = await res.json();
