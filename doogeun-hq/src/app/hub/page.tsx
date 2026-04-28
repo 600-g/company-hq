@@ -696,8 +696,9 @@ export default function HubPage() {
                     ? "rounded-bl-md bg-red-500/10 border border-red-400/30 text-red-200"
                     : "rounded-bl-md bg-[var(--chat-ai-bg)] border border-[var(--chat-ai-border)] text-[var(--chat-ai-text)]"
                 }`}>
-                  {/* 메시지별 복사 버튼 — 유저 메시지에만 (에이전트는 코드블록·다운로드 버튼 자체가 있어 중복) */}
-                  {m.role === "user" && m.content?.trim() && (
+                  {/* 메시지별 복사 버튼 — 유저/에이전트 모두 hover 시 표시.
+                   *  코드블록 내부의 복사는 별개 (코드 텍스트만 복사). */}
+                  {(m.role === "user" || m.role === "agent") && m.content?.trim() && (
                     <button
                       onClick={async () => {
                         try { await navigator.clipboard.writeText(m.content); }
@@ -820,18 +821,23 @@ export default function HubPage() {
                   ) : null}
                   {/* 시스템 에러 / 재시도 메시지에 [재시도] 버튼 — 마지막 user 메시지 다시 send.
                    *  키워드 확장: 실패/에러/타임아웃/세션/끊김/연결/취소/cancel/timeout/품질미달/응답 없음/오류 */}
-                  {/* 에러/실패 메시지 카드에만 [재시도] — 사용자 메시지/정상 응답 X.
-                   *  user role 은 절대 노출 X. agent/system 중 에러 키워드 매칭 시만. */}
-                  {m.role !== "user" &&
-                   ((m.role === "system") || (m.role === "agent" && !m.streaming)) &&
-                   (m.retry || /실패|에러|오류|타임아웃|timeout|세션\s*깨짐|세션\s*초기|끊김|연결\s*끊|취소\s*됨|품질\s*미달|응답\s*없음|응답이\s*비어|강제\s*종료|🛠\s*자동|🛠\s*CPO|⚠️\s*Claude|⚠️\s*세션|⚠️\s*응답|❌\s*오류|🚨/.test(m.content || "")) && (
+                  {/* [재시도] 버튼 — ws_handler 가 명시적으로 보낸 시스템 에러 메시지만.
+                   *  user role X / 정상 응답 X / 자연어 '오류/에러/실패' 단어 매칭 X.
+                   *  매칭은 백엔드가 보낸 정확한 prefix 만 (자연어 응답 안에 단어 있어도 미매칭). */}
+                  {m.role !== "user" && !m.streaming &&
+                   (m.retry ||
+                    /^\s*⚠️\s*(Claude\s*세션|응답이\s*비어|세션\s*타임아웃)/.test(m.content || "") ||
+                    /^\s*❌\s*(오류:|연결\s*끊김|배포\s*실패|협업\s*실패)/m.test(m.content || "") ||
+                    /^\s*🚨\s*자동\s*복구\s*실패/.test(m.content || "") ||
+                    /\n\s*🛠\s*(자동\s*진단|CPO\s*가\s*처리)/.test(m.content || "") ||
+                    /Claude\s*세션\s*깨짐\s*—\s*자동\s*reset/.test(m.content || "")) && (
                     <button
                       onClick={() => {
                         const last = [...messages].reverse().find((x) => x.role === "user" && (x.content?.trim().length ?? 0) > 0);
                         if (last) wsSendDirect(last.content);
                       }}
                       className="mt-1.5 h-7 px-2.5 rounded-md text-[11px] font-bold bg-amber-500/20 border border-amber-400/60 text-amber-100 hover:bg-amber-500/30 transition-colors flex items-center gap-1"
-                      title="마지막 메시지 다시 보내기 (Claude 세션 reset 완료)"
+                      title="마지막 메시지 다시 보내기 (Claude 세션 reset 됐으면 즉시 복구)"
                     >
                       <RefreshCw className="w-3 h-3" /> 재시도
                     </button>
