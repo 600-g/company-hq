@@ -820,16 +820,18 @@ export default function HubPage() {
                   ) : null}
                   {/* 시스템 에러 / 재시도 메시지에 [재시도] 버튼 — 마지막 user 메시지 다시 send.
                    *  키워드 확장: 실패/에러/타임아웃/세션/끊김/연결/취소/cancel/timeout/품질미달/응답 없음/오류 */}
-                  {/* 시스템/에이전트 메시지 모두 — 에러 키워드 검출 시 [재시도] 버튼 */}
-                  {((m.role === "system") || (m.role === "agent" && !m.streaming)) &&
-                   (m.retry || /실패|에러|오류|타임아웃|timeout|세션\s*타임|끊김|연결\s*끊|취소\s*됨|품질\s*미달|응답\s*없음|강제\s*종료|🛠\s*자동\s*진단|⚠️\s*세션|❌\s*오류|🚨/.test(m.content || "")) && (
+                  {/* 에러/실패 메시지 카드에만 [재시도] — 사용자 메시지/정상 응답 X.
+                   *  user role 은 절대 노출 X. agent/system 중 에러 키워드 매칭 시만. */}
+                  {m.role !== "user" &&
+                   ((m.role === "system") || (m.role === "agent" && !m.streaming)) &&
+                   (m.retry || /실패|에러|오류|타임아웃|timeout|세션\s*깨짐|세션\s*초기|끊김|연결\s*끊|취소\s*됨|품질\s*미달|응답\s*없음|응답이\s*비어|강제\s*종료|🛠\s*자동|🛠\s*CPO|⚠️\s*Claude|⚠️\s*세션|⚠️\s*응답|❌\s*오류|🚨/.test(m.content || "")) && (
                     <button
                       onClick={() => {
                         const last = [...messages].reverse().find((x) => x.role === "user" && (x.content?.trim().length ?? 0) > 0);
                         if (last) wsSendDirect(last.content);
                       }}
                       className="mt-1.5 h-7 px-2.5 rounded-md text-[11px] font-bold bg-amber-500/20 border border-amber-400/60 text-amber-100 hover:bg-amber-500/30 transition-colors flex items-center gap-1"
-                      title="마지막 메시지 다시 보내기"
+                      title="마지막 메시지 다시 보내기 (Claude 세션 reset 완료)"
                     >
                       <RefreshCw className="w-3 h-3" /> 재시도
                     </button>

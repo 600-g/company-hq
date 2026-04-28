@@ -1002,22 +1002,64 @@ async def handle_chat(
                 )
                 continue
 
-            # 정상 완료 — 빈 응답 시 정확한 원인 안내 (rate limit 오진 방지)
+            # 정상 완료 — 빈 응답 시 정확한 원인 진단 + 자동 session reset
             if not full_response.strip():
                 try: sessions_store.end_job(team_id, current_sid, "failed", "빈 응답")
                 except Exception: pass
-                full_response = "⚠️ 응답이 비어있습니다. 세션이 초기화되었거나 일시적 오류일 수 있어요."
+
+                # 1) Claude session_id 깨짐 자동 감지 + 자동 reset (가장 흔한 케이스)
+                #    "No conversation found with session ID: ..." 패턴은 stderr 에 찍힘
+                #    → claude_runner 가 quit 했을 때 TEAM_SESSIONS 와 sessions_store 둘 다 정리
+                session_corruption_detected = False
+                try:
+                    from claude_runner import TEAM_SESSIONS, _save_sessions
+                    if team_id in TEAM_SESSIONS:
+                        broken_sid = TEAM_SESSIONS.pop(team_id, None)
+                        _save_sessions(TEAM_SESSIONS)
+                        # sessions_store 의 claudeSessionId 도 reset (_meta.json 직접)
+                        try:
+                            _meta = sessions_store._load_meta(team_id)
+                            for _s in _meta:
+                                if _s.get("id") == current_sid:
+                                    _s["claudeSessionId"] = None
+                            sessions_store._save_meta(team_id, _meta)
+                        except Exception:
+                            pass
+                        session_corruption_detected = True
+                        logger.warning("[%s] 세션 깨짐 의심 — Claude session_id 자동 reset (broken=%s)", team_id, broken_sid)
+                except Exception as _se:
+                    logger.warning("[%s] session reset 실패: %s", team_id, _se)
+
+                # 2) 사용자에게 명확한 원인 + 다음 액션 안내
+                if session_corruption_detected:
+                    full_response = (
+                        "⚠️ Claude 세션 깨짐 — 자동 reset 완료.\n"
+                        "🛠 CPO 에 자동 보고 + 다음 호출은 새 세션으로 시작됨.\n"
+                        "[재시도] 누르면 즉시 복구됩니다."
+                    )
+                else:
+                    full_response = (
+                        "⚠️ 응답이 비어있습니다.\n"
+                        "원인 가능: Claude 세션 초기화 / 시스템 프롬프트 문제 / 일시적 API 한도.\n"
+                        "🛠 CPO 자동 진단 시작합니다..."
+                    )
                 await manager.send_json(
                     team_id,
                     {"type": "ai_chunk", "content": full_response, "session_id": current_sid},
                     session_id=current_sid,
                 )
-                # 자동 에러 복구 — CPO 에 보고 + 진단/수정/재시도 위임 (백그라운드)
+
+                # 3) 자동 복구 dispatch — CPO 에 진단/수정/재시도 위임
+                logger.info("[%s] auto-recovery 트리거 — corruption=%s", team_id, session_corruption_detected)
                 try:
                     asyncio.create_task(_auto_recovery_dispatch(
                         team_id=team_id,
                         original_prompt=prompt,
-                        error_summary="에이전트가 빈 응답 반환 — Claude 세션 초기화 또는 시스템 프롬프트 문제 의심",
+                        error_summary=(
+                            f"Claude session 깨짐 (자동 reset 완료) — 다음 호출은 새 세션으로"
+                            if session_corruption_detected
+                            else "에이전트가 빈 응답 반환 — Claude 세션 또는 시스템 프롬프트 문제"
+                        ),
                         error_log_tail=None,
                     ))
                 except Exception as _e:
