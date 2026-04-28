@@ -223,17 +223,12 @@ function Gauge({ label, value, onClick, hint }: { label: string; value: number |
     <Wrapper
       onClick={onClick}
       title={hint}
-      className={`p-2.5 rounded-lg border bg-gray-900/40 transition-colors text-left w-full ${
-        onClick
-          ? "border-gray-800/60 hover:border-sky-400/50 hover:bg-sky-500/5 cursor-pointer"
-          : "border-gray-800/60"
+      className={`p-2.5 rounded-lg border border-gray-800/60 bg-gray-900/40 text-left w-full ${
+        onClick ? "cursor-pointer" : ""
       }`}
     >
       <div className="flex items-center justify-between mb-1">
-        <span className="text-[10px] text-gray-500 uppercase font-bold flex items-center gap-1">
-          {label}
-          {onClick && <span className="text-[9px] text-sky-400 font-normal normal-case">· 정리</span>}
-        </span>
+        <span className="text-[10px] text-gray-500 uppercase font-bold">{label}</span>
         <span className={`text-sm font-bold ${c.text}`}>{value != null ? `${value}%` : "—"}</span>
       </div>
       <div className="w-full h-1.5 bg-gray-800 rounded-full overflow-hidden">
