@@ -18,8 +18,6 @@ import {
 } from "lucide-react";
 import DebugPanel, { LogsPane } from "@/components/DebugPanel";
 import VersionBadge from "@/components/VersionBadge";
-import MemoryOptimizerModal from "@/components/MemoryOptimizerModal";
-import { Cpu as CpuIcon } from "lucide-react";
 import MentionPopup from "@/components/chat/MentionPopup";
 import TerminalPanel from "@/components/TerminalPanel";
 import FurniturePalette from "@/components/office/FurniturePalette";
@@ -119,7 +117,6 @@ export default function HubPage() {
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [copiedFlash, setCopiedFlash] = useState(false);
   const [celebrate, setCelebrate] = useState<{ emoji: string; name: string; phase: "in" | "out" } | null>(null);
-  const [memoryOpen, setMemoryOpen] = useState(false);
   // 입력 영속화 — 새로고침/배포 reload 시에도 작성 중인 메시지 보존
   const [input, setInput] = useState<string>(() => {
     if (typeof window === "undefined") return "";
@@ -379,7 +376,7 @@ export default function HubPage() {
           <SideItem collapsed={sideCollapsed} icon={Bug} label="연구소" onClick={() => setModalKey("lab")} />
           <SideItem collapsed={sideCollapsed} icon={Settings} label="설정" onClick={() => router.push("/settings")} />
           <div className="h-px bg-gray-800/60 my-2" />
-          <SideItem collapsed={sideCollapsed} icon={CpuIcon} label="메모리 정리" onClick={() => setMemoryOpen(true)} />
+          {/* 메모리 정리 → 서버실(ServerDashboard) 의 메모리 게이지 클릭으로 통합. 별도 메뉴 제거 */}
           <SideItem collapsed={sideCollapsed} icon={RefreshCw} label="강제 새로고침" onClick={() => {
             // 모든 doogeun-hq-* 영속 데이터(layout/chat/theme/notify/...) 보존.
             // 비-앱 키(next 캐시 등) 만 제거
@@ -1087,9 +1084,6 @@ export default function HubPage() {
           })}
         </div>
       )}
-
-      {/* 메모리 정리 모달 */}
-      <MemoryOptimizerModal open={memoryOpen} onClose={() => setMemoryOpen(false)} />
 
       <Modal open={modalKey === "server"} onClose={() => setModalKey(null)} title="서버실" subtitle="실시간 상태 (3초 폴링)" widthClass="max-w-3xl">
         <ServerDashboard />

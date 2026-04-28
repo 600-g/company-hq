@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { RefreshCw, Check, XCircle, AlertTriangle } from "lucide-react";
 import { apiBase } from "@/lib/utils";
+import MemoryOptimizerModal from "@/components/MemoryOptimizerModal";
 
 interface ToolCheck { installed: boolean; version: string | null; path: string | null }
 interface SysCheck { ok: boolean; platform?: string; tools?: Record<string, ToolCheck> }
@@ -42,6 +43,7 @@ export default function ServerDashboard() {
   const [loading, setLoading] = useState(true);
   const [restartingId, setRestartingId] = useState<string | null>(null);
   const [sys, setSys] = useState<SysCheck | null>(null);
+  const [memOpen, setMemOpen] = useState(false);
 
   const load = async () => {
     try {
@@ -91,7 +93,12 @@ export default function ServerDashboard() {
         <SectionTitle>💻 시스템 상태</SectionTitle>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           <Gauge label="CPU" value={system.cpu ?? null} />
-          <Gauge label="메모리" value={system.memory ?? null} />
+          <Gauge
+            label="메모리"
+            value={system.memory ?? null}
+            onClick={() => setMemOpen(true)}
+            hint="클릭해 메모리 정리 모달 열기 — 외부 앱 graceful 종료"
+          />
           <Gauge label="디스크" value={system.disk ?? null} />
           <NetworkCard net={system.network} />
         </div>
@@ -191,6 +198,9 @@ export default function ServerDashboard() {
           {d.version.claude_cli && <span>claude {d.version.claude_cli}</span>}
         </div>
       )}
+
+      {/* 메모리 게이지 클릭 시 정리 모달 */}
+      <MemoryOptimizerModal open={memOpen} onClose={() => setMemOpen(false)} />
     </div>
   );
 }
@@ -206,18 +216,30 @@ function metricColor(v: number | null): { bar: string; text: string } {
   return { bar: "bg-green-500", text: "text-green-400" };
 }
 
-function Gauge({ label, value }: { label: string; value: number | null }) {
+function Gauge({ label, value, onClick, hint }: { label: string; value: number | null; onClick?: () => void; hint?: string }) {
   const c = metricColor(value);
+  const Wrapper = onClick ? "button" : "div";
   return (
-    <div className="p-2.5 rounded-lg border border-gray-800/60 bg-gray-900/40">
+    <Wrapper
+      onClick={onClick}
+      title={hint}
+      className={`p-2.5 rounded-lg border bg-gray-900/40 transition-colors text-left w-full ${
+        onClick
+          ? "border-gray-800/60 hover:border-sky-400/50 hover:bg-sky-500/5 cursor-pointer"
+          : "border-gray-800/60"
+      }`}
+    >
       <div className="flex items-center justify-between mb-1">
-        <span className="text-[10px] text-gray-500 uppercase font-bold">{label}</span>
+        <span className="text-[10px] text-gray-500 uppercase font-bold flex items-center gap-1">
+          {label}
+          {onClick && <span className="text-[9px] text-sky-400 font-normal normal-case">· 정리</span>}
+        </span>
         <span className={`text-sm font-bold ${c.text}`}>{value != null ? `${value}%` : "—"}</span>
       </div>
       <div className="w-full h-1.5 bg-gray-800 rounded-full overflow-hidden">
         <div className={`h-full ${c.bar} transition-all duration-500`} style={{ width: `${Math.min(value ?? 0, 100)}%` }} />
       </div>
-    </div>
+    </Wrapper>
   );
 }
 
