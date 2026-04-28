@@ -218,14 +218,15 @@ function metricColor(v: number | null): { bar: string; text: string } {
 
 function Gauge({ label, value, onClick, hint }: { label: string; value: number | null; onClick?: () => void; hint?: string }) {
   const c = metricColor(value);
-  const Wrapper = onClick ? "button" : "div";
+  // 시각 통일을 위해 항상 div — button 의 user-agent 기본 padding/font/text-align 차이 제거
   return (
-    <Wrapper
+    <div
       onClick={onClick}
       title={hint}
-      className={`p-2.5 rounded-lg border border-gray-800/60 bg-gray-900/40 text-left w-full ${
-        onClick ? "cursor-pointer" : ""
-      }`}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={onClick ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); } } : undefined}
+      className={`p-2.5 rounded-lg border border-gray-800/60 bg-gray-900/40 ${onClick ? "cursor-pointer" : ""}`}
     >
       <div className="flex items-center justify-between mb-1">
         <span className="text-[10px] text-gray-500 uppercase font-bold">{label}</span>
@@ -234,7 +235,7 @@ function Gauge({ label, value, onClick, hint }: { label: string; value: number |
       <div className="w-full h-1.5 bg-gray-800 rounded-full overflow-hidden">
         <div className={`h-full ${c.bar} transition-all duration-500`} style={{ width: `${Math.min(value ?? 0, 100)}%` }} />
       </div>
-    </Wrapper>
+    </div>
   );
 }
 
