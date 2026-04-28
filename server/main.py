@@ -3160,9 +3160,73 @@ _RELEASE_TYPE_MAP = {
 }
 
 
+# scope 영어 → 한국어 매핑 (사용자 친화 라벨)
+_SCOPE_MAP = {
+    "deploy": "배포",
+    "deploy-ux": "배포",
+    "release-notes": "릴리즈노트",
+    "critical": "긴급",
+    "auth": "인증",
+    "ux": "UX",
+    "memory": "메모리",
+    "db": "DB",
+    "isolation": "격리",
+    "orchestration": "오케스트레이션",
+    "auto-recovery": "자동복구",
+    "agents": "에이전트",
+    "retry": "재시도",
+    "frontend": "프론트엔드",
+    "backend": "백엔드",
+    "design": "디자인",
+    "qa": "QA",
+    "content": "콘텐츠",
+    "cpo": "CPO",
+    "staff": "스태프",
+    "phaser": "Phaser",
+    "websocket": "WS",
+    "ws": "WS",
+    "api": "API",
+    "ui": "UI",
+    "build": "빌드",
+    "config": "설정",
+    "docs": "문서",
+    "i18n": "다국어",
+    "perf": "성능",
+    "security": "보안",
+    "session": "세션",
+    "chat": "채팅",
+    "memory-optimize": "메모리정리",
+    "version": "버전",
+    "legacy": "레거시",
+    "sandbox": "샌드박스",
+    "policy": "정책",
+}
+
+
+# 패치노트 본문 흔한 영어 → 한국어 자동 치환 (commit 작성자 의도 보존하되 사용자 친화 표현)
+_TITLE_REPLACEMENTS = [
+    ("reload", "새로고침"),
+    ("Reload", "새로고침"),
+    ("propagation", "전파"),
+    ("cooldown", "대기시간"),
+    ("graceful", "정상"),
+    ("hydration", "초기화"),
+    ("dispatch", "디스패치"),
+    ("rollback", "롤백"),
+    ("session", "세션"),
+    ("hook", "훅"),
+    ("race", "경합"),
+    ("backoff", "재시도 지연"),
+    ("polling", "폴링"),
+    ("preview", "미리보기"),
+    ("Cloudflare Pages", "CF 페이지"),
+    ("CF edge", "CF 엣지"),
+]
+
+
 def _parse_commit_subject(h: str, subject: str) -> dict:
-    """ 'feat(scope): title — 부연' → {type, emoji, label, scope, title}.
-    공식 패치노트용 정제: em-dash 이후 자연어 부연 제거, 짧고 명확한 제목만.
+    """ 'feat(scope): title — 부연' → {type, emoji, label, scope, scope_ko, title}.
+    공식 패치노트용 정제: em-dash 이후 자연어 부연 제거, 영어 scope 한국어 매핑.
     """
     import re as _re
     m = _re.match(r"^(\w+)(\([^)]+\))?\s*:\s*(.+)$", subject)
@@ -3181,13 +3245,19 @@ def _parse_commit_subject(h: str, subject: str) -> dict:
         if sep in title:
             title = title.split(sep)[0].strip()
             break
+    # 흔한 영어 → 한국어 자동 치환
+    for en, ko in _TITLE_REPLACEMENTS:
+        title = title.replace(en, ko)
     title = title.rstrip(".").strip()
+    # scope 한국어 매핑
+    scope_ko = _SCOPE_MAP.get(scope.lower(), scope)
     return {
         "hash": h,
         "type": commit_type,
         "emoji": info["emoji"],
         "label": info["label"],
-        "scope": scope,
+        "scope": scope_ko,           # 사용자 노출용 (한국어)
+        "scope_raw": scope,          # 원본 (디버깅)
         "title": title[:100],
     }
 
