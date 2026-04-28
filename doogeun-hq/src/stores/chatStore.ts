@@ -95,10 +95,11 @@ export const useChatStore = create<ChatState>()(persist((set, get) => ({
   },
 }), {
   name: "doogeun-hq-chat",
-  // 각 팀 최근 50 메시지만 persist — 용량 제어
+  // 각 팀 최근 20 메시지만 persist — localStorage 용량 ↓ + hydrate 속도 ↑ (auth race 방지)
+  // 더 보고 싶으면 server history_sync 가 WS 연결 시 자동 복원
   partialize: (state) => ({
     messagesByTeam: Object.fromEntries(
-      Object.entries(state.messagesByTeam).map(([k, v]) => [k, v.slice(-50)])
+      Object.entries(state.messagesByTeam).map(([k, v]) => [k, v.slice(-20)])
     ),
     unreadByTeam: state.unreadByTeam,
     lastActiveByTeam: state.lastActiveByTeam,

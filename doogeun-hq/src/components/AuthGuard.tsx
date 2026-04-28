@@ -18,17 +18,25 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const token = useAuthStore((s) => s.token);
   const [hydrated, setHydrated] = useState(false);
 
-  // zustand persist hydration 완료 정확히 기다리기
+  // zustand persist hydration 완료 정확히 기다리기.
+  //   chat/agents 등 큰 store 가 동시 hydrate 중이면 1초로 부족 → 사용자 강제 로그아웃 발생.
+  //   ✅ 5초 fallback + fallback 도달 시 hasHydrated 재확인 + 미완료면 강제 rehydrate.
   useEffect(() => {
-    // 이미 hydrate 됐으면 즉시 ready
     if (useAuthStore.persist?.hasHydrated?.()) {
       setHydrated(true);
       return;
     }
-    // 아직이면 콜백 등록
     const unsub = useAuthStore.persist?.onFinishHydration?.(() => setHydrated(true));
-    // 안전망: persist 미지원 환경 대비 1초 후 강제 ready
-    const fallback = setTimeout(() => setHydrated(true), 1000);
+    const fallback = setTimeout(() => {
+      // 5초 후 — hasHydrated 다시 확인 (race 윈도우)
+      if (useAuthStore.persist?.hasHydrated?.()) {
+        setHydrated(true);
+        return;
+      }
+      // 진짜 안 끝났으면 강제 rehydrate 1회 + 추가 0.5초 대기
+      try { useAuthStore.persist?.rehydrate?.(); } catch { /* ignore */ }
+      setTimeout(() => setHydrated(true), 500);
+    }, 5000);
     return () => {
       try { unsub?.(); } catch { /* ignore */ }
       clearTimeout(fallback);
@@ -40,6 +48,20 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
     const path = pathname || "/";
     if (PUBLIC_ROUTES.has(path)) return;
     if (!user || !token) {
+      // 마지막 안전망: localStorage 직접 확인 (zustand store reactivity race 방지)
+      try {
+        const raw = localStorage.getItem("doogeun-hq-auth");
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          const persistedToken = parsed?.state?.token;
+          const persistedUser = parsed?.state?.user;
+          if (persistedToken && persistedUser) {
+            // localStorage 엔 있는데 store 에 없음 → 직접 hydrate 시도 + redirect 보류
+            useAuthStore.setState({ token: persistedToken, user: persistedUser });
+            return;
+          }
+        }
+      } catch { /* JSON 파싱 실패 → redirect 진행 */ }
       router.replace(`/auth?next=${encodeURIComponent(path)}`);
     }
   }, [hydrated, user, token, pathname, router]);
