@@ -3142,6 +3142,107 @@ async def admin_git_head():
     return _git_head_info()
 
 
+# Conventional commit 카테고리 → 한국어 라벨/이모지
+_RELEASE_TYPE_MAP = {
+    "fix":       {"emoji": "🐛", "label": "버그 수정"},
+    "feat":      {"emoji": "✨", "label": "기능 추가"},
+    "perf":      {"emoji": "⚡", "label": "성능 개선"},
+    "refactor":  {"emoji": "🔧", "label": "코드 정리"},
+    "ux":        {"emoji": "🎨", "label": "UX 개선"},
+    "style":     {"emoji": "💄", "label": "스타일"},
+    "docs":      {"emoji": "📝", "label": "문서"},
+    "chore":     {"emoji": "🧹", "label": "점검"},
+    "test":      {"emoji": "🧪", "label": "테스트"},
+    "build":     {"emoji": "📦", "label": "빌드"},
+    "ci":        {"emoji": "🤖", "label": "CI"},
+    "security":  {"emoji": "🔒", "label": "보안"},
+    "revert":    {"emoji": "⏪", "label": "되돌림"},
+}
+
+
+def _parse_commit_subject(h: str, subject: str) -> dict:
+    """ 'feat(scope): title — 부연' → {type, emoji, label, scope, title}.
+    공식 패치노트용 정제: em-dash 이후 자연어 부연 제거, 짧고 명확한 제목만.
+    """
+    import re as _re
+    m = _re.match(r"^(\w+)(\([^)]+\))?\s*:\s*(.+)$", subject)
+    if m:
+        commit_type = m.group(1).lower()
+        scope = (m.group(2) or "").strip("()")
+        title = m.group(3).strip()
+    else:
+        commit_type = "other"
+        scope = ""
+        title = subject.strip()
+    info = _RELEASE_TYPE_MAP.get(commit_type, {"emoji": "📌", "label": "기타"})
+    # 제목 정제 — em-dash 이후 부연 / 자연어 제거, 첫 줄만
+    title = title.split("\n")[0]
+    for sep in [" — ", " -- ", "— ", " · "]:
+        if sep in title:
+            title = title.split(sep)[0].strip()
+            break
+    title = title.rstrip(".").strip()
+    return {
+        "hash": h,
+        "type": commit_type,
+        "emoji": info["emoji"],
+        "label": info["label"],
+        "scope": scope,
+        "title": title[:100],
+    }
+
+
+@app.get("/api/admin/release-notes")
+async def admin_release_notes(from_commit: str = ""):
+    """production build commit 부터 HEAD 까지 commit 들을 카테고리별 패치노트로 변환."""
+    if not from_commit:
+        return {"ok": False, "error": "from_commit 파라미터 필요"}
+    try:
+        out = subprocess.run(
+            ["git", "log", f"{from_commit}..HEAD", "--format=%h|%s"],
+            cwd=_HQ_ROOT, capture_output=True, text=True, timeout=5,
+        )
+        if out.returncode != 0:
+            # from_commit 이 알 수 없으면 최근 10개로 fallback
+            out = subprocess.run(
+                ["git", "log", "-10", "--format=%h|%s"],
+                cwd=_HQ_ROOT, capture_output=True, text=True, timeout=5,
+            )
+        commits: list[dict] = []
+        for line in out.stdout.strip().split("\n"):
+            if "|" not in line:
+                continue
+            h, s = line.split("|", 1)
+            commits.append(_parse_commit_subject(h.strip(), s.strip()))
+        # 카테고리별 그룹화
+        groups: dict[str, dict] = {}
+        for c in commits:
+            key = c["type"]
+            if key not in groups:
+                groups[key] = {
+                    "type": key,
+                    "emoji": c["emoji"],
+                    "label": c["label"],
+                    "items": [],
+                }
+            groups[key]["items"].append({
+                "hash": c["hash"],
+                "title": c["title"],
+                "scope": c["scope"],
+            })
+        # 정렬 — fix/feat/perf 우선, 그 외 사전순
+        priority = {"fix": 0, "feat": 1, "perf": 2, "ux": 3, "refactor": 4, "security": 5}
+        ordered = sorted(groups.values(), key=lambda g: (priority.get(g["type"], 10), g["type"]))
+        return {
+            "ok": True,
+            "from_commit": from_commit,
+            "total_commits": len(commits),
+            "groups": ordered,
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 @app.get("/api/admin/deploy/status")
 async def admin_deploy_status():
     """진행 중 배포 + 마지막 결과 + 최근 로그 (사용자가 적용 클릭 후 진행률 폴링)."""

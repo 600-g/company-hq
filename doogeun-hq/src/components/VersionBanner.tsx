@@ -26,6 +26,18 @@ interface GitHead {
   total_commits?: number;
 }
 
+interface ReleaseGroup {
+  type: string;
+  emoji: string;
+  label: string;
+  items: { hash: string; title: string; scope: string }[];
+}
+interface ReleaseNotes {
+  ok: boolean;
+  total_commits?: number;
+  groups?: ReleaseGroup[];
+}
+
 interface DeployStatus {
   ok: boolean;
   running: boolean;
@@ -72,6 +84,7 @@ export default function VersionBanner() {
   const [latestBuild, setLatestBuild] = useState<VersionInfo | null>(null);
   const [gitHead, setGitHead] = useState<GitHead | null>(null);
   const [deploy, setDeploy] = useState<DeployStatus | null>(null);
+  const [releaseNotes, setReleaseNotes] = useState<ReleaseNotes | null>(null);
   const dismissed = useVersionStore((s) => s.dismissed);
   const setDismissed = useVersionStore((s) => s.setDismissed);
   const [progressPct, setProgressPct] = useState(0); // 단조 증가
@@ -105,6 +118,19 @@ export default function VersionBanner() {
           if (mounted) setGitHead(d);
         }
       } catch { /* ignore */ }
+
+      // 릴리즈 노트 — production build commit 부터 HEAD 까지 카테고리별
+      const prodBuild = window.__DOOGEUN_LOADED_BUILD__ || "";
+      const prodCommit = prodBuild.split("-")[0];
+      if (prodCommit) {
+        try {
+          const r = await fetch(`${apiBase()}/api/admin/release-notes?from_commit=${encodeURIComponent(prodCommit)}`, { cache: "no-store" });
+          if (r.ok) {
+            const d = await r.json();
+            if (mounted && d.ok) setReleaseNotes(d);
+          }
+        } catch { /* ignore */ }
+      }
     };
 
     (async () => {
@@ -273,10 +299,42 @@ export default function VersionBanner() {
 
               <div className="text-[13px] font-bold text-sky-100 mb-2">업데이트 하세요 ✨</div>
 
-              {gitHead?.subject && (
-                <div className="rounded-md border border-gray-800 bg-gray-900/40 p-3 text-[12px] text-gray-300 leading-relaxed italic mb-2">
-                  “{gitHead.subject.slice(0, 120)}”
+              {/* 패치노트 — 카테고리별 정리 */}
+              {releaseNotes?.groups && releaseNotes.groups.length > 0 ? (
+                <div className="rounded-md border border-gray-800 bg-gray-900/40 p-3 text-[12px] mb-2 max-h-48 overflow-y-auto">
+                  <div className="text-[10px] text-gray-500 mb-2 font-mono">
+                    📋 패치노트 ({releaseNotes.total_commits}건)
+                  </div>
+                  <div className="space-y-2.5">
+                    {releaseNotes.groups.map((g) => (
+                      <div key={g.type}>
+                        <div className="text-[11px] font-bold text-sky-200 mb-0.5 flex items-center gap-1">
+                          <span>{g.emoji}</span>
+                          <span>{g.label}</span>
+                          <span className="text-gray-500 font-mono font-normal">({g.items.length})</span>
+                        </div>
+                        <ul className="text-[11px] text-gray-300 space-y-0.5 pl-4 leading-relaxed">
+                          {g.items.slice(0, 5).map((it) => (
+                            <li key={it.hash} className="list-disc">
+                              {it.scope && <span className="text-gray-500 font-mono">[{it.scope}]</span>}{" "}
+                              {it.title}
+                            </li>
+                          ))}
+                          {g.items.length > 5 && (
+                            <li className="text-gray-500 list-none pl-0 text-[10px]">… 외 {g.items.length - 5}건</li>
+                          )}
+                        </ul>
+                      </div>
+                    ))}
+                  </div>
                 </div>
+              ) : (
+                /* fallback — release-notes endpoint 응답 전 또는 빈 결과면 commit subject 인용 */
+                gitHead?.subject && (
+                  <div className="rounded-md border border-gray-800 bg-gray-900/40 p-3 text-[12px] text-gray-300 leading-relaxed italic mb-2">
+                    “{gitHead.subject.slice(0, 120)}”
+                  </div>
+                )
               )}
               <div className="text-[10px] text-gray-500 font-mono mb-4">
                 {productionCommit.slice(0, 9)} → {gitCommit.slice(0, 9)}
