@@ -152,7 +152,15 @@ export default function VersionBanner() {
   // build 형식: "{commit}-{timestamp}" → 앞부분이 commit hash
   const productionCommit = latestBuild?.build?.split("-")[0] || "";
   const gitCommit = gitHead?.commit || "";
-  const hasPending = !!(productionCommit && gitCommit && productionCommit !== gitCommit);
+  // ⏱ Reload cooldown — 방금 적용 후 30초 동안 동일 build 알림 차단
+  //   (CF edge propagation 지연으로 잠시 옛 build 가 응답해도 즉시 또 알림 안 됨)
+  const cooldownActive = (() => {
+    try {
+      const expiry = Number(sessionStorage.getItem("doogeun-hq-reload-cooldown") || "0");
+      return Date.now() < expiry;
+    } catch { return false; }
+  })();
+  const hasPending = !cooldownActive && !!(productionCommit && gitCommit && productionCommit !== gitCommit);
 
   const startDeploy = async () => {
     try {
@@ -184,10 +192,39 @@ export default function VersionBanner() {
           setProgressStage(inferred.stage);
         }
         if (!d.running && d.last_result) {
-          setProgressPct(100);
-          setProgressStage("완료 — 새로고침 중...");
+          setProgressPct(96);
+          setProgressStage("CF edge 동기화 대기 중...");
           if (deployPollTimer.current) clearInterval(deployPollTimer.current);
-          setTimeout(() => location.reload(), 1500);
+          // CF Pages 의 production alias propagation 시간 — version.json 이 새 build 가리킬 때까지 polling
+          const targetBuild = d.last_result.build;
+          const startTs = Date.now();
+          const verifyAndReload = async () => {
+            const elapsed = Date.now() - startTs;
+            // 최대 30초 polling — 그 안에 CF edge 따라오면 reload, 아니면 경고 후 reload
+            try {
+              const r = await fetch("/version.json?_t=" + Date.now(), { cache: "no-store" });
+              if (r.ok) {
+                const v = await r.json();
+                if (v.build === targetBuild) {
+                  setProgressPct(100);
+                  setProgressStage("완료 — 새로고침 중...");
+                  // sessionStorage 로 reload cooldown 마킹 (30초 — 동일 build 다시 알림 차단)
+                  try { sessionStorage.setItem("doogeun-hq-reload-cooldown", String(Date.now() + 30_000)); } catch { /* ignore */ }
+                  setTimeout(() => location.reload(), 800);
+                  return;
+                }
+              }
+            } catch { /* ignore */ }
+            if (elapsed > 30_000) {
+              // 30초 초과 — 그래도 reload (사용자 의도 우선)
+              setProgressStage("CF edge 지연 — 그대로 새로고침");
+              try { sessionStorage.setItem("doogeun-hq-reload-cooldown", String(Date.now() + 30_000)); } catch { /* ignore */ }
+              setTimeout(() => location.reload(), 800);
+              return;
+            }
+            setTimeout(verifyAndReload, 2000);
+          };
+          verifyAndReload();
         }
         if (!d.running && d.error) {
           if (deployPollTimer.current) clearInterval(deployPollTimer.current);

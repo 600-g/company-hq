@@ -56,7 +56,14 @@ export default function VersionBadge({ collapsed }: { collapsed?: boolean }) {
 
   if (!latest) return null;
   const productionCommit = latest.build.split("-")[0] || "";
-  const hasPending = !!(git?.commit && productionCommit && productionCommit !== git.commit);
+  // VersionBanner 와 동일한 cooldown — 방금 적용 후 30초 안엔 [업데이트] 칩 X
+  const cooldownActive = (() => {
+    try {
+      const expiry = Number(sessionStorage.getItem("doogeun-hq-reload-cooldown") || "0");
+      return Date.now() < expiry;
+    } catch { return false; }
+  })();
+  const hasPending = !cooldownActive && !!(git?.commit && productionCommit && productionCommit !== git.commit);
 
   // 좁은 사이드바 — 점만, 미반영 시 클릭 가능 버튼
   if (collapsed) {
