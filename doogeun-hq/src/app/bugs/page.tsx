@@ -18,6 +18,8 @@ interface BugRow {
   urgent?: boolean;
   priority?: string;
   images?: string[];
+  source?: string; // "auto_recovery" | undefined (사용자 신고)
+  team_id?: string;
 }
 
 async function setBugStatus(ts: string, status: "open" | "resolved") {
@@ -30,6 +32,18 @@ async function setBugStatus(ts: string, status: "open" | "resolved") {
     return r.ok;
   } catch {
     return false;
+  }
+}
+
+async function autoFix(ts: string): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const r = await fetch(`${apiBase()}/api/diag/auto-fix/${encodeURIComponent(ts)}`, {
+      method: "POST",
+    });
+    const d = await r.json();
+    return { ok: !!d.ok, error: d.error };
+  } catch (e) {
+    return { ok: false, error: String(e) };
   }
 }
 
@@ -143,6 +157,9 @@ export default function BugsPage() {
                             <div className={`text-[13px] truncate ${checked ? "text-gray-500 line-through" : "text-gray-200"}`}>{r.title}</div>
                           </div>
                           <div className="flex items-center gap-2 shrink-0">
+                            {r.source === "auto_recovery" && (
+                              <Badge variant="secondary" className="text-[10px]">🤖 AI</Badge>
+                            )}
                             <StatusBadge status={status} />
                             <PriorityBadge priority={priority} />
                             {r.issue_number != null && (
@@ -175,6 +192,34 @@ export default function BugsPage() {
                               ))}
                             </div>
                           )}
+                          {/* 사용자 신고 버그 (auto_recovery 아님) + 미해결 → AI 수정 위임 버튼 */}
+                          {r.source !== "auto_recovery" && status !== "resolved" && status !== "in_progress" && (
+                            <div className="pt-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  const res = await autoFix(r.ts);
+                                  if (res.ok) {
+                                    load();
+                                  } else {
+                                    alert(`AI 수정 위임 실패: ${res.error || "알 수 없는 오류"}`);
+                                  }
+                                }}
+                                className="text-[11px] h-7 border-sky-700/50 text-sky-300 hover:bg-sky-500/10"
+                                title="CPO 에 자동 수정 위임 — 진단/수정/재시도까지"
+                              >
+                                🤖 AI 수정 위임
+                              </Button>
+                            </div>
+                          )}
+                          {status === "in_progress" && (
+                            <div className="pt-2 text-[11px] text-amber-300 flex items-center gap-1.5">
+                              <RefreshCw className="w-3 h-3 animate-spin" />
+                              CPO 가 자동 수정 진행 중...
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -197,6 +242,7 @@ function StatusBadge({ status }: { status: string }) {
   if (status === "resolved") return <Badge variant="success">해결</Badge>;
   if (status === "in_progress") return <Badge variant="warning">진행</Badge>;
   if (status === "closed") return <Badge variant="secondary">닫힘</Badge>;
+  if (status === "critical") return <Badge variant="destructive">🚨 심각</Badge>;
   return <Badge variant="default">열림</Badge>;
 }
 

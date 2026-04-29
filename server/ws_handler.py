@@ -305,9 +305,18 @@ async def _auto_recovery_dispatch(
         return  # CPO 자신은 자동 보고 안 함
     key = f"{team_id}:{hashlib.md5(original_prompt.encode()).hexdigest()[:12]}"
     now = time.time()
-    last = _AUTO_RECOVERY_RECENT.get(key, 0)
-    if now - last < 300:
+    last_entry = _AUTO_RECOVERY_RECENT.get(key)
+    last_ts = last_entry[0] if isinstance(last_entry, tuple) else (last_entry or 0)
+    last_ticket_ts = last_entry[1] if isinstance(last_entry, tuple) else None
+    if now - last_ts < 300:
         logger.warning("[auto-recovery] %s 5분 내 재발 — CPO 자동 복구도 실패 → 사용자 알림", key)
+        # 직전 ticket 이 있으면 critical 마킹
+        if last_ticket_ts:
+            try:
+                from main import _mark_auto_recovery_critical
+                _mark_auto_recovery_critical(last_ticket_ts)
+            except Exception as _e:
+                logger.warning("[auto-recovery] critical 마킹 실패: %s", _e)
         # 죽어도 안 되는 케이스 — 사용자에게 명시적 알림 + 푸시
         team_info_x = _TEAM_LOOKUP.get(team_id, {})
         try:
@@ -340,11 +349,24 @@ async def _auto_recovery_dispatch(
         except Exception:
             pass
         return
-    _AUTO_RECOVERY_RECENT[key] = now
 
     team_info = _TEAM_LOOKUP.get(team_id, {})
     team_name = team_info.get("name", team_id)
     team_emoji = team_info.get("emoji", "🤖")
+
+    # 자체 ticket 작성 — bug_reports.jsonl 에 자동 기록 (CPO 가 완료 시 ts 로 resolved 마킹)
+    ticket_ts: str | None = None
+    try:
+        from main import _record_auto_recovery_ticket
+        ticket_ts = _record_auto_recovery_ticket(
+            team_id=team_id,
+            team_name=team_name,
+            error_summary=error_summary,
+            original_prompt=original_prompt,
+        )
+    except Exception as _e:
+        logger.warning("[auto-recovery] ticket 작성 실패: %s", _e)
+    _AUTO_RECOVERY_RECENT[key] = (now, ticket_ts)
 
     # 사용자 채팅창에 진행 시스템 메시지
     try:
@@ -364,12 +386,23 @@ async def _auto_recovery_dispatch(
     log_section = ""
     if error_log_tail:
         log_section = "\n[로그 마지막]\n" + "\n".join(error_log_tail[-15:])
+    ticket_section = (
+        f"\n\n[ticket]\n"
+        f"이 사고는 자동 ticket 으로 기록됨 (ts={ticket_ts}).\n"
+        f"수정+재시도 성공하면 반드시 다음 호출로 ticket 을 resolved 로 마킹:\n"
+        f"```bash\n"
+        f"curl -s -X POST http://localhost:8000/api/diag/report/status \\\n"
+        f"  -H 'Content-Type: application/json' \\\n"
+        f"  -d '{{\"ts\":\"{ticket_ts}\",\"status\":\"resolved\"}}'\n"
+        f"```\n"
+        f"이 호출이 빠지면 /bugs 페이지에 영구 'open' 으로 남아 사용자가 수동 처리해야 함.\n"
+    ) if ticket_ts else ""
     recovery_prompt = (
         f"[자동 에러 복구]\n"
         f"실패 에이전트: {team_emoji} {team_name} ({team_id})\n"
         f"원본 사용자 요청: {original_prompt[:500]}\n"
         f"에러 요약: {error_summary}\n"
-        f"{log_section}\n\n"
+        f"{log_section}{ticket_section}\n\n"
         f"━━━━━ 자동 복구 절차 (반드시 따를 것) ━━━━━\n"
         f"1. 진단: 에러 원인 분석 (시스템 프롬프트 / 작업 폴더 / 권한 / 코드 / 모델 limit 중 어디인지)\n"
         f"2. 수정: 즉시 적용 가능한 변경 시도\n"
@@ -383,8 +416,9 @@ async def _auto_recovery_dispatch(
         f"   ```\n"
         f"4. 결과 보고: 무엇을 진단/수정했는지 + 재시도 결과 (성공/실패) 1~2문장\n"
         f"5. 코드 변경 했으면 git commit 명시 (사용자가 [업데이트] 버튼으로 배포할 수 있게)\n"
+        f"6. ticket 자동 마킹 — 위 [ticket] 섹션의 curl 명령 실행 (Bash tool 사용)\n"
         f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"🚨 절대 사용자에게 '다시 해보세요' 같은 핑계 거절 금지. 직접 수정+재시도까지 책임.\n"
+        f"🚨 절대 사용자에게 '다시 해보세요' 같은 핑계 거절 금지. 직접 수정+재시도+ticket 마킹까지 책임.\n"
     )
 
     cpo_path = "~/Developer/my-company/company-hq"

@@ -1274,9 +1274,131 @@ async def diag_cleanup() -> dict:
     return {"ok": True, "resolved": resolved_count, "deleted_images": deleted_images}
 
 
+# ── 자동 복구 티켓 (AI 에이전트 self-recording) ────────────────────
+# `_auto_recovery_dispatch` 가 트리거될 때 jsonl 에 자동 ticket 작성.
+# CPO 가 진단/수정/재시도 완료하면 ts 받아 /api/diag/report/status 로 resolved 마킹.
+# 사용자 등록 버그도 /api/diag/auto-fix/{ts} 로 CPO 에 위임 가능 (사전 준비).
+def _record_auto_recovery_ticket(
+    team_id: str,
+    team_name: str,
+    error_summary: str,
+    original_prompt: str,
+) -> str:
+    """자동 복구 ticket 기록 → ts 반환. CPO 가 완료 시 같은 ts 로 resolved 마킹."""
+    ts = datetime.utcnow().isoformat()
+    row = {
+        "ts": ts,
+        "title": f"[자동복구] {team_name} ({team_id}): {error_summary[:120]}",
+        "note": (
+            f"**원본 사용자 요청**: {original_prompt[:600]}\n\n"
+            f"**에러 요약**: {error_summary[:600]}\n\n"
+            f"**상태**: CPO 자동 진단/수정/재시도 진행 중. 완료되면 자동 resolved.\n"
+        ),
+        "user": "auto-recovery",
+        "priority": "normal",
+        "source": "auto_recovery",
+        "team_id": team_id,
+        "status": "open",
+        "logs": [],
+        "meta": {"kind": "auto_recovery"},
+        "attachments": [],
+    }
+    _append_jsonl(DIAG_REPORTS_PATH, row)
+    return ts
+
+
+def _mark_auto_recovery_critical(ts: str) -> bool:
+    """5분 내 재발 — CPO 자동 복구도 실패 → status=critical 마킹."""
+    try:
+        with open(DIAG_REPORTS_PATH, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+    except FileNotFoundError:
+        return False
+    updated = False
+    new_lines: list[str] = []
+    for line in lines:
+        try:
+            row = json.loads(line)
+        except Exception:
+            new_lines.append(line); continue
+        if row.get("ts") == ts:
+            row["status"] = "critical"
+            row["critical_at"] = datetime.utcnow().isoformat()
+            updated = True
+        new_lines.append(json.dumps(row, ensure_ascii=False) + "\n")
+    if updated:
+        with open(DIAG_REPORTS_PATH, "w", encoding="utf-8") as f:
+            f.writelines(new_lines)
+    return updated
+
+
+@app.post("/api/diag/auto-fix/{ts}")
+async def diag_auto_fix(ts: str) -> dict:
+    """사용자가 등록한 버그를 CPO 에 자동 위임 (수정 사전 준비).
+    /bugs 페이지의 [AI에 수정 위임] 버튼이 호출. CPO 가 dispatch block 으로 적합 팀에 분배.
+    """
+    try:
+        with open(DIAG_REPORTS_PATH, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+    except FileNotFoundError:
+        return {"ok": False, "error": "리포트 파일 없음"}
+    target: dict | None = None
+    for line in lines:
+        try:
+            row = json.loads(line)
+        except Exception:
+            continue
+        if row.get("ts") == ts:
+            target = row
+            break
+    if not target:
+        return {"ok": False, "error": "ts 일치 리포트 없음"}
+    # 이미 진행 중이면 중복 방지
+    if target.get("status") == "in_progress":
+        return {"ok": False, "error": "이미 AI 수정 진행 중"}
+    # 사용자 버그를 CPO 에 background dispatch
+    try:
+        from claude_runner import run_claude
+        prompt = (
+            f"[사용자 버그 자동 수정 위임]\n"
+            f"ts: {ts}\n"
+            f"제목: {target.get('title', '')[:200]}\n"
+            f"상세:\n{target.get('note', '')[:2000]}\n\n"
+            f"━━━━━ 절차 ━━━━━\n"
+            f"1. 진단: 어느 모듈/파일/팀 영역인지 판단\n"
+            f"2. 수정: 코드/설정 변경 (배포는 사용자가 [업데이트]로 결정)\n"
+            f"3. 필요 시 dispatch block 으로 적합 팀에 위임\n"
+            f"   ```dispatch\n"
+            f"   [{{\"team\": \"<팀id>\", \"prompt\": \"<작업>\"}}]\n"
+            f"   ```\n"
+            f"4. 완료 시 반드시 다음 호출로 ticket resolved 처리:\n"
+            f"   POST http://localhost:8000/api/diag/report/status\n"
+            f"   body: {{\"ts\": \"{ts}\", \"status\": \"resolved\"}}\n"
+            f"   ```bash\n"
+            f"   curl -s -X POST http://localhost:8000/api/diag/report/status \\\n"
+            f"     -H 'Content-Type: application/json' \\\n"
+            f"     -d '{{\"ts\":\"{ts}\",\"status\":\"resolved\"}}'\n"
+            f"   ```\n"
+            f"━━━━━━━━━━━━━━━━━\n"
+        )
+        # in_progress 마킹
+        await diag_set_status({"ts": ts, "status": "in_progress"})
+        cpo_path = "~/Developer/my-company/company-hq"
+        async def _bg():
+            try:
+                async for _ in run_claude(prompt, cpo_path, "cpo-claude"):
+                    pass
+            except Exception as e:
+                logger.warning("[auto-fix] CPO 호출 실패: %s", e)
+        asyncio.create_task(_bg())
+        return {"ok": True, "ts": ts, "status": "in_progress"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 @app.get("/api/diag/reports")
 async def diag_reports(limit: int = 50, status: str = "") -> dict:
-    """버그 리포트 조회. status=open|in_progress|resolved|all|"" (빈문자열=all)"""
+    """버그 리포트 조회. status=open|in_progress|resolved|critical|all|"" (빈문자열=all)"""
     rows: list[dict] = []
     try:
         if os.path.exists(DIAG_REPORTS_PATH):
