@@ -724,8 +724,36 @@ export default function HubOffice({ floor, agentCount }: Props) {
             }
           }
 
+          // 겹침 방지 — 이미 점유된 위치를 추적해서 새 에이전트는 빈 셀로 spread
+          const occupied: Array<{ x: number; y: number }> = [];
+          const MIN_DIST = 56; // 캐릭 셀(40px) + 여유(16px)
+          const isTooClose = (x: number, y: number) =>
+            occupied.some((o) => Math.abs(o.x - x) < MIN_DIST && Math.abs(o.y - y) < MIN_DIST);
+          const findFreeSlot = (startX: number, startY: number) => {
+            if (!isTooClose(startX, startY)) return { x: startX, y: startY };
+            // 그리드 스캔 — 우→하 방향으로 빈 칸 탐색
+            const W = this.scale.width;
+            const STEP = 64;
+            for (let dy = 0; dy < 8; dy++) {
+              for (let dx = 0; dx < 18; dx++) {
+                const tx = 80 + dx * STEP;
+                const ty = WINDOW_ZONE_HEIGHT + 80 + dy * STEP;
+                if (tx > W - 80) continue;
+                if (!isTooClose(tx, ty)) return { x: tx, y: ty };
+              }
+            }
+            return { x: startX, y: startY };
+          };
+
           floorAgents.forEach((a, i) => {
-            const p = a.position || defaultPos(i, a);
+            const original = a.position || defaultPos(i, a);
+            // CPO 는 고정 자리, 나머지는 겹치면 자동 spread
+            const p = isManagerAgent(a) ? original : findFreeSlot(original.x, original.y);
+            occupied.push(p);
+            // 겹침 회피 결과를 store 에 영속화 (재로드시 자리 유지)
+            if (!isManagerAgent(a) && (p.x !== original.x || p.y !== original.y)) {
+              updateAgent(a.id, { position: { x: p.x, y: p.y }, floor: a.floor ?? 1 });
+            }
             const container = this.add.container(p.x, p.y);
             container.setSize(40, 60);
 
@@ -843,7 +871,12 @@ export default function HubOffice({ floor, agentCount }: Props) {
             }
 
             // 히트 영역 — 셀 중앙 기준 (container.x=cell.left, center at +16)
-            container.setInteractive(new Phaser.Geom.Rectangle(-12, -32, 56, 80), Phaser.Geom.Rectangle.Contains);
+            // CPO 는 char_cpo.png 캔버스 안 sprite 픽셀이 다른 캐릭보다 작아 시각상 작음 →
+            // 실제 sprite/drag 크기는 유지하되 hit 영역만 확장 (선택/우클릭 hit 보장)
+            const hitRect = isManagerAgent(a)
+              ? new Phaser.Geom.Rectangle(-24, -56, 80, 110)
+              : new Phaser.Geom.Rectangle(-12, -32, 56, 80);
+            container.setInteractive(hitRect, Phaser.Geom.Rectangle.Contains);
             this.input.setDraggable(container);
             container.setData("agentId", a.id);
             container.setData("homePos", { x: p.x, y: p.y });
