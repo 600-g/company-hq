@@ -73,6 +73,7 @@ async def call_ollama(prompt: str, model: str = OLLAMA_MODEL_FAST, max_out: int 
             "model": model,
             "prompt": prompt,
             "stream": False,
+            "keep_alive": 0,
             "options": {"num_predict": max_out, "temperature": 0.3},
         }
         resp = await loop.run_in_executor(
