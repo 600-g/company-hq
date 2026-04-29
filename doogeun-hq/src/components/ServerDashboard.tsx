@@ -218,14 +218,11 @@ function metricColor(v: number | null): { bar: string; text: string } {
 
 function Gauge({ label, value, onClick, hint }: { label: string; value: number | null; onClick?: () => void; hint?: string }) {
   const c = metricColor(value);
-  // 시각 통일을 위해 항상 div — button 의 user-agent 기본 padding/font/text-align 차이 제거
+  // 모든 게이지 동일 div 구조 — onClick 만 차이 (role/tabIndex 도 제거 — focus ring 등 시각 영향 차단)
   return (
     <div
       onClick={onClick}
       title={hint}
-      role={onClick ? "button" : undefined}
-      tabIndex={onClick ? 0 : undefined}
-      onKeyDown={onClick ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); } } : undefined}
       className={`p-2.5 rounded-lg border border-gray-800/60 bg-gray-900/40 ${onClick ? "cursor-pointer" : ""}`}
     >
       <div className="flex items-center justify-between mb-1">
