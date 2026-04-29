@@ -58,12 +58,12 @@ export default function VersionBadge({ collapsed }: { collapsed?: boolean }) {
   const productionCommit = latest.build.split("-")[0] || "";
   // VersionBanner 와 동일한 영구 마킹 — 적용한 build 의 commit 이 git HEAD 와 일치하면 차단
   const appliedCommit = (() => {
-    try { return (sessionStorage.getItem("doogeun-hq-applied-build") || "").split("-")[0]; } catch { return ""; }
+    try { return (localStorage.getItem("doogeun-hq-applied-build") || "").split("-")[0]; } catch { return ""; }
   })();
   const userAppliedAlready = !!(appliedCommit && git?.commit && appliedCommit === git.commit);
   const cooldownActive = (() => {
     try {
-      const expiry = Number(sessionStorage.getItem("doogeun-hq-reload-cooldown") || "0");
+      const expiry = Number(localStorage.getItem("doogeun-hq-reload-cooldown") || "0");
       return Date.now() < expiry;
     } catch { return false; }
   })();

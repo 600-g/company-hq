@@ -153,10 +153,11 @@ export default function VersionBanner() {
   const productionCommit = latestBuild?.build?.split("-")[0] || "";
   const gitCommit = gitHead?.commit || "";
 
-  // 🔑 사용자가 마지막으로 적용한 build — sessionStorage 에 영구 (탭 살아있는 동안)
+  // 🔑 사용자가 마지막으로 적용한 build — localStorage 에 영구 (탭/세션/디바이스 무관)
   //    git HEAD 가 새 commit 으로 바뀔 때까지 알림 차단 — CF edge 지연 무관
+  //    (이전 sessionStorage 는 새 탭/시크릿모드에서 사라져 알림 반복 트리거)
   const appliedBuild = (() => {
-    try { return sessionStorage.getItem("doogeun-hq-applied-build") || ""; } catch { return ""; }
+    try { return localStorage.getItem("doogeun-hq-applied-build") || ""; } catch { return ""; }
   })();
   const appliedCommit = appliedBuild.split("-")[0];
   // 적용한 build 의 commit 이 현재 git HEAD 와 일치 → 이미 최신 적용 완료
@@ -165,7 +166,7 @@ export default function VersionBanner() {
   // 보조 cooldown (10초 — reload 직후 race window 보호용)
   const cooldownActive = (() => {
     try {
-      const expiry = Number(sessionStorage.getItem("doogeun-hq-reload-cooldown") || "0");
+      const expiry = Number(localStorage.getItem("doogeun-hq-reload-cooldown") || "0");
       return Date.now() < expiry;
     } catch { return false; }
   })();
@@ -208,11 +209,11 @@ export default function VersionBanner() {
           if (deployPollTimer.current) clearInterval(deployPollTimer.current);
           // CF Pages 의 production alias propagation 시간 — version.json 이 새 build 가리킬 때까지 polling
           const targetBuild = d.last_result.build;
-          // 🔑 사용자가 적용한 build 영구 마킹 (sessionStorage) — CF edge 지연으로 옛 build 응답해도 알림 X
+          // 🔑 사용자가 적용한 build 영구 마킹 (localStorage) — 탭/세션/디바이스 무관 영구
           //    cooldown 시간 기반 X → commit 일치 기반 (git HEAD 가 새 commit 으로 바뀔 때까지 영구)
-          try { sessionStorage.setItem("doogeun-hq-applied-build", targetBuild); } catch { /* ignore */ }
+          try { localStorage.setItem("doogeun-hq-applied-build", targetBuild); } catch { /* ignore */ }
           // 임시 cooldown 도 보조 (10초 — reload 직후 짧은 race 윈도우 보호)
-          try { sessionStorage.setItem("doogeun-hq-reload-cooldown", String(Date.now() + 10_000)); } catch { /* ignore */ }
+          try { localStorage.setItem("doogeun-hq-reload-cooldown", String(Date.now() + 10_000)); } catch { /* ignore */ }
           const startTs = Date.now();
           const verifyAndReload = async () => {
             const elapsed = Date.now() - startTs;
