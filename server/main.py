@@ -3209,6 +3209,26 @@ async def push_119(req: dict):
     return {"ok": True, "sent": count}
 
 
+@app.post("/api/push/trading")
+async def push_trading(req: dict):
+    """📈 코인봇/주식봇 매수·매도·긴급 알림 — trader.py에서 호출"""
+    bot = req.get("bot", "trading")  # coin / stock
+    side = req.get("side", "")  # buy / sell / system
+    severity = req.get("severity", "info")  # info / warn / danger
+    title = req.get("title", f"{bot} 알림")
+    body = req.get("body", "")
+    icon_map = {"buy": "🟢", "sell": "🔴", "danger": "🚨", "warn": "⚠️", "info": "💹"}
+    icon = icon_map.get(side, icon_map.get(severity, "💹"))
+    count = send_push(
+        title=f"{icon} {title}",
+        body=body[:200],
+        tag=f"trading-{bot}-{side}",
+        url="/",
+        team_id="trading-bot",
+    )
+    return {"ok": True, "sent": count, "bot": bot, "side": side}
+
+
 # ── 무중단 배포 (staging → production 사용자 클릭 promote) ─────────────────────
 
 # 진행 중인 배포 상태 (단일 동시 배포만 허용)
