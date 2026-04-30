@@ -343,6 +343,54 @@ export default function HubOffice({ floor, agentCount }: Props) {
               const free = nearestFree(rawCol, rawRow, blocked, Math.floor(800 / 32));
               const sx = free.col * 32;
               const sy = free.row * 32;
+
+              // 충돌 검사 — 다른 에이전트 자리에 떨어졌으면 자기 home 으로 walk back
+              // (먼저 자리 잡고 있던 에이전트는 그대로, 드래그한 자만 원위치)
+              const MIN_AGENT_DIST = 56;
+              const collision = this.agentGroup.some((other) => {
+                if (other === c) return false;
+                const otherId = other.getData("agentId") as string | undefined;
+                if (!otherId || otherId === agentId) return false;
+                return Math.abs(other.x - sx) < MIN_AGENT_DIST && Math.abs(other.y - sy) < MIN_AGENT_DIST;
+              });
+
+              if (collision) {
+                const home = c.getData("homePos") as { x: number; y: number } | undefined;
+                if (home) {
+                  // 자기 home 으로 부드럽게 walk back
+                  const sprite = c.getData("sprite") as Phaser.GameObjects.Sprite | undefined;
+                  const spriteKey = c.getData("spriteKey") as string | undefined;
+                  if (sprite && spriteKey) {
+                    const dxw = home.x - c.x;
+                    const dyw = home.y - c.y;
+                    const animKey = Math.abs(dxw) > Math.abs(dyw)
+                      ? (dxw > 0 ? `${spriteKey}_walk_right` : `${spriteKey}_walk_left`)
+                      : (dyw > 0 ? `${spriteKey}_walk_down` : `${spriteKey}_walk_up`);
+                    if (this.anims.exists(animKey)) sprite.play(animKey, true);
+                  }
+                  const dist = Math.hypot(home.x - c.x, home.y - c.y);
+                  const duration = Math.max(300, Math.min(1500, (dist / WALK_SPEED) * 1000));
+                  this.tweens.add({
+                    targets: c,
+                    x: home.x,
+                    y: home.y,
+                    duration,
+                    ease: "Sine.easeOut",
+                    onUpdate: () => {
+                      const gy = Math.floor(c.y / 32);
+                      c.setDepth(3000 + (gy + 1) * 100 - 1);
+                    },
+                    onComplete: () => {
+                      if (sprite) sprite.stop();
+                    },
+                  });
+                } else {
+                  c.setPosition(c.x, c.y);
+                }
+                // store update 안 함 — 자기 원위치 유지
+                return;
+              }
+
               c.setPosition(sx, sy);
               if (!this.walkingAgents.has(agentId)) {
                 updateAgent(agentId, { position: { x: sx, y: sy }, floor: this.floorRef });
@@ -745,13 +793,28 @@ export default function HubOffice({ floor, agentCount }: Props) {
             return { x: startX, y: startY };
           };
 
-          floorAgents.forEach((a, i) => {
+          // 처리 순서 — 영속된 position 있는 에이전트 먼저, position 없는 신규 에이전트 마지막
+          // 이러면 원래 자리 있던 애는 항상 그대로 유지되고, 새로 들어온 애만 spread 됨
+          const sortedAgents = [...floorAgents].sort((a, b) => {
+            const aHas = !!a.position; const bHas = !!b.position;
+            if (aHas && !bHas) return -1;
+            if (!aHas && bHas) return 1;
+            return 0;
+          });
+          sortedAgents.forEach((a) => {
+            const i = floorAgents.indexOf(a);
             const original = a.position || defaultPos(i, a);
-            // CPO 는 고정 자리, 나머지는 겹치면 자동 spread
-            const p = isManagerAgent(a) ? original : findFreeSlot(original.x, original.y);
+            // CPO = 고정 / 영속된 position 있으면 그대로 유지 (충돌해도 자기 자리)
+            // position 없는 신규만 findFreeSlot 으로 spread
+            const p = (isManagerAgent(a) || a.position)
+              ? original
+              : findFreeSlot(original.x, original.y);
             occupied.push(p);
-            // 겹침 회피 결과를 store 에 영속화 (재로드시 자리 유지)
-            if (!isManagerAgent(a) && (p.x !== original.x || p.y !== original.y)) {
+            // 신규 에이전트가 spread 된 경우만 영속화 (기존 영속 position 은 그대로)
+            if (!isManagerAgent(a) && !a.position && (p.x !== original.x || p.y !== original.y)) {
+              updateAgent(a.id, { position: { x: p.x, y: p.y }, floor: a.floor ?? 1 });
+            } else if (!isManagerAgent(a) && !a.position) {
+              // 신규 에이전트인데 충돌 없이 defaultPos 로 자리 잡힌 경우도 영속
               updateAgent(a.id, { position: { x: p.x, y: p.y }, floor: a.floor ?? 1 });
             }
             const container = this.add.container(p.x, p.y);
