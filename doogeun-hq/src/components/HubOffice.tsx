@@ -45,16 +45,38 @@ function buildBlockedCells(placed: PlacedFurniture[]): Set<string> {
   return blocked;
 }
 
-/** 가장 가까운 free 셀 탐색 (BFS, 원 주변 최대 10셀) */
-function nearestFree(col: number, row: number, blocked: Set<string>, maxRow: number): { col: number; row: number } {
+/** 의자/쇼파 셀 집합 반환 — blocked여도 앉을 수 있는 예외 셀 */
+function buildSeatCells(placed: PlacedFurniture[]): Set<string> {
+  const seats = new Set<string>();
+  for (const item of placed) {
+    const def = getFurnitureDef(item.defId);
+    if (!def) continue;
+    const lbl = (def.label || "").toLowerCase();
+    if (!def.isSeat && !/쇼파|sofa|bench|소파|의자|chair|좌석/.test(lbl)) continue;
+    for (let dr = 0; dr < def.heightCells; dr++) {
+      for (let dc = 0; dc < def.widthCells; dc++) {
+        seats.add(`${item.col + dc},${item.row + dr}`);
+      }
+    }
+  }
+  return seats;
+}
+
+/** 가장 가까운 free 셀 탐색 (BFS, 원 주변 최대 10셀).
+ *  seatCells 전달 시 — blocked이어도 의자/쇼파 위는 통과 허용 */
+function nearestFree(col: number, row: number, blocked: Set<string>, maxRow: number, seatCells?: Set<string>): { col: number; row: number } {
   const minRow = Math.ceil(64 / 32); // WINDOW_ZONE_HEIGHT
-  if (!blocked.has(`${col},${row}`) && row >= minRow && row < maxRow) return { col, row };
+  const canPlace = (c: number, r: number) => {
+    const k = `${c},${r}`;
+    return (!blocked.has(k) || seatCells?.has(k)) && r >= minRow && r < maxRow;
+  };
+  if (canPlace(col, row)) return { col, row };
   const visited = new Set<string>([`${col},${row}`]);
   const queue: Array<{ c: number; r: number }> = [{ c: col, r: row }];
   const dirs = [[0,-1],[0,1],[-1,0],[1,0],[-1,-1],[1,-1],[-1,1],[1,1]];
   while (queue.length > 0) {
     const cur = queue.shift()!;
-    if (!blocked.has(`${cur.c},${cur.r}`) && cur.r >= minRow && cur.r < maxRow) {
+    if (canPlace(cur.c, cur.r)) {
       return { col: cur.c, row: cur.r };
     }
     if (visited.size > 200) break;
@@ -336,11 +358,12 @@ export default function HubOffice({ floor, agentCount }: Props) {
             const agentId = c.getData("agentId") as string | undefined;
             const instanceId = c.getData("instanceId") as string | undefined;
             if (agentId) {
-              // 에이전트 이동 — 가구 차단 셀 회피 (nearest walkable)
+              // 에이전트 이동 — 가구 차단 셀 회피 (nearest walkable). 의자/쇼파 위는 앉기 허용
               const blocked = buildBlockedCells(this.placedFurn);
+              const seatCells = buildSeatCells(this.placedFurn);
               const rawCol = Math.round(c.x / 32);
               const rawRow = Math.max(Math.ceil(WINDOW_ZONE_HEIGHT / 32), Math.round(c.y / 32));
-              const free = nearestFree(rawCol, rawRow, blocked, Math.floor(800 / 32));
+              const free = nearestFree(rawCol, rawRow, blocked, Math.floor(800 / 32), seatCells);
               const sx = free.col * 32;
               const sy = free.row * 32;
 
