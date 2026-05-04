@@ -14,7 +14,7 @@ import { apiBase } from "@/lib/utils";
 import {
   X, Users, Bug, Cpu, Settings, LogOut, Send,
   MessagesSquare, Plus, Home as HomeIcon, RefreshCw, ChevronRight, ChevronLeft,
-  Grid3x3, Pencil, Terminal as TerminalIcon, Copy, Check, Trash2, BookOpen,
+  Grid3x3, Pencil, Terminal as TerminalIcon, Copy, Check, Trash2,
 } from "lucide-react";
 import DebugPanel, { LogsPane } from "@/components/DebugPanel";
 import VersionBadge from "@/components/VersionBadge";
@@ -374,7 +374,6 @@ export default function HubPage() {
           <WorkingAgentsStrip collapsed={sideCollapsed} onSelect={(id) => { setSelectedAgentId(id); setChatOpen(true); }} />
           <SideItem collapsed={sideCollapsed} icon={Cpu} label="서버실" onClick={() => setModalKey("server")} />
           <SideItem collapsed={sideCollapsed} icon={Bug} label="연구소" onClick={() => setModalKey("lab")} />
-          <SideItem collapsed={sideCollapsed} icon={BookOpen} label="📚 책장" onClick={() => router.push("/timeline")} />
           <SideItem collapsed={sideCollapsed} icon={Settings} label="설정" onClick={() => router.push("/settings")} />
           <div className="h-px bg-gray-800/60 my-2" />
           {/* 메모리 정리 → 서버실(ServerDashboard) 의 메모리 게이지 클릭으로 통합. 별도 메뉴 제거 */}
@@ -1213,13 +1212,18 @@ function WorkingAgentsStrip({ collapsed, onSelect }: { collapsed: boolean; onSel
 function AgentSelector({ agents, selectedId, onSelect, onStaffStatsClick }: { agents: Agent[]; selectedId: string | null; onSelect: (id: string) => void; onStaffStatsClick?: () => void }) {
   const streamingByTeam = useChatStore((s) => s.streamingByTeam);
   const unreadByTeam = useChatStore((s) => s.unreadByTeam);
-  const cpoIdx = agents.findIndex((a) => a.id === "cpo-claude" || a.id.includes("cpo"));
-  const filtered = agents.filter((a) => a.id !== "staff");
+  const router = useRouter();
+
+  // 관리자 라인 (hq-ops, staff) 강제 prepend — hq-ops 최상단, 그 다음 staff
+  const filtered = agents.filter((a) => a.id !== "staff" && a.id !== "hq-ops");
   const staffAgent = agents.find((a) => a.id === "staff");
+  const hqOpsAgent = agents.find((a) => a.id === "hq-ops");
   const ordered: Agent[] = [...filtered];
-  const insertAt = cpoIdx >= 0 ? cpoIdx + 1 : 0;
   const virtualStaff = staffAgent ?? ({ id: "staff", name: "스태프", emoji: "🧑‍💼", role: "special", status: "idle", floor: 1, description: "", systemPromptMd: "", createdAt: 0, updatedAt: 0, activity: [] } as Agent);
-  ordered.splice(insertAt, 0, virtualStaff);
+  const virtualHqOps = hqOpsAgent ?? ({ id: "hq-ops", name: "두근컴퍼니 관리자", emoji: "📊", role: "special", status: "idle", floor: 1, description: "", systemPromptMd: "", createdAt: 0, updatedAt: 0, activity: [] } as Agent);
+  // CPO 보다 위, 그 다음 staff (관리자 라인 = 최상단 2줄)
+  ordered.unshift(virtualStaff);
+  ordered.unshift(virtualHqOps);
 
   // 선택된 에이전트 자동 스크롤 — 새 에이전트가 리스트 끝쪽에 있을 때 안 보이는 문제 방지
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -1236,8 +1240,10 @@ function AgentSelector({ agents, selectedId, onSelect, onStaffStatsClick }: { ag
         const streaming = !!streamingByTeam[a.id];
         const unread = unreadByTeam[a.id] ?? 0;
         const isStaff = a.id === "staff";
+        const isHqOps = a.id === "hq-ops";
+        const isAdminLine = isStaff || isHqOps;
         return (
-          <div key={a.id} data-agent-id={a.id} className={`flex w-full ${isStaff ? "border-b border-amber-500/30" : ""}`}>
+          <div key={a.id} data-agent-id={a.id} className={`flex w-full ${isAdminLine ? "border-b border-sky-500/25 bg-sky-500/5" : ""}`}>
             <button
               onClick={() => onSelect(a.id)}
               className={`flex-1 min-w-0 flex items-center gap-1.5 px-2.5 py-1.5 text-left text-[12px] transition-colors ${
@@ -1262,6 +1268,15 @@ function AgentSelector({ agents, selectedId, onSelect, onStaffStatsClick }: { ag
                 title="스태프 통계"
               >
                 📊
+              </button>
+            )}
+            {isHqOps && (
+              <button
+                onClick={(e) => { e.stopPropagation(); router.push("/timeline"); }}
+                className="shrink-0 w-8 flex items-center justify-center text-[12px] transition-colors text-sky-400 hover:bg-sky-500/15 hover:text-sky-200 border-l border-gray-800/60"
+                title="📚 책장 — 모든 패치 히스토리 회독"
+              >
+                📚
               </button>
             )}
           </div>

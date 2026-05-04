@@ -988,6 +988,23 @@ async def run_claude(
     except Exception as _pol_err:
         logger.warning(f"[{team_id}] {pol_filename} 로드 실패 (무시): {_pol_err}")
 
+    # ── hq-ops 사용자 규칙 자동 prepend (server/hq_ops_rules.md) ──
+    # 사용자가 직접 편집하는 규칙 파일 — 변경은 다음 호출에 즉시 반영.
+    if team_id == "hq-ops":
+        try:
+            rules_path = Path(__file__).parent / "hq_ops_rules.md"
+            if rules_path.exists():
+                rules_content = rules_path.read_text(encoding="utf-8")
+                system_prompt = (
+                    f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"📜 사용자 정의 규칙 (hq_ops_rules.md — 최우선)\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+                    f"{rules_content}\n\n"
+                    f"{system_prompt}"
+                )
+        except Exception as _r_err:
+            logger.warning(f"[{team_id}] hq_ops_rules.md 로드 실패 (무시): {_r_err}")
+
     # ── SOP 자동 주입 (단, 단순 인사/한줄 질문은 스킵하여 속도 향상) ──
     _prompt_len = len(prompt.strip())
     _is_simple = _prompt_len < 80 and "\n" not in prompt.strip()

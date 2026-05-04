@@ -2,8 +2,9 @@
 
 import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
-import { ChevronLeft, RefreshCw, FileText, Hash, Clock, Filter } from "lucide-react";
+import { ChevronLeft, RefreshCw, FileText, Hash, Clock } from "lucide-react";
 import { apiBase } from "@/lib/utils";
+import { useThemeStore } from "@/stores/themeStore";
 
 interface PatchRow {
   ts: string;
@@ -20,24 +21,28 @@ interface PatchRow {
   full_text?: string;
 }
 
-interface Detail extends PatchRow {
-  full_text?: string;
-}
+// 4 그룹으로 압축 — 디버깅 / 개선 / 롤백 / 정비
+type GroupKey = "debug" | "improve" | "revert" | "maintain";
 
-const TYPE_META: Record<string, { emoji: string; label: string; color: string }> = {
-  fix: { emoji: "🐛", label: "버그 수정", color: "text-rose-300" },
-  feat: { emoji: "✨", label: "기능 추가", color: "text-emerald-300" },
-  perf: { emoji: "⚡", label: "성능 개선", color: "text-amber-300" },
-  refactor: { emoji: "🔧", label: "코드 정리", color: "text-sky-300" },
-  ux: { emoji: "🎨", label: "UX", color: "text-pink-300" },
-  docs: { emoji: "📝", label: "문서", color: "text-gray-300" },
-  chore: { emoji: "🧹", label: "점검", color: "text-gray-400" },
-  style: { emoji: "💄", label: "스타일", color: "text-pink-200" },
-  test: { emoji: "🧪", label: "테스트", color: "text-purple-300" },
-  build: { emoji: "📦", label: "빌드", color: "text-orange-300" },
-  ci: { emoji: "🤖", label: "CI", color: "text-teal-300" },
-  security: { emoji: "🔒", label: "보안", color: "text-red-300" },
-  revert: { emoji: "⏪", label: "되돌림", color: "text-yellow-300" },
+const GROUP_META: Record<GroupKey, { emoji: string; label: string; types: string[] }> = {
+  debug:    { emoji: "🐛", label: "디버깅", types: ["fix", "security"] },
+  improve:  { emoji: "✨", label: "개선",   types: ["feat", "perf", "refactor", "ux", "style"] },
+  revert:   { emoji: "⏪", label: "롤백",   types: ["revert"] },
+  maintain: { emoji: "🧹", label: "정비",   types: ["docs", "chore", "ci", "build", "test"] },
+};
+
+const TYPE_TO_GROUP: Record<string, GroupKey> = (() => {
+  const m: Record<string, GroupKey> = {};
+  for (const [g, meta] of Object.entries(GROUP_META) as [GroupKey, typeof GROUP_META[GroupKey]][]) {
+    for (const t of meta.types) m[t] = g;
+  }
+  return m;
+})();
+
+const TYPE_EMOJI: Record<string, string> = {
+  fix: "🐛", feat: "✨", perf: "⚡", refactor: "🔧", ux: "🎨",
+  docs: "📝", chore: "🧹", style: "💄", test: "🧪", build: "📦",
+  ci: "🤖", security: "🔒", revert: "⏪",
 };
 
 function relTime(iso: string): string {
@@ -61,16 +66,18 @@ function relTime(iso: string): string {
 }
 
 export default function TimelinePage() {
+  const theme = useThemeStore((s) => s.theme);
+  const isLight = theme === "light";
   const [rows, setRows] = useState<PatchRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<string>(""); // type filter
-  const [detail, setDetail] = useState<Detail | null>(null);
+  const [filter, setFilter] = useState<GroupKey | "">("");
+  const [detail, setDetail] = useState<PatchRow | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
 
   const load = async () => {
     setLoading(true);
     try {
-      const r = await fetch(`${apiBase()}/api/admin/patch-log?limit=300`);
+      const r = await fetch(`${apiBase()}/api/admin/patch-log?limit=500`);
       const d = await r.json();
       setRows(d.rows || []);
     } catch (e) {
@@ -92,10 +99,11 @@ export default function TimelinePage() {
     finally { setDetailLoading(false); }
   };
 
-  // 필터 + 날짜별 그룹핑
+  const groupOf = (r: PatchRow): GroupKey => TYPE_TO_GROUP[(r.type || "").toLowerCase()] || "maintain";
+
   const filtered = useMemo(() => {
     if (!filter) return rows;
-    return rows.filter((r) => (r.type || "").toLowerCase() === filter);
+    return rows.filter((r) => groupOf(r) === filter);
   }, [rows, filter]);
 
   const grouped = useMemo(() => {
@@ -108,27 +116,39 @@ export default function TimelinePage() {
     return out;
   }, [filtered]);
 
-  const types = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const r of rows) {
-      const t = (r.type || "").toLowerCase();
-      if (t) counts[t] = (counts[t] || 0) + 1;
-    }
-    return Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  const groupCounts = useMemo(() => {
+    const c: Record<GroupKey, number> = { debug: 0, improve: 0, revert: 0, maintain: 0 };
+    for (const r of rows) c[groupOf(r)] += 1;
+    return c;
   }, [rows]);
 
+  // 라이트모드 친화 색상 — globals.css 가 bg-gray-* 와 text-gray-100/200/300/400 자동 변환하지만,
+  // emerald/rose/amber 같은 직접 색은 라이트에서 흐릿 → 조건부로 진한 색.
+  const groupColor = (g: GroupKey): string => {
+    if (isLight) {
+      return g === "debug"   ? "text-rose-700"
+           : g === "improve" ? "text-emerald-700"
+           : g === "revert"  ? "text-amber-700"
+                             : "text-slate-600";
+    }
+    return g === "debug"   ? "text-rose-300"
+         : g === "improve" ? "text-emerald-300"
+         : g === "revert"  ? "text-amber-300"
+                           : "text-slate-300";
+  };
+
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-950 via-gray-900 to-gray-950 text-gray-100">
-      <header className="sticky top-0 z-30 backdrop-blur-md bg-gray-950/80 border-b border-gray-800/60 px-3 py-2.5 flex items-center gap-2">
-        <Link href="/hub" className="p-1.5 rounded hover:bg-gray-800/60">
+    <div className="min-h-screen bg-gray-950 text-gray-100">
+      <header className="sticky top-0 z-30 backdrop-blur-md bg-gray-950/85 border-b border-gray-800 px-3 py-2.5 flex items-center gap-2">
+        <Link href="/hub" className="p-1.5 rounded hover:bg-gray-800/60 text-gray-300">
           <ChevronLeft className="w-5 h-5" />
         </Link>
         <div className="flex-1 min-w-0">
-          <div className="text-[15px] font-bold flex items-center gap-1.5">
+          <div className="text-[15px] font-bold flex items-center gap-1.5 text-gray-100">
             📚 두근컴퍼니 책장
           </div>
           <div className="text-[10px] text-gray-500 font-mono">
-            전체 {rows.length}개 패치 · 클릭하면 그때 무엇을 했는지 상세
+            전체 {rows.length}개 패치 · 카드 누르면 그때 무엇을 했는지 상세
           </div>
         </div>
         <button
@@ -140,27 +160,32 @@ export default function TimelinePage() {
         </button>
       </header>
 
-      <div className="px-3 py-2 flex gap-1.5 overflow-x-auto border-b border-gray-800/40">
+      {/* 4그룹 칩 — 한눈에 디버깅/개선/롤백/정비 */}
+      <div className="px-3 py-2.5 grid grid-cols-5 gap-1.5 border-b border-gray-800">
         <button
           onClick={() => setFilter("")}
-          className={`shrink-0 text-[11px] px-2.5 py-1 rounded-full border ${
-            filter === "" ? "bg-sky-500/20 border-sky-400/60 text-sky-100" : "border-gray-700 text-gray-400 hover:text-gray-200"
+          className={`text-[11px] py-1.5 rounded-md border font-bold ${
+            filter === "" ? "bg-sky-500/20 border-sky-400/60 text-sky-100" : "border-gray-800 text-gray-400 hover:text-gray-100 bg-gray-900/30"
           }`}
         >
           전체 {rows.length}
         </button>
-        {types.map(([t, n]) => {
-          const meta = TYPE_META[t] || { emoji: "📌", label: t, color: "text-gray-300" };
-          const active = filter === t;
+        {(Object.keys(GROUP_META) as GroupKey[]).map((g) => {
+          const meta = GROUP_META[g];
+          const active = filter === g;
           return (
             <button
-              key={t}
-              onClick={() => setFilter(active ? "" : t)}
-              className={`shrink-0 text-[11px] px-2.5 py-1 rounded-full border ${
-                active ? "bg-sky-500/20 border-sky-400/60 text-sky-100" : "border-gray-700 text-gray-400 hover:text-gray-200"
+              key={g}
+              onClick={() => setFilter(active ? "" : g)}
+              className={`text-[11px] py-1.5 rounded-md border font-bold flex items-center justify-center gap-0.5 ${
+                active
+                  ? "bg-sky-500/20 border-sky-400/60 text-sky-100"
+                  : "border-gray-800 text-gray-300 hover:text-gray-100 bg-gray-900/30"
               }`}
             >
-              {meta.emoji} {meta.label} {n}
+              <span>{meta.emoji}</span>
+              <span>{meta.label}</span>
+              <span className="text-[9px] opacity-70 font-mono">{groupCounts[g]}</span>
             </button>
           );
         })}
@@ -180,22 +205,26 @@ export default function TimelinePage() {
               </div>
               <div className="space-y-1.5">
                 {items.map((r) => {
-                  const meta = TYPE_META[(r.type || "").toLowerCase()] || { emoji: "📌", label: r.type || "기타", color: "text-gray-300" };
+                  const g = groupOf(r);
+                  const meta = GROUP_META[g];
+                  const t = (r.type || "").toLowerCase();
+                  const subEmoji = TYPE_EMOJI[t] || meta.emoji;
                   return (
                     <button
                       key={r.sha}
                       onClick={() => openDetail(r.short_sha || r.sha)}
-                      className="w-full text-left rounded-lg border border-gray-800/60 bg-gray-900/40 hover:bg-gray-900/70 hover:border-gray-700 transition-colors p-2.5"
+                      className="w-full text-left rounded-lg border border-gray-800 bg-gray-900/40 hover:bg-gray-900/70 hover:border-gray-700 transition-colors p-2.5"
                     >
                       <div className="flex items-start gap-2">
-                        <span className="text-[18px] shrink-0 leading-none mt-0.5">{meta.emoji}</span>
+                        <span className="text-[18px] shrink-0 leading-none mt-0.5">{subEmoji}</span>
                         <div className="flex-1 min-w-0">
-                          <div className={`text-[12.5px] leading-snug ${meta.color}`}>
+                          <div className={`text-[12.5px] leading-snug font-medium ${groupColor(g)}`}>
                             {r.subject.replace(/^([a-z]+)(\([^)]+\))?:\s/, "")}
                           </div>
-                          <div className="flex items-center gap-2 mt-1 text-[10px] text-gray-500 font-mono">
+                          <div className="flex items-center gap-2 mt-1 text-[10px] text-gray-500 font-mono flex-wrap">
                             <span className="flex items-center gap-0.5"><Hash className="w-2.5 h-2.5" />{r.short_sha}</span>
-                            {r.scope && <span className="text-sky-400/70">[{r.scope}]</span>}
+                            <span className="text-gray-500">[{meta.label}]</span>
+                            {r.scope && <span className="text-sky-400/80">[{r.scope}]</span>}
                             {r.files && r.files.length > 0 && (
                               <span className="flex items-center gap-0.5"><FileText className="w-2.5 h-2.5" />{r.files.length}개</span>
                             )}
@@ -220,7 +249,7 @@ export default function TimelinePage() {
           >
             <div className="px-4 py-3 border-b border-gray-800 flex items-start gap-2">
               <div className="text-[22px] shrink-0">
-                {(TYPE_META[(detail.type || "").toLowerCase()] || { emoji: "📌" }).emoji}
+                {TYPE_EMOJI[(detail.type || "").toLowerCase()] || "📌"}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="text-[13px] font-bold text-gray-100 leading-snug">
@@ -243,7 +272,7 @@ export default function TimelinePage() {
               {detail.scope && (
                 <div className="text-[11px]">
                   <span className="text-gray-500">영역:</span>{" "}
-                  <span className="text-sky-300 font-mono">[{detail.scope}]</span>
+                  <span className="text-sky-400/90 font-mono">[{detail.scope}]</span>
                 </div>
               )}
               {detail.files && detail.files.length > 0 && (
@@ -265,9 +294,9 @@ export default function TimelinePage() {
                 </div>
               )}
               {(detail.insertions > 0 || detail.deletions > 0) && (
-                <div className="text-[11px] text-gray-400 font-mono flex gap-3">
-                  <span className="text-emerald-400">+{detail.insertions}</span>
-                  <span className="text-rose-400">-{detail.deletions}</span>
+                <div className="text-[11px] font-mono flex gap-3">
+                  <span className={isLight ? "text-emerald-700 font-bold" : "text-emerald-400"}>+{detail.insertions}</span>
+                  <span className={isLight ? "text-rose-700 font-bold" : "text-rose-400"}>-{detail.deletions}</span>
                 </div>
               )}
             </div>
@@ -277,7 +306,7 @@ export default function TimelinePage() {
                 href={`https://github.com/600-g/company-hq/commit/${detail.sha}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="block w-full text-center text-[11px] text-cyan-300 hover:text-cyan-200 font-mono"
+                className={`block w-full text-center text-[11px] font-mono ${isLight ? "text-blue-700 hover:text-blue-900 font-bold" : "text-cyan-300 hover:text-cyan-200"}`}
               >
                 GitHub 에서 diff 보기 →
               </a>
