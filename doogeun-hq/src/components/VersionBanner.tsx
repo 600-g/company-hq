@@ -91,6 +91,7 @@ export default function VersionBanner() {
   const setCache = useVersionStore((s) => s.setCache);
   const [progressPct, setProgressPct] = useState(0); // 단조 증가
   const [progressStage, setProgressStage] = useState<string>("");
+  const [serverDown, setServerDown] = useState(false);
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const deployPollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -123,11 +124,15 @@ export default function VersionBanner() {
         const r = await fetch(`${apiBase()}/api/admin/git-head`, { cache: "no-store" });
         if (r.ok) {
           const d = await r.json();
-          if (mounted) setGitHead(d);
+          if (mounted) { setGitHead(d); setServerDown(false); }
           gitCommitNow = (d.commit || "") as string;
           nextVerNow = d.next_version;
+        } else {
+          if (mounted) setServerDown(true);
         }
-      } catch { /* ignore */ }
+      } catch {
+        if (mounted) setServerDown(true);
+      }
 
       // VersionBadge 가 자체 fetch 없이 읽도록 캐시 갱신 — 매분 fetch 2 → 1 (50% 절감)
       if (mounted && prodBuildNow && gitCommitNow) {
@@ -162,7 +167,7 @@ export default function VersionBanner() {
       }
     })();
 
-    pollTimer.current = setInterval(fetchAll, 60_000);
+    pollTimer.current = setInterval(fetchAll, 30_000);
     return () => {
       mounted = false;
       if (pollTimer.current) clearInterval(pollTimer.current);
@@ -287,12 +292,22 @@ export default function VersionBanner() {
 
   if (!loaded && !latestBuild) return null;
 
+  // 서버 연결 실패 배너 — 모달과 독립, 재시작 중일 때 상단 표시
+  const serverDownBanner = serverDown && !deploy?.running ? (
+    <div className="fixed top-0 inset-x-0 z-[399] py-1.5 px-4 bg-amber-950/95 border-b border-amber-500/40 flex items-center justify-center gap-2 text-[12px] text-amber-200">
+      <span className="w-2 h-2 bg-amber-400 rounded-full animate-pulse shrink-0" />
+      서버 연결 중... 배포 또는 재시작 중이면 잠시 후 자동 복구됩니다
+    </div>
+  ) : null;
+
   // 모달 표시 조건 — 진행 중 / 에러 / 미반영 알림 (단, 같은 commit 에 dismiss 했으면 모달 안 띄움)
   const dismissedForThis = isDismissedFor(gitCommit);
   const showModal = deploy?.running || deploy?.error || (hasPending && !dismissedForThis);
-  if (!showModal) return null;
+  if (!showModal) return serverDownBanner;
 
   return (
+    <>
+    {serverDownBanner}
     <div className="fixed inset-0 z-[400] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
       <div className="w-full max-w-md rounded-2xl border border-sky-400/50 bg-gray-950/98 shadow-2xl overflow-hidden">
         {/* (1) 진행 중 — 닫기 불가 */}
@@ -448,5 +463,6 @@ export default function VersionBanner() {
         )}
       </div>
     </div>
+    </>
   );
 }
