@@ -110,19 +110,22 @@ export default function VersionBanner() {
         }
       } catch { /* ignore */ }
 
-      // git HEAD — 미반영 commit 감지
+      // git HEAD — 미반영 commit 감지 (release-notes 와 공유 — 중복 fetch 제거)
+      let gitCommitNow = "";
       try {
         const r = await fetch(`${apiBase()}/api/admin/git-head`, { cache: "no-store" });
         if (r.ok) {
           const d = await r.json();
           if (mounted) setGitHead(d);
+          gitCommitNow = (d.commit || "") as string;
         }
       } catch { /* ignore */ }
 
-      // 릴리즈 노트 — production build commit 부터 HEAD 까지 카테고리별
+      // 릴리즈 노트 — 미반영 변경 있을 때만 fetch (없으면 모달도 안 띄우니 낭비)
+      // production commit !== git HEAD 일 때만 호출 → 평소엔 매분 1 fetch 줄임
       const prodBuild = window.__DOOGEUN_LOADED_BUILD__ || "";
       const prodCommit = prodBuild.split("-")[0];
-      if (prodCommit) {
+      if (prodCommit && gitCommitNow && prodCommit !== gitCommitNow) {
         try {
           const r = await fetch(`${apiBase()}/api/admin/release-notes?from_commit=${encodeURIComponent(prodCommit)}`, { cache: "no-store" });
           if (r.ok) {

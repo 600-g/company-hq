@@ -25,6 +25,7 @@ import { useLayoutStore } from "@/stores/layoutStore";
 import { useSettingsStore } from "@/stores/settingsStore";
 import AgentConfigModal from "@/components/AgentConfigModal";
 import StaffStatsModal from "@/components/StaffStatsModal";
+const TimelineModal = dynamic(() => import("@/components/TimelineModal"), { ssr: false });
 import PhaserLoadingOverlay from "@/components/PhaserLoadingOverlay";
 import AgentContextMenu from "@/components/AgentContextMenu";
 import AgentActivityModal from "@/components/AgentActivityModal";
@@ -66,7 +67,7 @@ interface HubMsg {
   images?: string[];  // data URLs (사용자 메시지 첨부)
 }
 
-type ModalKey = null | "agents" | "server" | "bugs" | "settings" | "newAgent" | "staff-stats" | "lab";
+type ModalKey = null | "agents" | "server" | "bugs" | "settings" | "newAgent" | "staff-stats" | "lab" | "timeline";
 
 export default function HubPage() {
   const router = useRouter();
@@ -642,6 +643,7 @@ export default function HubPage() {
           selectedId={selectedAgentId}
           onSelect={(id) => setSelectedAgentId(id)}
           onStaffStatsClick={() => setModalKey("staff-stats")}
+          onTimelineClick={() => setModalKey("timeline")}
         />
 
         <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-2.5">
@@ -1098,6 +1100,7 @@ export default function HubPage() {
         />
       </Modal>
       <StaffStatsModal open={modalKey === "staff-stats"} onClose={() => setModalKey(null)} />
+      <TimelineModal open={modalKey === "timeline"} onClose={() => setModalKey(null)} />
 
       {showDebug && <DebugPanel onClose={() => setShowDebug(false)} />}
       {showTerminal && (
@@ -1209,10 +1212,9 @@ function WorkingAgentsStrip({ collapsed, onSelect }: { collapsed: boolean; onSel
   );
 }
 
-function AgentSelector({ agents, selectedId, onSelect, onStaffStatsClick }: { agents: Agent[]; selectedId: string | null; onSelect: (id: string) => void; onStaffStatsClick?: () => void }) {
+function AgentSelector({ agents, selectedId, onSelect, onStaffStatsClick, onTimelineClick }: { agents: Agent[]; selectedId: string | null; onSelect: (id: string) => void; onStaffStatsClick?: () => void; onTimelineClick?: () => void }) {
   const streamingByTeam = useChatStore((s) => s.streamingByTeam);
   const unreadByTeam = useChatStore((s) => s.unreadByTeam);
-  const router = useRouter();
 
   // 관리자 라인 (hq-ops, staff) 강제 prepend — hq-ops 최상단, 그 다음 staff
   const filtered = agents.filter((a) => a.id !== "staff" && a.id !== "hq-ops");
@@ -1272,7 +1274,7 @@ function AgentSelector({ agents, selectedId, onSelect, onStaffStatsClick }: { ag
             )}
             {isHqOps && (
               <button
-                onClick={(e) => { e.stopPropagation(); router.push("/timeline"); }}
+                onClick={(e) => { e.stopPropagation(); onTimelineClick?.(); }}
                 className="shrink-0 w-8 flex items-center justify-center text-[12px] transition-colors text-sky-400 hover:bg-sky-500/15 hover:text-sky-200 border-l border-gray-800/60"
                 title="📚 책장 — 모든 패치 히스토리 회독"
               >
