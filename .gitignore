@@ -27,6 +27,8 @@ server/team_prompts.json
 server/teams.json
 server/furniture_overrides.json
 server/doogeun_state_backups/
+# patch_log.jsonl — post-commit hook 자동 append, 새 환경엔 scripts/install_hooks.sh 로 backfill
+server/patch_log.jsonl
 
 # SQLite 런타임 DB (chat_history 통합)
 server/doogeun.db

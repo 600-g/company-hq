@@ -3404,6 +3404,123 @@ def _parse_commit_subject(h: str, subject: str) -> dict:
     }
 
 
+# ── 패치 로그 (post-commit hook 이 자동 append, hq-ops 가 회독) ──
+PATCH_LOG_PATH = os.path.join(os.path.dirname(__file__), "patch_log.jsonl")
+
+
+@app.get("/api/admin/patch-log")
+async def admin_patch_log(limit: int = 100, since_sha: str = "", since_days: int = 0,
+                          type: str = "", scope: str = "", group: str = "type") -> dict:
+    """git post-commit hook 이 기록한 patch_log.jsonl 회독.
+
+    파라미터:
+      limit       — 최대 반환 줄 수 (기본 100, 최신순)
+      since_sha   — 이 sha 이후 commit 만 (포함 안 함)
+      since_days  — N일 이내 commit 만 (since_sha 보다 우선순위 낮음)
+      type        — fix/feat/perf/... 필터
+      scope       — backend/frontend/cpo/... 필터
+      group       — type|scope|none. 카테고리별 그룹핑
+
+    반환: {ok, total, rows: [{ts, sha, short_sha, subject, type, scope, files, ...}], groups: {label: [rows]}}
+    hq-ops 에이전트가 모바일 채팅에서 "최근 무슨 변경?" 같은 질문 받으면 이걸 호출해 빠르게 회독.
+    """
+    if not os.path.exists(PATCH_LOG_PATH):
+        return {"ok": True, "total": 0, "rows": [], "groups": {}, "note": "patch_log.jsonl 없음 — bash scripts/install_hooks.sh 실행"}
+    rows: list[dict] = []
+    try:
+        with open(PATCH_LOG_PATH, "r", encoding="utf-8") as f:
+            for line in f:
+                try:
+                    rows.append(json.loads(line))
+                except Exception:
+                    continue
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+    # since_sha 이후만
+    if since_sha:
+        idx = next((i for i, r in enumerate(rows) if (r.get("sha") or "").startswith(since_sha) or r.get("short_sha") == since_sha), -1)
+        if idx >= 0:
+            rows = rows[idx + 1:]
+
+    # since_days 만 (since_sha 와 함께 쓰면 중복 적용 — 의도)
+    if since_days > 0:
+        from datetime import timedelta
+        cutoff = datetime.utcnow() - timedelta(days=since_days)
+        filtered: list[dict] = []
+        for r in rows:
+            ts_str = (r.get("ts") or "").replace("Z", "")
+            try:
+                ts_dt = datetime.fromisoformat(ts_str)
+                if ts_dt >= cutoff:
+                    filtered.append(r)
+            except Exception:
+                filtered.append(r)
+        rows = filtered
+
+    # type/scope 필터
+    if type:
+        rows = [r for r in rows if (r.get("type") or "").lower() == type.lower()]
+    if scope:
+        rows = [r for r in rows if (r.get("scope") or "").lower() == scope.lower()]
+
+    total = len(rows)
+    rows = rows[-limit:]  # 최신순 (jsonl 은 append 순)
+    rows = list(reversed(rows))
+
+    # 그룹핑
+    groups: dict[str, list[dict]] = {}
+    if group == "type":
+        for r in rows:
+            t = (r.get("type") or "other").lower()
+            info = _RELEASE_TYPE_MAP.get(t, {"emoji": "📌", "label": "기타"})
+            key = f"{info['emoji']} {info['label']}"
+            groups.setdefault(key, []).append(r)
+    elif group == "scope":
+        for r in rows:
+            sc = (r.get("scope") or "").lower()
+            key = _SCOPE_MAP.get(sc, sc) or "(미분류)"
+            groups.setdefault(key, []).append(r)
+
+    return {"ok": True, "total": total, "rows": rows, "groups": groups}
+
+
+@app.get("/api/admin/patch-log/{sha}")
+async def admin_patch_log_detail(sha: str) -> dict:
+    """단일 commit 상세 — 책장 클릭 시 그때 무엇을 했고 어느 파일이 변경됐는지 전부 표시."""
+    if not os.path.exists(PATCH_LOG_PATH):
+        return {"ok": False, "error": "patch_log.jsonl 없음"}
+    target: dict | None = None
+    try:
+        with open(PATCH_LOG_PATH, "r", encoding="utf-8") as f:
+            for line in f:
+                try:
+                    r = json.loads(line)
+                except Exception:
+                    continue
+                if (r.get("sha") or "").startswith(sha) or r.get("short_sha") == sha:
+                    target = r
+                    break
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+    if not target:
+        return {"ok": False, "error": "sha 일치 commit 없음"}
+    # 추가 정보 — git show 로 stat + body 보강
+    try:
+        import subprocess
+        full_sha = target.get("sha", sha)
+        cp = subprocess.run(
+            ["git", "show", "--stat", "--pretty=format:%B", full_sha],
+            cwd="/Users/600mac/Developer/my-company/company-hq",
+            capture_output=True, text=True, timeout=8,
+        )
+        if cp.returncode == 0:
+            target["full_text"] = cp.stdout[:8000]
+    except Exception:
+        pass
+    return {"ok": True, "row": target}
+
+
 @app.get("/api/admin/release-notes")
 async def admin_release_notes(from_commit: str = ""):
     """production build commit 부터 HEAD 까지 commit 들을 카테고리별 패치노트로 변환."""

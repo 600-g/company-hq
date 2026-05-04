@@ -14,7 +14,7 @@ import { apiBase } from "@/lib/utils";
 import {
   X, Users, Bug, Cpu, Settings, LogOut, Send,
   MessagesSquare, Plus, Home as HomeIcon, RefreshCw, ChevronRight, ChevronLeft,
-  Grid3x3, Pencil, Terminal as TerminalIcon, Copy, Check, Trash2,
+  Grid3x3, Pencil, Terminal as TerminalIcon, Copy, Check, Trash2, BookOpen,
 } from "lucide-react";
 import DebugPanel, { LogsPane } from "@/components/DebugPanel";
 import VersionBadge from "@/components/VersionBadge";
@@ -374,6 +374,7 @@ export default function HubPage() {
           <WorkingAgentsStrip collapsed={sideCollapsed} onSelect={(id) => { setSelectedAgentId(id); setChatOpen(true); }} />
           <SideItem collapsed={sideCollapsed} icon={Cpu} label="서버실" onClick={() => setModalKey("server")} />
           <SideItem collapsed={sideCollapsed} icon={Bug} label="연구소" onClick={() => setModalKey("lab")} />
+          <SideItem collapsed={sideCollapsed} icon={BookOpen} label="📚 책장" onClick={() => router.push("/timeline")} />
           <SideItem collapsed={sideCollapsed} icon={Settings} label="설정" onClick={() => router.push("/settings")} />
           <div className="h-px bg-gray-800/60 my-2" />
           {/* 메모리 정리 → 서버실(ServerDashboard) 의 메모리 게이지 클릭으로 통합. 별도 메뉴 제거 */}
