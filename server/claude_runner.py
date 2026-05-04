@@ -897,6 +897,31 @@ async def run_claude(
         if team_id:
             sessions_store.set_claude_session_id(team_id, hq_session_id, new_id)
         cmd.extend(["--session-id", new_id])
+        # hq-ops: 새 세션 시작 시 chat_history 마지막 N 메시지를 prompt 에 inject
+        # (Claude CLI 세션이 깨져도 사용자 시점의 대화 흐름은 보존 — "이전 패치한거야?" 같은 질문 답 가능)
+        if team_id == "hq-ops":
+            try:
+                hist = sessions_store.get_messages(team_id, hq_session_id) or []
+                # 시스템 메시지 / 빈 content 제외, 최신 8개만
+                tail = [m for m in hist if isinstance(m, dict) and (m.get("content") or "").strip()][-8:]
+                if tail:
+                    lines = []
+                    for m in tail:
+                        role = m.get("role") or m.get("type") or "user"
+                        prefix = "사용자" if role == "user" else "관리자"
+                        c = str(m.get("content") or "").replace("\n", " ").strip()
+                        if len(c) > 400:
+                            c = c[:400] + "…"
+                        lines.append(f"[{prefix}] {c}")
+                    history_block = (
+                        "\n\n━━━━━ 직전 대화 흐름 (참고용, 답변에 직접 인용 X) ━━━━━\n"
+                        + "\n".join(lines)
+                        + "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                    )
+                    prompt = history_block + prompt
+                    logger.info("[hq-ops] 새 세션 — chat_history %d개 inject", len(tail))
+            except Exception as _hist_err:
+                logger.warning("[hq-ops] chat_history inject 실패: %s", _hist_err)
 
     # ── 시스템프롬프트 ──
     system_prompt = TEAM_SYSTEM_PROMPTS.get(team_id, DEFAULT_SYSTEM_PROMPT)
@@ -1085,7 +1110,9 @@ async def run_claude(
     # 단순 요청(인사/한줄/짧은 질문)은 haiku로 자동 다운그레이드 → 속도 2~3x, 비용 ↓
     cmd.extend(["-p", prompt])
     _model = TEAM_MODELS.get(team_id, "sonnet")
-    if _is_simple and _model == "sonnet":
+    # hq-ops 는 관리자 라인 — 짧은 요청도 multi-step 작업(배포·git commit·multi-file)
+    # 인 경우 많아 haiku 가 hang 유발. 다운그레이드 제외 → sonnet 유지로 안정성 우선.
+    if _is_simple and _model == "sonnet" and team_id != "hq-ops":
         _model = "haiku"
         logger.info("[%s] 단순 요청 감지 — haiku로 다운그레이드 (%d chars)", team_id, _prompt_len)
     cmd.extend(["--model", _model])
