@@ -1212,32 +1212,73 @@ function WorkingAgentsStrip({ collapsed, onSelect }: { collapsed: boolean; onSel
   );
 }
 
+/** 에이전트의 사이드바 그룹 분류 — agentStore.roleGroup 우선, 없으면 id 기반 default */
+function groupOfAgent(a: Agent): "system" | "dev" | "agent" {
+  if (a.roleGroup === "system" || a.roleGroup === "dev" || a.roleGroup === "agent") return a.roleGroup;
+  // ID 기반 default 추론 (마이그레이션)
+  const SYSTEM_IDS = new Set(["hq-ops", "cpo-claude", "staff", "server-monitor", "agent-6d883e"]);
+  if (SYSTEM_IDS.has(a.id)) return "system";
+  if (a.id.startsWith("agent-")) return "agent";
+  return "dev";
+}
+
+const GROUP_META: Record<"system" | "dev" | "agent", { emoji: string; label: string; bg: string }> = {
+  system: { emoji: "🛠", label: "시스템", bg: "bg-sky-500/8" },
+  dev:    { emoji: "💻", label: "개발",   bg: "bg-emerald-500/5" },
+  agent:  { emoji: "🤖", label: "에이전트", bg: "" },
+};
+
+const SIDEBAR_GROUPS_KEY = "doogeun-hq-sidebar-groups";
+function getCollapsedGroups(): Record<"system" | "dev" | "agent", boolean> {
+  try {
+    const v = JSON.parse(localStorage.getItem(SIDEBAR_GROUPS_KEY) || "{}");
+    return {
+      system: !!v.system,
+      dev: !!v.dev,
+      agent: !!v.agent,
+    };
+  } catch {
+    return { system: false, dev: false, agent: false };
+  }
+}
+
 function AgentSelector({ agents, selectedId, onSelect, onStaffStatsClick, onTimelineClick }: { agents: Agent[]; selectedId: string | null; onSelect: (id: string) => void; onStaffStatsClick?: () => void; onTimelineClick?: () => void }) {
   const streamingByTeam = useChatStore((s) => s.streamingByTeam);
   const unreadByTeam = useChatStore((s) => s.unreadByTeam);
+  const [collapsed, setCollapsed] = useState<Record<"system" | "dev" | "agent", boolean>>(() =>
+    typeof window !== "undefined" ? getCollapsedGroups() : { system: false, dev: false, agent: false }
+  );
+  const toggleGroup = (g: "system" | "dev" | "agent") => {
+    setCollapsed((prev) => {
+      const next = { ...prev, [g]: !prev[g] };
+      try { localStorage.setItem(SIDEBAR_GROUPS_KEY, JSON.stringify(next)); } catch {/* */}
+      return next;
+    });
+  };
 
-  // 관리자 라인 (hq-ops, staff) 강제 prepend — hq-ops 최상단, 그 다음 staff
+  // 관리자 라인 (hq-ops, staff) 강제 prepend — 시스템 그룹 최상단
   const filtered = agents.filter((a) => a.id !== "staff" && a.id !== "hq-ops");
   const staffAgent = agents.find((a) => a.id === "staff");
   const hqOpsAgent = agents.find((a) => a.id === "hq-ops");
-  const ordered: Agent[] = [...filtered];
-  const virtualStaff = staffAgent ?? ({ id: "staff", name: "스태프", emoji: "🧑‍💼", role: "special", status: "idle", floor: 1, description: "", systemPromptMd: "", createdAt: 0, updatedAt: 0, activity: [] } as Agent);
-  const virtualHqOps = hqOpsAgent ?? ({ id: "hq-ops", name: "두근컴퍼니 관리자", emoji: "📊", role: "special", status: "idle", floor: 1, description: "", systemPromptMd: "", createdAt: 0, updatedAt: 0, activity: [] } as Agent);
-  // CPO 보다 위, 그 다음 staff (관리자 라인 = 최상단 2줄)
-  ordered.unshift(virtualStaff);
-  ordered.unshift(virtualHqOps);
+  const virtualStaff = staffAgent ?? ({ id: "staff", name: "스태프", emoji: "🧑‍💼", role: "special", roleGroup: "system", status: "idle", floor: 1, description: "", systemPromptMd: "", createdAt: 0, updatedAt: 0, activity: [] } as Agent);
+  const virtualHqOps = hqOpsAgent ?? ({ id: "hq-ops", name: "두근컴퍼니 관리자", emoji: "📊", role: "special", roleGroup: "system", status: "idle", floor: 1, description: "", systemPromptMd: "", createdAt: 0, updatedAt: 0, activity: [] } as Agent);
 
-  // 선택된 에이전트 자동 스크롤 — 새 에이전트가 리스트 끝쪽에 있을 때 안 보이는 문제 방지
+  // 3 그룹 분리
+  const allOrdered: Agent[] = [virtualHqOps, virtualStaff, ...filtered];
+  const groups: Record<"system" | "dev" | "agent", Agent[]> = { system: [], dev: [], agent: [] };
+  for (const a of allOrdered) {
+    groups[groupOfAgent(a)].push(a);
+  }
+
+  // 선택된 에이전트 자동 스크롤
   const listRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (!selectedId || !listRef.current) return;
     const el = listRef.current.querySelector<HTMLElement>(`[data-agent-id="${selectedId}"]`);
     if (el) el.scrollIntoView({ block: "nearest", behavior: "smooth" });
-  }, [selectedId, ordered.length]);
+  }, [selectedId, agents.length]);
 
-  return (
-    <div ref={listRef} className="border-b border-gray-800/60 max-h-[42vh] overflow-y-auto">
-      {ordered.map((a) => {
+  const renderRow = (a: Agent) => {
         const active = selectedId === a.id;
         const streaming = !!streamingByTeam[a.id];
         const unread = unreadByTeam[a.id] ?? 0;
@@ -1281,6 +1322,29 @@ function AgentSelector({ agents, selectedId, onSelect, onStaffStatsClick, onTime
                 📚
               </button>
             )}
+          </div>
+        );
+  };
+
+  return (
+    <div ref={listRef} className="border-b border-gray-800/60 max-h-[48vh] overflow-y-auto">
+      {(["system", "dev", "agent"] as const).map((g) => {
+        const meta = GROUP_META[g];
+        const list = groups[g];
+        const isCollapsed = collapsed[g];
+        if (list.length === 0) return null;
+        return (
+          <div key={g}>
+            <button
+              onClick={() => toggleGroup(g)}
+              className={`w-full flex items-center gap-1.5 px-2.5 py-1 text-[10.5px] font-bold uppercase tracking-wider text-gray-500 hover:text-gray-200 hover:bg-gray-900/40 transition-colors ${meta.bg}`}
+              title={isCollapsed ? "펼치기" : "접기"}
+            >
+              <span className={`text-[9px] transition-transform ${isCollapsed ? "" : "rotate-90"}`}>▶</span>
+              <span>{meta.emoji} {meta.label}</span>
+              <span className="text-[9px] font-mono text-gray-600 ml-auto">{list.length}</span>
+            </button>
+            {!isCollapsed && list.map(renderRow)}
           </div>
         );
       })}

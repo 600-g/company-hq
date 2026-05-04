@@ -15,6 +15,8 @@ export interface Agent {
   name: string;
   emoji: string;
   role: string;
+  /** 사이드바 그룹 분류 — 토글 가능한 3개 섹션. 미지정 시 "dev" default */
+  roleGroup?: "system" | "dev" | "agent";
   description: string;
   /** MD 기반 시스템 프롬프트 (사용자가 직접 붙여넣기 가능) */
   systemPromptMd: string;
