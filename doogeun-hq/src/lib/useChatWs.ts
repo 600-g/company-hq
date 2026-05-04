@@ -108,8 +108,10 @@ function connectTeam(teamId: string, agentEmoji?: string, agentName?: string): C
     state.ws = ws;
     ws.onopen = () => {
       state.retry = 0;
-      useChatStore.getState().setToolStatus(teamId, null);
-      // 재연결 성공 시 이전 연결끊김 메시지 ID 정리
+      const store = useChatStore.getState();
+      store.setToolStatus(teamId, null);
+      // 재연결 시 streaming 고착 해제 — WS 끊기며 ai_end 못 받은 경우 "생각 중" 말풍선 영구 잔류 방지
+      store.setStreaming(teamId, false);
       state.lastDisconnectMsgId = undefined;
     };
     ws.onclose = () => {
@@ -157,7 +159,7 @@ function handleMessage(teamId: string, data: Record<string, unknown>, agentEmoji
         id: (mm.id as string) || crypto.randomUUID(),
         role: (mm.role as "user" | "agent" | "system") || "agent",
         content: (mm.content as string) || "",
-        ts: typeof mm.ts === "number" ? (mm.ts as number) : Date.now(),
+        ts: typeof mm.ts === "number" ? (mm.ts as number) : 1, // 서버 ts 없으면 1 (30초 임계값에 걸려 말풍선 재표시 차단)
         agentEmoji: agentEmoji,
         agentName: agentName,
         streaming: false,
@@ -168,6 +170,9 @@ function handleMessage(teamId: string, data: Record<string, unknown>, agentEmoji
     if (restored.length >= cur.length) {
       store.setMessages(teamId, restored);
     }
+    // 히스토리 복원 후 streaming 고착 해제 (WS 끊기며 ai_end 못 받은 잔류 해소)
+    store.setStreaming(teamId, false);
+    store.setToolStatus(teamId, null);
     return;
   }
 
