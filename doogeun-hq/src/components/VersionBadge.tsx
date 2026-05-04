@@ -24,10 +24,10 @@ interface GitInfo {
 export default function VersionBadge({ collapsed }: { collapsed?: boolean }) {
   const [latest, setLatest] = useState<VInfo | null>(null);
   const [git, setGit] = useState<GitInfo | null>(null);
-  const setDismissed = useVersionStore((s) => s.setDismissed);
+  const reopen = useVersionStore((s) => s.reopen);
 
-  // 클릭 시 모달 다시 열림 (dismissed=false)
-  const reopenModal = () => setDismissed(false);
+  // 클릭 시 모달 다시 열림 — dismissedCommit 리셋
+  const reopenModal = () => reopen();
 
   useEffect(() => {
     let mounted = true;

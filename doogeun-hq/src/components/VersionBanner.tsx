@@ -85,8 +85,8 @@ export default function VersionBanner() {
   const [gitHead, setGitHead] = useState<GitHead | null>(null);
   const [deploy, setDeploy] = useState<DeployStatus | null>(null);
   const [releaseNotes, setReleaseNotes] = useState<ReleaseNotes | null>(null);
-  const dismissed = useVersionStore((s) => s.dismissed);
-  const setDismissed = useVersionStore((s) => s.setDismissed);
+  const isDismissedFor = useVersionStore((s) => s.isDismissedFor);
+  const setDismissedCommit = useVersionStore((s) => s.setDismissedCommit);
   const [progressPct, setProgressPct] = useState(0); // 단조 증가
   const [progressStage, setProgressStage] = useState<string>("");
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -249,8 +249,9 @@ export default function VersionBanner() {
 
   if (!loaded && !latestBuild) return null;
 
-  // 모달 표시 조건 — 진행 중 / 에러 / 미반영 알림
-  const showModal = deploy?.running || deploy?.error || (hasPending && !dismissed);
+  // 모달 표시 조건 — 진행 중 / 에러 / 미반영 알림 (단, 같은 commit 에 dismiss 했으면 모달 안 띄움)
+  const dismissedForThis = isDismissedFor(gitCommit);
+  const showModal = deploy?.running || deploy?.error || (hasPending && !dismissedForThis);
   if (!showModal) return null;
 
   return (
@@ -312,7 +313,7 @@ export default function VersionBanner() {
                 <RefreshCw className="w-4 h-4" /> 재시도
               </button>
               <button
-                onClick={() => { setDismissed(true); setDeploy(null); }}
+                onClick={() => { setDismissedCommit(gitCommit); setDeploy(null); }}
                 className="px-4 h-10 rounded-md text-[12px] border border-gray-700 text-gray-400 hover:text-gray-200 hover:border-gray-500"
               >
                 닫기
@@ -322,7 +323,7 @@ export default function VersionBanner() {
         )}
 
         {/* (3) 미반영 알림 — 새 버전 강조 */}
-        {!deploy?.running && !deploy?.error && hasPending && !dismissed && (
+        {!deploy?.running && !deploy?.error && hasPending && !dismissedForThis && (
           <>
             <div className="p-6 pb-4">
               <div className="flex items-center gap-3 mb-4">
@@ -338,7 +339,7 @@ export default function VersionBanner() {
                   </div>
                 </div>
                 <button
-                  onClick={() => setDismissed(true)}
+                  onClick={() => setDismissedCommit(gitCommit)}
                   className="shrink-0 text-gray-500 hover:text-gray-200 -mt-2 -mr-2 p-2"
                   title="닫기"
                 >
@@ -398,7 +399,7 @@ export default function VersionBanner() {
                   지금 업데이트
                 </button>
                 <button
-                  onClick={() => setDismissed(true)}
+                  onClick={() => setDismissedCommit(gitCommit)}
                   className="px-4 h-11 rounded-md text-[12px] border border-gray-700 text-gray-400 hover:text-gray-200 hover:border-gray-500 transition-colors"
                 >
                   나중에
