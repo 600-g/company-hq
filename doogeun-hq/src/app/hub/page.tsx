@@ -644,6 +644,7 @@ export default function HubPage() {
           onSelect={(id) => setSelectedAgentId(id)}
           onStaffStatsClick={() => setModalKey("staff-stats")}
           onTimelineClick={() => setModalKey("timeline")}
+          onContextMenu={(id, x, y) => setCtxMenu({ agentId: id, x, y })}
         />
 
         <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-2.5">
@@ -1242,7 +1243,7 @@ function getCollapsedGroups(): Record<"system" | "dev" | "agent", boolean> {
   }
 }
 
-function AgentSelector({ agents, selectedId, onSelect, onStaffStatsClick, onTimelineClick }: { agents: Agent[]; selectedId: string | null; onSelect: (id: string) => void; onStaffStatsClick?: () => void; onTimelineClick?: () => void }) {
+function AgentSelector({ agents, selectedId, onSelect, onStaffStatsClick, onTimelineClick, onContextMenu }: { agents: Agent[]; selectedId: string | null; onSelect: (id: string) => void; onStaffStatsClick?: () => void; onTimelineClick?: () => void; onContextMenu?: (agentId: string, x: number, y: number) => void }) {
   const streamingByTeam = useChatStore((s) => s.streamingByTeam);
   const unreadByTeam = useChatStore((s) => s.unreadByTeam);
   const [collapsed, setCollapsed] = useState<Record<"system" | "dev" | "agent", boolean>>(() =>
@@ -1289,6 +1290,7 @@ function AgentSelector({ agents, selectedId, onSelect, onStaffStatsClick, onTime
           <div key={a.id} data-agent-id={a.id} className={`flex w-full ${isAdminLine ? "border-b border-sky-500/25 bg-sky-500/5" : ""}`}>
             <button
               onClick={() => onSelect(a.id)}
+              onContextMenu={(e) => { e.preventDefault(); onContextMenu?.(a.id, e.clientX, e.clientY); }}
               className={`flex-1 min-w-0 flex items-center gap-1.5 px-2.5 py-1.5 text-left text-[12px] transition-colors ${
                 active ? "bg-sky-500/15 text-sky-100" : "text-gray-300 hover:bg-gray-800/40"
               }`}

@@ -1326,10 +1326,11 @@ export default function HubOffice({ floor, agentCount }: Props) {
 
   // 채팅 메시지 → 씬 말풍선 (실제 발화 내용 표시)
   // 핵심 규칙:
-  //   1) 팀별 첫 진입 시 (history sync 포함) 모든 기존 메시지를 "본 것" 으로 마킹 → 말풍선 재현 안 함
+  //   1) 마운트 이전 ts 메시지 (history_sync 포함) → 무조건 seen 처리, 말풍선 표시 안 함
   //   2) 새로 도착한 메시지(id 기준) 만 말풍선. 스트리밍 종료 후 seen 처리 → 재현 영구 차단
   const messagesByTeam = useChatStore((s) => s.messagesByTeam);
   const teamSeenIdsRef = useRef<Record<string, Set<string>>>({});
+  const mountTimeRef = useRef(Date.now());
   useEffect(() => {
     const s = sceneRef.current as {
       setBubbleText?: (teamId: string, text: string | null, autoHideMs?: number) => void;
@@ -1343,7 +1344,6 @@ export default function HubOffice({ floor, agentCount }: Props) {
 
       let seenSet = teamSeenIdsRef.current[teamId];
       if (!seenSet) {
-        // 처음 보는 팀 — 모든 기존 메시지 마킹 (history sync 차단). 말풍선 표시 안 함.
         seenSet = new Set(msgs.map((m) => m.id));
         teamSeenIdsRef.current[teamId] = seenSet;
         continue;
@@ -1352,16 +1352,20 @@ export default function HubOffice({ floor, agentCount }: Props) {
       const isStreaming = !!last.streaming;
       const alreadySeen = seenSet.has(last.id);
 
-      if (alreadySeen && !isStreaming) continue; // 본 메시지 + 완료 → 무시
+      if (alreadySeen && !isStreaming) continue;
+
+      // history_sync 재교체된 메시지 — ts가 마운트 이전이면 새 id여도 seen 처리
+      if (!isStreaming && last.ts < mountTimeRef.current) {
+        seenSet.add(last.id);
+        continue;
+      }
 
       if (!alreadySeen) {
-        // 새 메시지 (스트리밍 시작 또는 즉시 완료)
         s.setBubbleText(teamId, last.content, isStreaming ? 0 : 6000);
-        if (!isStreaming) seenSet.add(last.id); // 스트리밍 끝나야 seen 처리
+        if (!isStreaming) seenSet.add(last.id);
       } else {
-        // 같은 id, 아직 스트리밍 중 — 내용 갱신
         s.setBubbleText(teamId, last.content, 0);
-        if (!isStreaming) seenSet.add(last.id); // 종료 시점 캐치
+        if (!isStreaming) seenSet.add(last.id);
       }
     }
   }, [messagesByTeam]);
