@@ -54,6 +54,7 @@ interface ConnState {
   closed: boolean;
   retryCtx: { originalPrompt: string; count: number } | null;
   retryCount: number;
+  lastDisconnectMsgId?: string; // 연결끊김 메시지 ID (재연결 시 제거용)
 }
 
 // 팀별 WS 연결 — 페이지 전역 유지
@@ -107,18 +108,23 @@ function connectTeam(teamId: string, agentEmoji?: string, agentName?: string): C
     state.ws = ws;
     ws.onopen = () => {
       state.retry = 0;
-      // 연결 완료 시 toolStatus 맑게
       useChatStore.getState().setToolStatus(teamId, null);
+      // 재연결 성공 시 이전 연결끊김 메시지 ID 정리
+      state.lastDisconnectMsgId = undefined;
     };
     ws.onclose = () => {
       state.ws = null;
       if (!state.closed) {
         state.retry = Math.min(state.retry + 1, 5);
-        // 3회 이상 연속 끊김 → 사용자에게 시스템 메시지로 알림 (재시도 버튼 자동 노출)
-        if (state.retry >= 3) {
+        // 배포 진행 중이면 WS 재연결 메시지 표시 안 함 (배포 완료까지 침묵)
+        const isDeploying = typeof window !== "undefined" && !!(window as any).__DEPLOY_IN_PROGRESS__;
+        // 4회 이상 연속 끊김 + 배포 아닐 때만 알림 (배포 중엔 침묵, 배포 완료 후 계속 끊기면 표시)
+        if (state.retry >= 4 && !isDeploying) {
           try {
+            const msgId = crypto.randomUUID();
+            state.lastDisconnectMsgId = msgId;
             useChatStore.getState().appendMessage(teamId, {
-              id: crypto.randomUUID(),
+              id: msgId,
               role: "system",
               content: `❌ 연결 끊김 — 자동 재연결 ${state.retry}/5 시도 중. 응답 못 받으면 [재시도] 버튼 클릭`,
               ts: Date.now(),

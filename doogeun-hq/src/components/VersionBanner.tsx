@@ -8,6 +8,7 @@ import { useVersionStore } from "@/stores/versionStore";
 declare global {
   interface Window {
     __DOOGEUN_LOADED_BUILD__?: string;
+    __DEPLOY_IN_PROGRESS__?: boolean; // 배포 진행 중 플래그 — WS 메시지 억제용
   }
 }
 
@@ -199,6 +200,10 @@ export default function VersionBanner() {
     try {
       setProgressPct(0);
       setProgressStage("시작 중...");
+      // 배포 진행 중 플래그 설정 — WS 메시지 억제
+      if (typeof window !== "undefined") {
+        (window as any).__DEPLOY_IN_PROGRESS__ = true;
+      }
       const r = await fetch(`${apiBase()}/api/admin/deploy`, { method: "POST" });
       const d = await r.json();
       if (!d.ok) {
@@ -208,6 +213,10 @@ export default function VersionBanner() {
       startDeployPolling();
     } catch (e) {
       console.error("[deploy] 시작 실패", e);
+      // 에러 시 플래그 제거
+      if (typeof window !== "undefined") {
+        (window as any).__DEPLOY_IN_PROGRESS__ = false;
+      }
     }
   };
 
@@ -228,13 +237,17 @@ export default function VersionBanner() {
           setProgressPct(96);
           setProgressStage("CF edge 동기화 대기 중...");
           if (deployPollTimer.current) clearInterval(deployPollTimer.current);
+          // 배포 진행 중 플래그 해제 — CF 동기화는 자동으로 진행
+          if (typeof window !== "undefined") {
+            (window as any).__DEPLOY_IN_PROGRESS__ = false;
+          }
           // CF Pages 의 production alias propagation 시간 — version.json 이 새 build 가리킬 때까지 polling
           const targetBuild = d.last_result.build;
           // 🔑 사용자가 적용한 build 영구 마킹 (localStorage) — 탭/세션/디바이스 무관 영구
           //    cooldown 시간 기반 X → commit 일치 기반 (git HEAD 가 새 commit 으로 바뀔 때까지 영구)
           try { localStorage.setItem("doogeun-hq-applied-build", targetBuild); } catch { /* ignore */ }
-          // 임시 cooldown 도 보조 (10초 — reload 직후 짧은 race 윈도우 보호)
-          try { localStorage.setItem("doogeun-hq-reload-cooldown", String(Date.now() + 10_000)); } catch { /* ignore */ }
+          // 임시 cooldown 기다리기 (90초 — CF edge 동기화 대기, 이전 버전 서빙 중 팝업 재표시 방지)
+          try { localStorage.setItem("doogeun-hq-reload-cooldown", String(Date.now() + 90_000)); } catch { /* ignore */ }
           const startTs = Date.now();
           const verifyAndReload = async () => {
             const elapsed = Date.now() - startTs;
@@ -261,6 +274,10 @@ export default function VersionBanner() {
         }
         if (!d.running && d.error) {
           if (deployPollTimer.current) clearInterval(deployPollTimer.current);
+          // 배포 실패 시 플래그 해제
+          if (typeof window !== "undefined") {
+            (window as any).__DEPLOY_IN_PROGRESS__ = false;
+          }
         }
       } catch { /* ignore */ }
     };
