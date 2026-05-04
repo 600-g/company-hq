@@ -87,6 +87,7 @@ export default function VersionBanner() {
   const [releaseNotes, setReleaseNotes] = useState<ReleaseNotes | null>(null);
   const isDismissedFor = useVersionStore((s) => s.isDismissedFor);
   const setDismissedCommit = useVersionStore((s) => s.setDismissedCommit);
+  const setCache = useVersionStore((s) => s.setCache);
   const [progressPct, setProgressPct] = useState(0); // 단조 증가
   const [progressStage, setProgressStage] = useState<string>("");
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -98,6 +99,8 @@ export default function VersionBanner() {
 
     const fetchAll = async () => {
       // /version.json — production build (CF Pages)
+      let prodVerNow = "?";
+      let prodBuildNow = "";
       try {
         const r = await fetch("/version.json", { cache: "no-store" });
         if (r.ok) {
@@ -106,20 +109,35 @@ export default function VersionBanner() {
             const v = { build: d.build, version: d.version || "?", ts: d.ts || 0 };
             if (!window.__DOOGEUN_LOADED_BUILD__) window.__DOOGEUN_LOADED_BUILD__ = v.build;
             if (mounted) setLatestBuild(v);
+            prodVerNow = v.version;
+            prodBuildNow = v.build;
           }
         }
       } catch { /* ignore */ }
 
       // git HEAD — 미반영 commit 감지 (release-notes 와 공유 — 중복 fetch 제거)
       let gitCommitNow = "";
+      let nextVerNow: string | undefined = undefined;
       try {
         const r = await fetch(`${apiBase()}/api/admin/git-head`, { cache: "no-store" });
         if (r.ok) {
           const d = await r.json();
           if (mounted) setGitHead(d);
           gitCommitNow = (d.commit || "") as string;
+          nextVerNow = d.next_version;
         }
       } catch { /* ignore */ }
+
+      // VersionBadge 가 자체 fetch 없이 읽도록 캐시 갱신 — 매분 fetch 2 → 1 (50% 절감)
+      if (mounted && prodBuildNow && gitCommitNow) {
+        setCache({
+          build: prodBuildNow,
+          version: prodVerNow,
+          commit: gitCommitNow,
+          nextVersion: nextVerNow,
+          ts: Date.now(),
+        });
+      }
 
       // 릴리즈 노트 — 미반영 변경 있을 때만 fetch (없으면 모달도 안 띄우니 낭비)
       // production commit !== git HEAD 일 때만 호출 → 평소엔 매분 1 fetch 줄임

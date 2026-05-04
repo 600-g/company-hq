@@ -95,11 +95,24 @@ export const useChatStore = create<ChatState>()(persist((set, get) => ({
   },
 }), {
   name: "doogeun-hq-chat",
-  // 각 팀 최근 20 메시지만 persist — localStorage 용량 ↓ + hydrate 속도 ↑ (auth race 방지)
-  // 더 보고 싶으면 server history_sync 가 WS 연결 시 자동 복원
+  // 각 팀 최근 10 메시지 + content 5KB 자르기 — localStorage 용량 ↓↓ + hydrate 속도 ↑↑
+  // 화면 진입 직후 server history_sync (WS) 가 풀 히스토리 복원하므로 영속 분량 작아도 OK
   partialize: (state) => ({
     messagesByTeam: Object.fromEntries(
-      Object.entries(state.messagesByTeam).map(([k, v]) => [k, v.slice(-20)])
+      Object.entries(state.messagesByTeam).map(([k, v]) => [
+        k,
+        v.slice(-10).map((m) => {
+          // 너무 긴 메시지는 truncate (코드 블록·로그 등이 localStorage 폭주 유발)
+          // 큰 첨부(images base64, tools 출력) 도 영속에서 제거 — 화면 진입 시 server history_sync 가 풀 복원
+          const content = typeof m.content === "string" && m.content.length > 5000
+            ? m.content.slice(0, 5000) + "\n\n[…잘림 — 전체는 server 에서 자동 복원]"
+            : m.content;
+          const compact = { ...m, content } as WsMessage & { images?: unknown; tools?: unknown };
+          delete compact.images;
+          delete compact.tools;
+          return compact as WsMessage;
+        }),
+      ])
     ),
     unreadByTeam: state.unreadByTeam,
     lastActiveByTeam: state.lastActiveByTeam,

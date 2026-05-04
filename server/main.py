@@ -6,8 +6,11 @@ import asyncio
 import time
 import shutil
 import json
+import logging
 import uuid
 import subprocess
+
+logger = logging.getLogger("main")
 from pathlib import Path
 from datetime import datetime, timedelta
 from fastapi import FastAPI, WebSocket, UploadFile, File, Request, BackgroundTasks
@@ -1486,19 +1489,45 @@ _doogeun_ws_clients: set = set()
 
 
 def _load_doogeun_state() -> dict:
-    if os.path.exists(DOOGEUN_STATE_PATH):
-        try:
-            with open(DOOGEUN_STATE_PATH, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            if isinstance(data, dict):
-                return data
-        except Exception as e:
-            logger.warning("doogeun_state.json load failed: %s", e)
+    """SQLite state_kv 우선 read (디스크 I/O 1/100). 없으면 JSON 파일 fallback (1회 마이그레이션)."""
+    try:
+        from db import state_kv_get, state_kv_set
+        v = state_kv_get("doogeun_state")
+        if isinstance(v, dict):
+            return v
+        # 첫 호출 — JSON 파일에서 read 후 SQLite 로 1회 마이그레이션
+        if os.path.exists(DOOGEUN_STATE_PATH):
+            try:
+                with open(DOOGEUN_STATE_PATH, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                if isinstance(data, dict):
+                    state_kv_set("doogeun_state", data)
+                    logger.info("[doogeun_state] JSON → SQLite 마이그레이션 완료")
+                    return data
+            except Exception as e:
+                logger.warning("doogeun_state.json load failed: %s", e)
+    except Exception as e:
+        # SQLite 실패 → JSON fallback
+        logger.warning("[doogeun_state] SQLite read 실패, JSON fallback: %s", e)
+        if os.path.exists(DOOGEUN_STATE_PATH):
+            try:
+                with open(DOOGEUN_STATE_PATH, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                if isinstance(data, dict):
+                    return data
+            except Exception as ee:
+                logger.warning("doogeun_state.json load failed: %s", ee)
     return {"agents": [], "layout": {"floors": {}}, "version": 0, "updated_at": None}
 
 
 def _save_doogeun_state(data: dict) -> None:
-    """원자적 쓰기 + 시간별 백업. 쓰기 도중 재시작/크래시 시에도 무결성 유지."""
+    """원자적 쓰기 + 시간별 백업 + SQLite dual-write. 무결성 + 빠른 read 둘 다 보장."""
+    # SQLite dual-write — read path 가 여기서 즉시 hit
+    try:
+        from db import state_kv_set
+        state_kv_set("doogeun_state", data)
+    except Exception as e:
+        logger.warning("[doogeun_state] SQLite dual-write 실패 (JSON 만 저장): %s", e)
     try:
         # 4시간 단위 백업 로테이션 (6개 = 24시간 보존, 디스크 I/O 1/4)
         if os.path.exists(DOOGEUN_STATE_PATH):

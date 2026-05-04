@@ -245,6 +245,41 @@ def delete_session(team_id: str, session_id: str) -> None:
                        team_id, session_id, e)
 
 
+# ── state_kv (doogeun_state 등 key-value 영속) ─────────────────────
+
+def state_kv_get(key: str) -> dict | None:
+    """key 로 JSON 디코드된 값 반환. 없으면 None."""
+    init_db()
+    try:
+        with _conn() as c:
+            row = c.execute("SELECT value_json FROM state_kv WHERE key = ?", (key,)).fetchone()
+        if not row:
+            return None
+        return json.loads(row["value_json"])
+    except Exception as e:
+        logger.warning("[db] state_kv_get %s 실패: %s", key, e)
+        return None
+
+
+def state_kv_set(key: str, value: dict) -> None:
+    """key 에 JSON 직렬화 값 저장 (UPSERT)."""
+    init_db()
+    try:
+        body = json.dumps(value, ensure_ascii=False)
+        ts = int(time.time() * 1000)
+        with _lock, _conn() as c:
+            c.execute(
+                """INSERT INTO state_kv (key, value_json, updated_at)
+                   VALUES (?, ?, ?)
+                   ON CONFLICT(key) DO UPDATE SET
+                     value_json = excluded.value_json,
+                     updated_at = excluded.updated_at""",
+                (key, body, ts),
+            )
+    except Exception as e:
+        logger.warning("[db] state_kv_set %s 실패: %s", key, e)
+
+
 def stats() -> dict:
     """전체 통계 — 디버깅/모니터링용."""
     init_db()
