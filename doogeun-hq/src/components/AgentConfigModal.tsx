@@ -30,7 +30,6 @@ export default function AgentConfigModal({ agent, onClose }: Props) {
 
   const [name, setName] = useState(agent.name);
   const [emoji, setEmoji] = useState(agent.emoji);
-  const [role, setRole] = useState(agent.role);
   const [description, setDescription] = useState(agent.description);
   const [systemPromptMd, setSystemPromptMd] = useState(agent.systemPromptMd);
   const [workingDirectory, setWorkingDirectory] = useState(agent.workingDirectory ?? "");
@@ -49,7 +48,7 @@ export default function AgentConfigModal({ agent, onClose }: Props) {
   }, [onClose]);
 
   const dirty =
-    name !== agent.name || emoji !== agent.emoji || role !== agent.role ||
+    name !== agent.name || emoji !== agent.emoji ||
     description !== agent.description || systemPromptMd !== agent.systemPromptMd ||
     workingDirectory !== (agent.workingDirectory ?? "") ||
     githubRepo !== (agent.githubRepo ?? "") ||
@@ -66,7 +65,7 @@ export default function AgentConfigModal({ agent, onClose }: Props) {
     updateAgent(agent.id, {
       name: name.trim(),
       emoji,
-      role: role.trim(),
+      role: { system: "시스템", dev: "개발", agent: "에이전트" }[roleGroupChoice],
       description: description.trim(),
       systemPromptMd,
       workingDirectory: workingDirectory.trim() || undefined,
@@ -147,26 +146,20 @@ export default function AgentConfigModal({ agent, onClose }: Props) {
               </div>
             </div>
 
-            <Field label="역할 · 카테고리">
+            <Field label="카테고리">
               <div className="flex gap-1.5">
-                <input
-                  value={role}
-                  onChange={(e) => setRole(e.target.value)}
-                  placeholder="예: 프론트엔드 담당"
-                  className="flex-1 h-9 rounded-md border border-gray-700 bg-gray-900/60 px-3 text-sm text-gray-100 placeholder:text-gray-500"
-                />
                 {([
-                  { v: "system", label: "🛠", title: "시스템 그룹 — 관리자·모니터·스태프 등" },
-                  { v: "dev",    label: "💻", title: "개발 그룹 — 프론트·백엔드·디자인·QA 등" },
-                  { v: "agent",  label: "🤖", title: "에이전트 그룹 — 경량 자동화 봇 등" },
+                  { v: "system", label: "시스템", title: "관리자·모니터·스태프 등" },
+                  { v: "dev",    label: "개발",   title: "프론트·백엔드·디자인·QA 등" },
+                  { v: "agent",  label: "에이전트", title: "경량 자동화 봇 등" },
                 ] as const).map((g) => (
                   <button
                     key={g.v}
                     onClick={() => setRoleGroupChoice(g.v)}
                     title={g.title}
-                    className={`w-9 h-9 rounded-md border text-base shrink-0 transition-colors ${
+                    className={`px-3 py-1.5 rounded-full border text-[12px] font-medium transition-colors ${
                       roleGroupChoice === g.v
-                        ? "bg-sky-500/15 border-sky-400/50"
+                        ? "bg-sky-500/15 text-sky-200 border-sky-400/50"
                         : "border-gray-700 text-gray-500 hover:border-gray-500 hover:text-gray-200 bg-gray-900/40"
                     }`}
                   >
@@ -174,7 +167,7 @@ export default function AgentConfigModal({ agent, onClose }: Props) {
                   </button>
                 ))}
               </div>
-              <div className="text-[10px] text-gray-500 mt-0.5">역할명은 시스템 프롬프트에 주입 · 우측 아이콘은 사이드바 그룹 분류</div>
+              <div className="text-[10px] text-gray-500 mt-0.5">사이드바 그룹 분류 · 역할명으로도 사용됨</div>
             </Field>
 
             <Field label="설명 (한 줄)">
