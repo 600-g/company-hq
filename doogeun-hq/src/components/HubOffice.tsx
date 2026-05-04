@@ -1324,13 +1324,13 @@ export default function HubOffice({ floor, agentCount }: Props) {
     s?.setAgents?.(agents, floor, streamingByTeam);
   }, [agents, floor, streamingByTeam]);
 
-  // 채팅 메시지 → 씬 말풍선 (실제 발화 내용 표시)
-  // 핵심 규칙:
-  //   1) 마운트 이전 ts 메시지 (history_sync 포함) → 무조건 seen 처리, 말풍선 표시 안 함
-  //   2) 새로 도착한 메시지(id 기준) 만 말풍선. 스트리밍 종료 후 seen 처리 → 재현 영구 차단
+  // 채팅 메시지 → 씬 말풍선
+  // 규칙:
+  //   1) 마지막 이전 메시지는 항상 seen 동기화 → history_sync 복원분 자동 차단
+  //   2) 마지막 메시지도 30초 이상 지났으면 seen → 직전 대화 재표시 차단
+  //   3) 스트리밍 중이거나 30초 이내 완료된 메시지만 말풍선 표시
   const messagesByTeam = useChatStore((s) => s.messagesByTeam);
   const teamSeenIdsRef = useRef<Record<string, Set<string>>>({});
-  const mountTimeRef = useRef(Date.now());
   useEffect(() => {
     const s = sceneRef.current as {
       setBubbleText?: (teamId: string, text: string | null, autoHideMs?: number) => void;
@@ -1344,18 +1344,20 @@ export default function HubOffice({ floor, agentCount }: Props) {
 
       let seenSet = teamSeenIdsRef.current[teamId];
       if (!seenSet) {
-        seenSet = new Set(msgs.map((m) => m.id));
+        seenSet = new Set<string>();
         teamSeenIdsRef.current[teamId] = seenSet;
-        continue;
       }
+
+      // 마지막 제외한 모든 메시지 seen 동기화 (history_sync 재교체 대응)
+      for (const m of msgs.slice(0, -1)) seenSet.add(m.id);
 
       const isStreaming = !!last.streaming;
       const alreadySeen = seenSet.has(last.id);
 
       if (alreadySeen && !isStreaming) continue;
 
-      // history_sync 재교체된 메시지 — ts가 마운트 이전이면 새 id여도 seen 처리
-      if (!isStreaming && last.ts < mountTimeRef.current) {
+      // 30초 이상 전에 완료된 메시지 → 이전 대화 → 말풍선 표시 안 함
+      if (!isStreaming && (Date.now() - last.ts) > 30_000) {
         seenSet.add(last.id);
         continue;
       }
@@ -1364,6 +1366,7 @@ export default function HubOffice({ floor, agentCount }: Props) {
         s.setBubbleText(teamId, last.content, isStreaming ? 0 : 6000);
         if (!isStreaming) seenSet.add(last.id);
       } else {
+        // 같은 id, 스트리밍 중 — 내용 갱신
         s.setBubbleText(teamId, last.content, 0);
         if (!isStreaming) seenSet.add(last.id);
       }
