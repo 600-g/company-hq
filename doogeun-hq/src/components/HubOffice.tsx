@@ -604,8 +604,8 @@ export default function HubOffice({ floor, agentCount }: Props) {
             }, autoHideMs);
           }
 
-          // 🔒 하드 리밋 — 어떤 상태(스트리밍 멈춤/이벤트 누락 등)든 무조건 30초 후 사라짐
-          //   매 setBubbleText 호출마다 리셋 (스트리밍 중엔 갱신되며 연장, 멈추면 마지막 호출 +30초)
+          // 🔒 하드 리밋 — 어떤 상태(스트리밍 멈춤/이벤트 누락 등)든 무조건 20초 후 사라짐
+          //   매 setBubbleText 호출마다 리셋 (스트리밍 중엔 갱신되며 연장, 멈추면 마지막 호출 +20초)
           const hardPrev = this.bubbleHardLimitTimers[teamId];
           if (hardPrev) clearTimeout(hardPrev);
           this.bubbleHardLimitTimers[teamId] = setTimeout(() => {
@@ -614,7 +614,7 @@ export default function HubOffice({ floor, agentCount }: Props) {
             const sp = this.bubbleClearTimers[teamId];
             if (sp) { clearTimeout(sp); delete this.bubbleClearTimers[teamId]; }
             this.renderAgents();
-          }, 30_000);
+          }, 20_000);
 
           const prevText = this.lastBubbleByTeam[teamId];
           if (prevText === trimmed) return; // 텍스트만 동일하면 re-render 스킵 (타이머는 위에서 이미 갱신됨)
@@ -941,8 +941,14 @@ export default function HubOffice({ floor, agentCount }: Props) {
               bubble.lineTo(16, -56);
               bubble.lineTo(22, -64);
               bubble.strokePath();
+              // 말풍선 클릭으로 바로 사라지기
+              bubble.setInteractive(new Phaser.Geom.Rectangle(bx, by, padW, padH + 8), Phaser.Geom.Rectangle.Contains);
+              bubble.on("pointerdown", () => this.setBubbleText(a.id, null));
               container.add(bubble);
               container.add(txt);
+              // 텍스트도 클릭 가능
+              txt.setInteractive(new Phaser.Geom.Rectangle(-padW / 2, -padH - 64, padW, padH + 8), Phaser.Geom.Rectangle.Contains);
+              txt.on("pointerdown", () => this.setBubbleText(a.id, null));
               // 응답 끝나면 펄스 X (정적 표시), 작업 중이면 펄스
               if (streaming || a.status === "working") {
                 this.tweens.add({
