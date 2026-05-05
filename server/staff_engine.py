@@ -28,21 +28,43 @@ logger = logging.getLogger("staff")
 STATS_PATH = os.path.join(os.path.dirname(__file__), "staff_stats.json")
 
 
-def _load_stats() -> dict:
-    try:
-        if os.path.exists(STATS_PATH):
-            with open(STATS_PATH, encoding="utf-8") as f:
-                return json.load(f)
-    except Exception:
-        pass
+def _empty_stats() -> dict:
     return {
         "total_handled": 0,
         "by_provider": {"gemini": 0, "gemma_e4b": 0, "gemma_main": 0, "claude_fallback": 0},
         "by_intent": {"chat": 0, "status": 0, "lookup": 0, "calc": 0, "summarize": 0, "escalate": 0},
         "by_language": {"ko": 0, "en": 0, "ja": 0, "zh": 0, "other": 0},
         "claude_tokens_saved_estimate": 0,  # 처리 건당 평균 4K 입력 + 1K 출력 = 5K saved
+        "reset_date": datetime.utcnow().strftime("%Y-%m-%d"),  # 일일 리셋 키 (UTC 자정)
         "last_updated": None,
     }
+
+
+def _load_stats() -> dict:
+    try:
+        if os.path.exists(STATS_PATH):
+            with open(STATS_PATH, encoding="utf-8") as f:
+                s = json.load(f)
+            # 일일 리셋 — Gemini 무료 한도가 매일 자정 (PT) 리셋되므로 절감 카운트도 매일 갱신
+            today = datetime.utcnow().strftime("%Y-%m-%d")
+            if s.get("reset_date") != today:
+                logger.info("[staff] 일일 리셋 — %s → %s (이전 total=%d)",
+                            s.get("reset_date"), today, s.get("total_handled", 0))
+                fresh = _empty_stats()
+                fresh["reset_date"] = today
+                # 하루치 누적 보존 — '평생 누적' 은 별도 키로 (선택)
+                fresh["lifetime_total"] = (s.get("lifetime_total", 0)
+                                           + s.get("total_handled", 0))
+                fresh["lifetime_tokens_saved"] = (
+                    s.get("lifetime_tokens_saved", 0)
+                    + s.get("claude_tokens_saved_estimate", 0)
+                )
+                _save_stats(fresh)
+                return fresh
+            return s
+    except Exception:
+        pass
+    return _empty_stats()
 
 
 def _save_stats(s: dict):

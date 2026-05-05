@@ -494,14 +494,8 @@ export default function HubPage() {
                 className="absolute inset-0 pointer-events-none transition-colors duration-[2s]"
                 style={{ background: ambientTint }}
               />
-              {/* 스태프 통계 — 우상단 모서리 (씬 위 오버레이) */}
-              <button
-                onClick={() => setModalKey("staff-stats")}
-                className="absolute top-2 right-2 z-30 flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-bold transition-all border backdrop-blur bg-gray-900/70 border-gray-600 text-amber-200 hover:bg-amber-500/20 hover:border-amber-400/60 hover:text-amber-100"
-                title="스태프 통계 — Claude 토큰 절감 / 무료 LLM 사용"
-              >
-                📊 스태프
-              </button>
+              {/* 스태프 버튼 — 에이전트 목록에 있으므로 씬 상단에서 제거.
+                  통계는 에이전트 우클릭 또는 staff 채팅창에서 확인. */}
 
               {/* 오피스 편집 버튼 — 좌상단 모서리 (씬 위 오버레이) */}
               <button
@@ -528,6 +522,18 @@ export default function HubPage() {
         </div>
 
       </main>
+
+      {/* 중앙 에이전트 목록 column — 씬과 채팅창 사이. 검색·핀·3그룹 토글 */}
+      <aside className="hidden md:flex shrink-0 flex-col w-[220px] border-l border-gray-800/70 bg-[#0b0b14] overflow-hidden">
+        <AgentSelector
+          agents={agents}
+          selectedId={selectedAgentId}
+          onSelect={(id) => { setSelectedAgentId(id); setChatOpen(true); }}
+          onStaffStatsClick={() => setModalKey("staff-stats")}
+          onTimelineClick={() => setModalKey("timeline")}
+          onContextMenu={(id, x, y) => setCtxMenu({ agentId: id, x, y })}
+        />
+      </aside>
 
       {/* 우측 채팅 패널 — collapsible */}
       <aside
@@ -655,14 +661,7 @@ export default function HubPage() {
           </div>
         )}
 
-        <AgentSelector
-          agents={agents}
-          selectedId={selectedAgentId}
-          onSelect={(id) => setSelectedAgentId(id)}
-          onStaffStatsClick={() => setModalKey("staff-stats")}
-          onTimelineClick={() => setModalKey("timeline")}
-          onContextMenu={(id, x, y) => setCtxMenu({ agentId: id, x, y })}
-        />
+        {/* AgentSelector 는 중앙 컬럼으로 이동 — 우측 패널은 채팅 단독 */}
 
         <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-2.5">
           {messages.length === 0 && (
@@ -1281,16 +1280,35 @@ function getCollapsedGroups(): Record<"system" | "dev" | "agent", boolean> {
   }
 }
 
+const PINNED_KEY = "doogeun-hq-pinned-agents";
+function getPinned(): Set<string> {
+  try { return new Set(JSON.parse(localStorage.getItem(PINNED_KEY) || "[]")); }
+  catch { return new Set(); }
+}
+
 function AgentSelector({ agents, selectedId, onSelect, onStaffStatsClick, onTimelineClick, onContextMenu }: { agents: Agent[]; selectedId: string | null; onSelect: (id: string) => void; onStaffStatsClick?: () => void; onTimelineClick?: () => void; onContextMenu?: (agentId: string, x: number, y: number) => void }) {
   const streamingByTeam = useChatStore((s) => s.streamingByTeam);
   const unreadByTeam = useChatStore((s) => s.unreadByTeam);
+  const lastActiveByTeam = useChatStore((s) => s.lastActiveByTeam);
   const [collapsed, setCollapsed] = useState<Record<"system" | "dev" | "agent", boolean>>(() =>
     typeof window !== "undefined" ? getCollapsedGroups() : { system: false, dev: false, agent: false }
+  );
+  const [query, setQuery] = useState("");
+  const [pinned, setPinned] = useState<Set<string>>(() =>
+    typeof window !== "undefined" ? getPinned() : new Set()
   );
   const toggleGroup = (g: "system" | "dev" | "agent") => {
     setCollapsed((prev) => {
       const next = { ...prev, [g]: !prev[g] };
       try { localStorage.setItem(SIDEBAR_GROUPS_KEY, JSON.stringify(next)); } catch {/* */}
+      return next;
+    });
+  };
+  const togglePin = (id: string) => {
+    setPinned((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      try { localStorage.setItem(PINNED_KEY, JSON.stringify([...next])); } catch {/* */}
       return next;
     });
   };
@@ -1302,8 +1320,29 @@ function AgentSelector({ agents, selectedId, onSelect, onStaffStatsClick, onTime
   const virtualStaff = staffAgent ?? ({ id: "staff", name: "스태프", emoji: "🧑‍💼", role: "special", roleGroup: "system", status: "idle", floor: 1, description: "", systemPromptMd: "", createdAt: 0, updatedAt: 0, activity: [] } as Agent);
   const virtualHqOps = hqOpsAgent ?? ({ id: "hq-ops", name: "두근컴퍼니 관리자", emoji: "📊", role: "special", roleGroup: "system", status: "idle", floor: 1, description: "", systemPromptMd: "", createdAt: 0, updatedAt: 0, activity: [] } as Agent);
 
-  // 3 그룹 분리
-  const allOrdered: Agent[] = [virtualHqOps, virtualStaff, ...filtered];
+  // 검색 필터 — 이름/role/이모지 매칭
+  const q = query.trim().toLowerCase();
+  const matched = (a: Agent) => !q ||
+    a.name.toLowerCase().includes(q) ||
+    (a.role || "").toLowerCase().includes(q) ||
+    (a.emoji || "").includes(q);
+
+  // 3 그룹 분리 + 정렬: 핀 → 활성(최근 24h) → 일반 → 휴면(30일+)
+  const allOrdered: Agent[] = [virtualHqOps, virtualStaff, ...filtered].filter(matched);
+  const now = Date.now();
+  const DAY = 24 * 60 * 60 * 1000;
+  const sortKey = (a: Agent): number => {
+    const last = lastActiveByTeam[a.id] || 0;
+    if (pinned.has(a.id)) return 0;                         // 0순위
+    if (now - last < DAY) return 1;                         // 1순위 (활성)
+    if (last && now - last > 30 * DAY) return 3;            // 3순위 (휴면)
+    return 2;                                               // 2순위 (일반)
+  };
+  allOrdered.sort((a, b) => {
+    const ka = sortKey(a), kb = sortKey(b);
+    if (ka !== kb) return ka - kb;
+    return (lastActiveByTeam[b.id] || 0) - (lastActiveByTeam[a.id] || 0);
+  });
   const groups: Record<"system" | "dev" | "agent", Agent[]> = { system: [], dev: [], agent: [] };
   for (const a of allOrdered) {
     groups[groupOfAgent(a)].push(a);
@@ -1324,6 +1363,7 @@ function AgentSelector({ agents, selectedId, onSelect, onStaffStatsClick, onTime
         const isStaff = a.id === "staff";
         const isHqOps = a.id === "hq-ops";
         const isAdminLine = isStaff || isHqOps;
+        const isPinned = pinned.has(a.id);
         return (
           <div key={a.id} data-agent-id={a.id} className={`flex w-full ${isAdminLine ? "border-b border-sky-500/25 bg-sky-500/5" : ""}`}>
             <button
@@ -1338,26 +1378,25 @@ function AgentSelector({ agents, selectedId, onSelect, onStaffStatsClick, onTime
               {streaming ? (
                 <span className="flex items-center gap-0.5 text-[9px] text-amber-300 shrink-0">
                   <span className="w-1.5 h-1.5 bg-amber-400 rounded-full animate-pulse" />
-                  작업중
                 </span>
               ) : unread > 0 && !active ? (
                 <span className="text-[9px] px-1 rounded-full bg-red-500/80 text-white font-bold shrink-0">{unread}</span>
               ) : null}
             </button>
-            {isStaff && (
-              <button
-                onClick={(e) => { e.stopPropagation(); onStaffStatsClick?.(); }}
-                className="shrink-0 w-8 flex items-center justify-center text-[12px] transition-colors text-amber-400 hover:bg-amber-500/15 hover:text-amber-200 border-l border-gray-800/60"
-                title="스태프 통계"
-              >
-                📊
-              </button>
-            )}
+            <button
+              onClick={(e) => { e.stopPropagation(); togglePin(a.id); }}
+              className={`shrink-0 w-6 flex items-center justify-center text-[11px] transition-colors border-l border-gray-800/60 ${
+                isPinned ? "text-amber-300" : "text-gray-700 hover:text-amber-300"
+              }`}
+              title={isPinned ? "핀 해제" : "최상단 고정"}
+            >
+              {isPinned ? "★" : "☆"}
+            </button>
             {isHqOps && (
               <button
                 onClick={(e) => { e.stopPropagation(); onTimelineClick?.(); }}
-                className="shrink-0 w-8 flex items-center justify-center text-[12px] transition-colors text-sky-400 hover:bg-sky-500/15 hover:text-sky-200 border-l border-gray-800/60"
-                title="📚 책장 — 모든 패치 히스토리 회독"
+                className="shrink-0 w-7 flex items-center justify-center text-[12px] transition-colors text-sky-400 hover:bg-sky-500/15 hover:text-sky-200 border-l border-gray-800/60"
+                title="📚 책장"
               >
                 📚
               </button>
@@ -1367,7 +1406,29 @@ function AgentSelector({ agents, selectedId, onSelect, onStaffStatsClick, onTime
   };
 
   return (
-    <div ref={listRef} className="border-b border-gray-800/60 max-h-[48vh] overflow-y-auto">
+    <div className="flex flex-col h-full">
+      {/* 검색바 — 이름/역할/이모지 매칭 */}
+      <div className="px-2 py-2 border-b border-gray-800/60 shrink-0">
+        <div className="relative">
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="🔍 팀 검색..."
+            className="w-full h-7 px-2 rounded-md text-[11px] bg-gray-900/60 border border-gray-800 text-gray-200 placeholder:text-gray-600 focus:border-sky-400/60 focus:outline-none"
+          />
+          {query && (
+            <button
+              onClick={() => setQuery("")}
+              className="absolute right-1 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-200 px-1 text-[12px]"
+              title="검색 지우기"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+      </div>
+      <div ref={listRef} className="flex-1 overflow-y-auto">
       {(["system", "dev", "agent"] as const).map((g) => {
         const meta = GROUP_META[g];
         const list = groups[g];
@@ -1388,6 +1449,7 @@ function AgentSelector({ agents, selectedId, onSelect, onStaffStatsClick, onTime
           </div>
         );
       })}
+      </div>
     </div>
   );
 }
