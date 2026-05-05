@@ -22,7 +22,11 @@ def set_team_lookup(teams: list[dict]):
     """main.py에서 팀 목록 전달받아 룩업 초기화"""
     _TEAM_LOOKUP.clear()
     for t in teams:
-        _TEAM_LOOKUP[t["id"]] = {"name": t.get("name", ""), "emoji": t.get("emoji", "")}
+        _TEAM_LOOKUP[t["id"]] = {
+            "name": t.get("name", ""),
+            "emoji": t.get("emoji", ""),
+            "role": t.get("role", "dev"),  # system / dev / agent — dispatch 가드용
+        }
 
 # ── 대화 기록 영구 저장 (세션 스토어 경유) ────────────
 # 기존 단일 파일 구조 → 세션 분리 구조로 전환.
@@ -466,13 +470,39 @@ def _parse_dispatch_blocks(text: str) -> list[dict]:
 
 
 async def _route_dispatch(source_team: str, target_team: str, prompt: str, depth: int = 0):
-    """target_team 에 prompt 재발사 — 백그라운드로 run_claude + 채팅창에 메시지 표시."""
+    """target_team 에 prompt 재발사 — 백그라운드로 run_claude + 채팅창에 메시지 표시.
+
+    🛡 role 가드 (system/dev/agent 카테고리별 권한):
+      - system  → 모든 팀에 dispatch (관리자, 다른 에이전트 리딩)
+      - dev     → dev / system 만 (제작 협업), agent 에는 X
+      - agent   → 외부 dispatch 차단 (단독 수행)
+    """
     if depth >= _DISPATCH_DEPTH_LIMIT:
         logger.warning("[dispatch] 깊이 한계 도달 — 추가 라우팅 스킵 (%s → %s)", source_team, target_team)
         return
     target_info = _TEAM_LOOKUP.get(target_team)
     if not target_info:
         logger.warning("[dispatch] 알 수 없는 target team: %s", target_team)
+        return
+
+    # role 가드 — 카테고리별 dispatch 권한
+    src_role = (_TEAM_LOOKUP.get(source_team, {}) or {}).get("role", "dev")
+    tgt_role = (target_info or {}).get("role", "dev")
+    blocked_reason: str | None = None
+    if src_role == "agent":
+        blocked_reason = f"agent 카테고리는 단독 수행 — 외부 dispatch 차단 ({source_team} → {target_team})"
+    elif src_role == "dev" and tgt_role == "agent":
+        blocked_reason = f"dev → agent 차단 (agent 는 단독, dev 는 dev/system 끼리만)"
+    if blocked_reason:
+        logger.warning("[dispatch:guard] %s", blocked_reason)
+        try:
+            await manager.send_json(source_team, {
+                "type": "ai_chunk",
+                "content": f"\n\n⛔ 디스패치 차단 — {blocked_reason}\n  → 시스템(관리자)에 위임하거나 직접 사용자에게 보고하세요.\n",
+                "session_id": "default",
+            })
+        except Exception:
+            pass
         return
     target_path = target_info.get("localPath", "~/Developer/my-company/company-hq")
 
