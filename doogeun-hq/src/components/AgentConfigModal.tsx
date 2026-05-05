@@ -30,6 +30,7 @@ export default function AgentConfigModal({ agent, onClose }: Props) {
 
   const [name, setName] = useState(agent.name);
   const [emoji, setEmoji] = useState(agent.emoji);
+  const [role, setRole] = useState(agent.role || "");
   const [description, setDescription] = useState(agent.description);
   const [systemPromptMd, setSystemPromptMd] = useState(agent.systemPromptMd);
   const [workingDirectory, setWorkingDirectory] = useState(agent.workingDirectory ?? "");
@@ -48,7 +49,7 @@ export default function AgentConfigModal({ agent, onClose }: Props) {
   }, [onClose]);
 
   const dirty =
-    name !== agent.name || emoji !== agent.emoji ||
+    name !== agent.name || emoji !== agent.emoji || role !== (agent.role || "") ||
     description !== agent.description || systemPromptMd !== agent.systemPromptMd ||
     workingDirectory !== (agent.workingDirectory ?? "") ||
     githubRepo !== (agent.githubRepo ?? "") ||
@@ -65,7 +66,8 @@ export default function AgentConfigModal({ agent, onClose }: Props) {
     updateAgent(agent.id, {
       name: name.trim(),
       emoji,
-      role: { system: "시스템", dev: "개발", agent: "에이전트" }[roleGroupChoice],
+      // role 은 자유 문자열 (사용자 직접 입력) 보존. 카테고리 분류는 별도 roleGroup 필드.
+      role: role.trim(),
       description: description.trim(),
       systemPromptMd,
       workingDirectory: workingDirectory.trim() || undefined,
@@ -145,6 +147,15 @@ export default function AgentConfigModal({ agent, onClose }: Props) {
                 />
               </div>
             </div>
+
+            <Field label="역할 (자유 입력)">
+              <input
+                value={role}
+                onChange={(e) => setRole(e.target.value)}
+                placeholder="예: 프론트엔드 / 디자인 / CPO / 매매봇"
+                className="w-full h-9 rounded-md border border-gray-700 bg-gray-900/60 px-3 text-sm text-gray-100 placeholder:text-gray-500"
+              />
+            </Field>
 
             <Field label="카테고리">
               <div className="flex gap-1.5">

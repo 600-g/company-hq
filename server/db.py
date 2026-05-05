@@ -20,6 +20,7 @@ import sqlite3
 import threading
 import time
 import uuid
+from contextlib import closing
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -88,7 +89,7 @@ def init_db() -> None:
         if _initialized:
             return
         try:
-            with _conn() as c:
+            with closing(_conn()) as c:
                 c.executescript(SCHEMA)
             _initialized = True
             logger.info("[db] SQLite 초기화 완료: %s", DB_PATH)
@@ -159,7 +160,7 @@ def replace_session_messages(team_id: str, session_id: str, messages: list[dict]
     init_db()
     try:
         rows = [_msg_to_row(team_id, session_id, m) for m in messages]
-        with _lock, _conn() as c:
+        with _lock, closing(_conn()) as c:
             c.execute("BEGIN")
             c.execute(
                 "DELETE FROM messages WHERE team_id = ? AND session_id = ?",
@@ -185,7 +186,7 @@ def append_message(team_id: str, session_id: str, msg: dict) -> None:
     init_db()
     try:
         row = _msg_to_row(team_id, session_id, msg)
-        with _lock, _conn() as c:
+        with _lock, closing(_conn()) as c:
             c.execute(
                 """INSERT OR REPLACE INTO messages
                    (id, team_id, session_id, role, content, ts,
@@ -203,7 +204,7 @@ def get_session_messages(team_id: str, session_id: str, limit: int | None = None
     """세션 메시지 ts 오름차순. limit 지정 시 최근 N 개만 (역으로 fetch 후 reverse)."""
     init_db()
     try:
-        with _conn() as c:
+        with closing(_conn()) as c:
             if limit:
                 rows = c.execute(
                     """SELECT * FROM messages
@@ -229,7 +230,7 @@ def delete_session(team_id: str, session_id: str) -> None:
     """세션 삭제 — messages + sessions row 모두 제거."""
     init_db()
     try:
-        with _lock, _conn() as c:
+        with _lock, closing(_conn()) as c:
             c.execute("BEGIN")
             c.execute(
                 "DELETE FROM messages WHERE team_id = ? AND session_id = ?",
@@ -251,7 +252,7 @@ def state_kv_get(key: str) -> dict | None:
     """key 로 JSON 디코드된 값 반환. 없으면 None."""
     init_db()
     try:
-        with _conn() as c:
+        with closing(_conn()) as c:
             row = c.execute("SELECT value_json FROM state_kv WHERE key = ?", (key,)).fetchone()
         if not row:
             return None
@@ -267,7 +268,7 @@ def state_kv_set(key: str, value: dict) -> None:
     try:
         body = json.dumps(value, ensure_ascii=False)
         ts = int(time.time() * 1000)
-        with _lock, _conn() as c:
+        with _lock, closing(_conn()) as c:
             c.execute(
                 """INSERT INTO state_kv (key, value_json, updated_at)
                    VALUES (?, ?, ?)
@@ -284,7 +285,7 @@ def stats() -> dict:
     """전체 통계 — 디버깅/모니터링용."""
     init_db()
     try:
-        with _conn() as c:
+        with closing(_conn()) as c:
             msgs = c.execute("SELECT COUNT(*) AS n FROM messages").fetchone()["n"]
             sess = c.execute("SELECT COUNT(*) AS n FROM sessions").fetchone()["n"]
             db_size = DB_PATH.stat().st_size if DB_PATH.exists() else 0
