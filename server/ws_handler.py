@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import logging
 import re
 from datetime import datetime
 from pathlib import Path
@@ -11,6 +12,8 @@ from claude_runner import run_claude
 from push_notifications import send_agent_complete, set_online_checker
 from trading_stats import has_trading_keywords, format_trading_context
 import sessions_store
+
+logger = logging.getLogger("ws_handler")
 
 # ── 팀 정보 룩업 (push 알림용) ────────────────────────
 _TEAM_LOOKUP: dict[str, dict] = {}
