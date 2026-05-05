@@ -693,7 +693,7 @@ export default function HubPage() {
                   m.role === "user"
                     ? "rounded-br-md bg-[var(--chat-user-bg)] border border-[var(--chat-user-border)] text-[var(--chat-user-text)]"
                     : m.role === "system"
-                    ? "rounded-bl-md bg-red-500/10 border border-red-400/30 text-red-200"
+                    ? "rounded-bl-md bg-red-950/70 border border-red-500/60 text-red-100"
                     : "rounded-bl-md bg-[var(--chat-ai-bg)] border border-[var(--chat-ai-border)] text-[var(--chat-ai-text)]"
                 }`}>
                   {/* 메시지별 복사 버튼 — 유저/에이전트 모두 hover 시 표시.
