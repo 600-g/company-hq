@@ -740,7 +740,7 @@ async def handle_chat(
                 try:
                     await manager.send_json(
                         team_id,
-                        {"type": "status", "content": "📋 이전 작업 중 — 끝나는 대로 이어서 처리합니다", "session_id": current_sid},
+                        {"type": "status", "content": "📋 이전 작업 중 — 3초 안에 더 보내면 합쳐 처리, 상충 시 최신 우선", "session_id": current_sid},
                         session_id=current_sid,
                     )
                 except Exception:

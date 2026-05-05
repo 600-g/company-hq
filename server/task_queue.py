@@ -285,7 +285,7 @@ class InputDebouncer:
     → 토큰 절약 + 맥락 유지
     """
 
-    def __init__(self, window_sec: float = 5.0):
+    def __init__(self, window_sec: float = 3.0):
         self.window = window_sec
         self._buffers: dict[str, list[str]] = {}     # team_id -> [prompt1, prompt2, ...]
         self._timers: dict[str, asyncio.Task] = {}   # team_id -> 대기 타이머
@@ -316,7 +316,7 @@ class InputDebouncer:
         await self._flush(team_id)
 
     async def _flush(self, team_id: str):
-        """버퍼 내용 합쳐서 콜백 실행"""
+        """버퍼 내용 합쳐서 콜백 실행. 중복 제거 + 상충 시 최신 우선 안내."""
         prompts = self._buffers.pop(team_id, [])
         callback = self._callbacks.pop(team_id, None)
         self._timers.pop(team_id, None)
@@ -324,14 +324,32 @@ class InputDebouncer:
         if not prompts or not callback:
             return
 
-        if len(prompts) == 1:
-            merged = prompts[0]
+        # 1) 정확 중복 제거 — 같은 텍스트 반복은 1개만 유지 (마지막 위치)
+        seen: set[str] = set()
+        dedup: list[str] = []
+        for p in reversed(prompts):
+            key = (p or "").strip()
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            dedup.append(p)
+        dedup.reverse()  # 원래 시간 순서 복원
+
+        if len(dedup) == 1:
+            merged = dedup[0]
         else:
+            # 2) 상충 시 최신 우선 — Claude 처럼 동작. 마지막 메시지가 최종 의도.
             merged = (
-                f"[다음 {len(prompts)}개 요청을 한 번에 처리해줘]\n\n"
-                + "\n\n---\n\n".join(f"요청 {i+1}: {p}" for i, p in enumerate(prompts))
+                f"[사용자가 빠르게 보낸 {len(dedup)}개 메시지를 합쳐 처리]\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                + "\n\n".join(f"메시지 {i+1}: {p}" for i, p in enumerate(dedup))
+                + "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"🎯 처리 원칙:\n"
+                f"- **마지막 메시지({len(dedup)})가 최종 의도** — 이전 메시지와 상충하면 최신 우선.\n"
+                f"- 이전 메시지가 보강/맥락이면 합쳐 처리.\n"
+                f"- 중복은 이미 dedup 됨, 추가로 중복 처리 X.\n"
             )
-            logger.info("[Debounce] %s: %d개 메시지 병합", team_id, len(prompts))
+            logger.info("[Debounce] %s: %d개 메시지 병합 (dedup 후)", team_id, len(dedup))
 
         try:
             await callback(team_id, merged)
