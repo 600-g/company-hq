@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import DebugPanel, { LogsPane } from "@/components/DebugPanel";
 import VersionBadge from "@/components/VersionBadge";
+import { useVersionStore } from "@/stores/versionStore";
 import MentionPopup from "@/components/chat/MentionPopup";
 import TerminalPanel from "@/components/TerminalPanel";
 import FurniturePalette from "@/components/office/FurniturePalette";
@@ -115,6 +116,22 @@ export default function HubPage() {
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
   }, [theme]);
+
+  // 푸시 알림 deeplink — /hub?openUpdate=1 진입 시 업데이트 모달 강제 열림
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const sp = new URLSearchParams(window.location.search);
+    if (sp.get("openUpdate") === "1") {
+      try {
+        // dismissedCommit 리셋 → VersionBanner 가 미반영 commit 있으면 모달 자동 표시
+        useVersionStore.getState().reopen();
+      } catch {/* */}
+      // URL 정리 (다음 새로고침엔 안 뜨게)
+      const url = new URL(window.location.href);
+      url.searchParams.delete("openUpdate");
+      window.history.replaceState({}, "", url.toString());
+    }
+  }, []);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [copiedFlash, setCopiedFlash] = useState(false);
   const [celebrate, setCelebrate] = useState<{ emoji: string; name: string; phase: "in" | "out" } | null>(null);

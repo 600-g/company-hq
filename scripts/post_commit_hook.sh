@@ -46,3 +46,10 @@ row = {
 with open('$LOG_PATH', 'a', encoding='utf-8') as f:
   f.write(json.dumps(row, ensure_ascii=False) + '\n')
 " 2>/dev/null || true
+
+# 업데이트 알림 — server 가 떠있으면 OS push 발송 (10분 dedup)
+# 사용자가 외출 중에도 알림 받음, 탭하면 /hub?openUpdate=1 로 이동 → 업데이트 모달 자동 열림
+curl -s -m 3 -X POST http://localhost:8000/api/internal/notify-update \
+  -H "Content-Type: application/json" \
+  -d "{\"sha\":\"$SHA\",\"short_sha\":\"$SHORT_SHA\",\"subject\":\"${SUBJECT//\"/\\\"}\"}" \
+  > /dev/null 2>&1 || true

@@ -3307,6 +3307,40 @@ def _git_head_info() -> dict:
         return {"ok": False, "error": str(e)}
 
 
+# 업데이트 알림 dedup — 같은 sha 에 중복 push 방지 (10분 내)
+_LAST_NOTIFIED_SHA: dict[str, float] = {}
+
+
+@app.post("/api/internal/notify-update")
+async def internal_notify_update(body: dict) -> dict:
+    """post-commit hook 이 호출 — 새 commit push 직후 OS 알림 발송.
+    body: {sha, subject, short_sha?}.
+    같은 sha 10분 내 중복 차단. 알림 클릭 시 /hub?openUpdate=1 로 이동 → 모달 자동 열림.
+    """
+    sha = str(body.get("sha", ""))[:64]
+    if not sha:
+        return {"ok": False, "error": "sha 필요"}
+    short = str(body.get("short_sha", ""))[:12] or sha[:9]
+    subject = str(body.get("subject", ""))[:200] or f"새 커밋 {short}"
+    now = time.time()
+    last = _LAST_NOTIFIED_SHA.get(sha, 0)
+    if now - last < 600:  # 10분 dedup
+        return {"ok": True, "skipped": "dedup"}
+    _LAST_NOTIFIED_SHA[sha] = now
+    try:
+        send_push(
+            title=f"🆕 새 업데이트",
+            body=f"{subject}\n탭하면 업데이트 모달 열림",
+            tag=f"update-{short}",
+            url="/hub?openUpdate=1",
+            team_id="",
+        )
+        return {"ok": True, "sha": short}
+    except Exception as e:
+        logger.warning("[notify-update] 실패: %s", e)
+        return {"ok": False, "error": str(e)}
+
+
 @app.get("/api/admin/git-head")
 async def admin_git_head():
     """현재 git HEAD — VersionBanner 가 production build 와 비교해 미반영 변경 감지."""
