@@ -85,16 +85,22 @@ class TaskQueue:
         self._on_task_start = on_start
         self._on_task_done = on_done
 
-    def _ensure_queue(self, team_id: str):
-        if team_id not in self.queues:
-            self.queues[team_id] = asyncio.Queue()
-            self.running[team_id] = None
+    def _qkey(self, team_id: str, session_id: str = "") -> str:
+        """(team_id, session_id) → 큐 키. 세션 별 분리로 동시 실행 가능."""
+        return f"{team_id}::{session_id or 'default'}"
+
+    def _ensure_queue(self, team_id: str, session_id: str = ""):
+        k = self._qkey(team_id, session_id)
+        if k not in self.queues:
+            self.queues[k] = asyncio.Queue()
+            self.running[k] = None
 
     async def enqueue(self, team_id: str, prompt: str,
                       priority: int = 0, dispatch_id: str = "",
                       step_index: int = 0, session_id: str = "") -> Task:
-        """작업을 팀 큐에 추가"""
-        self._ensure_queue(team_id)
+        """작업을 (team, session) 큐에 추가 — 세션 별 동시 실행"""
+        self._ensure_queue(team_id, session_id)
+        k = self._qkey(team_id, session_id)
         task = Task(
             id=str(uuid.uuid4())[:8],
             team_id=team_id,
@@ -105,19 +111,20 @@ class TaskQueue:
             session_id=session_id,
         )
         self.all_tasks[task.id] = task
-        await self.queues[team_id].put(task)
+        await self.queues[k].put(task)
         logger.info("[Queue] %s에 작업 추가: %s (큐 크기: %d)",
-                    team_id, task.id, self.queues[team_id].qsize())
+                    k, task.id, self.queues[k].qsize())
 
-        # 워커가 없으면 시작
-        if team_id not in self.workers or self.workers[team_id].done():
-            self.workers[team_id] = asyncio.create_task(self._worker(team_id))
+        # 워커가 없으면 시작 — 세션 별 별개 worker 라 다른 세션과 동시 실행
+        if k not in self.workers or self.workers[k].done():
+            self.workers[k] = asyncio.create_task(self._worker(team_id, session_id))
 
         return task
 
-    async def _worker(self, team_id: str):
-        """팀별 워커 — 큐에서 하나씩 꺼내 순차 실행"""
-        queue = self.queues[team_id]
+    async def _worker(self, team_id: str, session_id: str = ""):
+        """(team, session) 별 워커 — 같은 세션 안에서만 순차, 다른 세션은 병렬"""
+        k = self._qkey(team_id, session_id)
+        queue = self.queues[k]
         while not queue.empty():
             task = await queue.get()
             if task.status == "cancelled":
@@ -125,8 +132,8 @@ class TaskQueue:
 
             task.status = "running"
             task.started = time.time()
-            self.running[team_id] = task
-            logger.info("[Queue] %s 작업 시작: %s", team_id, task.id)
+            self.running[k] = task
+            logger.info("[Queue] %s 작업 시작: %s", k, task.id)
 
             if self._on_task_start:
                 try:
@@ -157,20 +164,22 @@ class TaskQueue:
                 task.completed = time.time()
                 logger.error("[Queue] %s 작업 실패: %s - %s", team_id, task.id, e)
 
-            self.running[team_id] = None
+            self.running[k] = None
             if self._on_task_done:
                 try:
                     await self._on_task_done(task)
                 except Exception:
                     pass
 
-    def get_queue_status(self, team_id: str) -> dict:
-        """팀 큐 상태 조회"""
-        self._ensure_queue(team_id)
-        running = self.running.get(team_id)
+    def get_queue_status(self, team_id: str, session_id: str = "") -> dict:
+        """(team, session) 큐 상태 조회"""
+        self._ensure_queue(team_id, session_id)
+        k = self._qkey(team_id, session_id)
+        running = self.running.get(k)
         return {
             "team_id": team_id,
-            "queue_size": self.queues[team_id].qsize(),
+            "session_id": session_id,
+            "queue_size": self.queues[k].qsize(),
             "running": running.to_dict() if running else None,
         }
 

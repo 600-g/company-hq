@@ -836,6 +836,27 @@ export default function HubPage() {
                   ) : m.content ? (
                     <div className="whitespace-pre-wrap break-words">{m.content}</div>
                   ) : null}
+                  {/* yes/no 버튼화 — 에이전트 응답 본문에 '[yes / no]' 패턴 감지 시 클릭 가능 버튼.
+                   *  hq-ops/MD메이커 등이 '진행할까요? [yes / no]' 보낼 때 사용자 직관 입력. */}
+                  {m.role !== "user" && !m.streaming && m.content &&
+                   /\[\s*yes\s*\/\s*no\s*\]/i.test(m.content) && (
+                    <div className="mt-2 flex gap-1.5">
+                      <button
+                        onClick={() => wsSendDirect("yes")}
+                        className="h-8 px-3 rounded-md text-[12px] font-bold bg-emerald-500/20 border border-emerald-400/60 text-emerald-100 hover:bg-emerald-500/30 transition-colors flex items-center gap-1"
+                        title="yes 자동 전송"
+                      >
+                        ✓ Yes
+                      </button>
+                      <button
+                        onClick={() => wsSendDirect("no")}
+                        className="h-8 px-3 rounded-md text-[12px] font-bold bg-rose-500/20 border border-rose-400/60 text-rose-100 hover:bg-rose-500/30 transition-colors flex items-center gap-1"
+                        title="no 자동 전송"
+                      >
+                        ✗ No
+                      </button>
+                    </div>
+                  )}
                   {/* 시스템 에러 / 재시도 메시지에 [재시도] 버튼 — 마지막 user 메시지 다시 send.
                    *  키워드 확장: 실패/에러/타임아웃/세션/끊김/연결/취소/cancel/timeout/품질미달/응답 없음/오류 */}
                   {/* [재시도] 버튼 — ws_handler 가 명시적으로 보낸 시스템 에러 메시지만.
