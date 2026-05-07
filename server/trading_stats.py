@@ -9,9 +9,13 @@ from typing import Any
 
 logger = logging.getLogger("company-hq")
 
-# ── 경로 설정 ──────────────────────────────────────────
-STATUS_JSON_PATH = Path.home() / "Desktop" / "업비트자동" / "docs" / "status.json"
-TRADING_DB_PATH = Path.home() / "Desktop" / "업비트자동" / "trading_bot_v3.db"
+# ── 경로 설정 (코인봇 v10.1, 2026-04-25 ~ 마이그레이션) ────
+# 구버전 ~/Desktop/업비트자동/ 은 retired (2026-04). 신버전 ~/coinbot/ 사용.
+STATUS_JSON_PATH = Path.home() / "coinbot" / "docs" / "status.json"
+TRADING_DB_PATH = Path.home() / "coinbot" / "data" / "bot.db"
+# 주식봇 데이터 (KR/US)
+STOCK_STATUS_JSON_PATH = Path.home() / "Desktop" / "주식 자동봇" / "docs" / "status.json"
+STOCK_DB_PATH = Path.home() / "Desktop" / "주식 자동봇" / "data" / "demo.db"
 
 # ── 매매 관련 키워드 ───────────────────────────────────
 TRADING_KEYWORDS: list[str] = [
@@ -59,18 +63,19 @@ def _query_db_recent_trades(limit: int = 10) -> list[dict]:
 
 
 def _query_db_positions() -> list[dict]:
-    """SQLite DB에서 현재 보유 포지션 조회 (backup)"""
+    """SQLite DB에서 현재 보유 포지션 조회 (backup) — 코인봇 v10.1 positions 테이블"""
     try:
         if not TRADING_DB_PATH.exists():
             return []
         conn = sqlite3.connect(str(TRADING_DB_PATH), timeout=5)
         conn.row_factory = sqlite3.Row
-        cursor = conn.execute("SELECT * FROM active_positions")
+        # v10.1: active_positions → positions (테이블명 변경)
+        cursor = conn.execute("SELECT * FROM positions")
         rows = [dict(r) for r in cursor.fetchall()]
         conn.close()
         return rows
     except Exception as e:
-        logger.warning("active_positions 조회 실패: %s", e)
+        logger.warning("positions 조회 실패: %s", e)
         return []
 
 

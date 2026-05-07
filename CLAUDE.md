@@ -228,50 +228,94 @@ Claude (Max 플랜 — 토큰 소비)
 
 새 백엔드 상태 파일 추가 시: 사용자 데이터·토큰·자주 변경되는 state 면 gitignore.
 
-## 오케스트레이션 (2026-04-28 이후 — 7단계 룰)
+## 오케스트레이션 (역할 분류 강제 — 2026-05-05 갱신)
 
-### 흐름
-사용자 → 에이전트 X (= **프로젝트 리드**, 끝까지 책임)
-- 자기 범위 안 → 직접 처리
-- 범위 밖 → ` ```dispatch [{"team":"cpo-claude","prompt":"[프로젝트 리드 from X] ..."}] ``` ` 로 CPO 협업 요청
-- CPO 가 적합 팀(들)에 분배 → 결과 모아서 리드 X 에게 회신
-- 리드 X 가 **종합 최종 보고**
+### role 카테고리 (`teams.json[role]` — system / dev / agent)
+백엔드 `ws_handler._route_dispatch` 가 dispatch 발사 시 강제 검증, 위반은 차단:
+- **🛠 system** (CPO, hq-ops, MD메이커, staff, server-monitor) — 모든 팀에 dispatch, 정책·운영 결정
+- **💻 dev** (frontend/backend/design/qa/content-lab/ai900) — dev/system 끼리만, agent 차단
+- **🤖 agent** (date-map, trading-bot, agent-* light) — 외부 dispatch **전면 금지**, 단독 수행
+- 위반 시 source 채팅창에 `⛔ 디스패치 차단` 표시. 룰 = `server/policies.md` (자동 prepend)
 
-### 자동 자가 치유
-- ws_handler `_auto_recovery_dispatch` 가 빈 응답 / Exception (kind=error) / 세션 타임아웃(15분) 자동 감지
-- CPO 에 background dispatch — 진단/수정/git commit + 재시도 dispatch
-- 같은 (team, prompt) 5분 dedup — 도달 시 사용자 채팅 🚨 + OS 푸시
-- 코드 변경은 git commit 까지 — 배포는 사용자 [업데이트] 클릭 시 (절대 자동 deploy.sh X)
+### 7단계 프로젝트 리드 (system + dev 만)
+사용자 → 에이전트 X (= 리드, 끝까지 책임). 범위 밖 → CPO 에 dispatch → 결과 모아 종합 보고.
+agent 카테고리는 자기 범위 밖 받으면 "system 에 문의 권장" 안내만.
 
-### Light 에이전트 격리
-- `/api/teams/light` 가 만들 때 sandbox 자동 생성: `~/Developer/agents/{team_id}/`
-- localPath 메인 폴더 격리 — Claude CLI 가 두근컴퍼니 CLAUDE.md 못 로드
-- `light_policies.md` 만 prepend (`policies.md` 두근컴퍼니 메타 컨텍스트 차단)
-- 시스템 프롬프트에 [격리 — 매우 중요] 블록 강제
+### 자동 자가 치유 (`_auto_recovery_dispatch`)
+- 빈 응답 / Exception (kind=error) / 세션 타임아웃(15분) 자동 감지
+- **자동 ticket 등록**: `bug_reports.jsonl` 에 `source=auto_recovery` row 자동 작성
+- CPO 에 background dispatch — recovery_prompt 에 ticket ts 주입, 완료 후 CPO 가 curl 로 resolved 마킹
+- 5분 내 같은 (team, prompt) 재발 → ticket `status=critical` 자동 마킹 + 🚨 OS 푸시
+- `ws_handler.py` 와 `main.py` 둘 다 module-level `logger = logging.getLogger(...)` 필수 (없으면 silent NameError 로 자동복구 정상 동작 안 함)
 
 ### Dispatch block 자동 라우팅
-`ws_handler._parse_dispatch_blocks` 가 응답 본문에서 정규식 추출:
-- 깊이 한계 3 (무한 루프 방지)
-- target 응답을 source 채팅창에 echo (cross-channel 진행 가시화)
-- 중첩 dispatch 재귀 (depth+1)
+`_parse_dispatch_blocks` 정규식 추출 → 깊이 한계 3 → target 응답 source 에 echo → 중첩 재귀.
 
-### 무중단 배포
-- Claude(나)는 `bash deploy.sh` 직접 X — git commit/push 만
-- VersionBanner 가 `/api/admin/git-head` polling → production build vs HEAD 비교
-- 사용자 [지금 업데이트] 클릭 시 background `/api/admin/deploy` → 진행 게이지 → 1.5초 후 reload
-- 사이드바 하단 [업데이트] 칩이 dismiss 후 모달 재열기 (zustand `versionStore`)
+### 무중단 배포 (절대 자동 deploy X)
+- Claude/모든 에이전트 — `bash deploy.sh` 직접 X. **git commit/push 만**.
+- `deploy.sh` 호출은 **`/api/admin/deploy` 단 한 곳** (사용자 [업데이트] 클릭 모달이 유일 트리거)
+- 새 commit → post-commit hook → push 알림 (10분 dedup) → 알림 탭 → `/hub?openUpdate=1` → 모달 자동 열림
+- VersionBanner: dismissedCommit 을 **localStorage** 영속 (sessionStorage X — 새 탭/시크릿 사라짐 → 알림 반복 트리거 원인이었음)
 
-### `/api/admin/*` 엔드포인트 (이번 세션 신규)
+### Light vs Full 에이전트 분기
+- **Light** (페르소나만, 코드 X): `/api/teams/light` → sandbox `~/Developer/agents/{team_id}/`, `light_policies.md` 만 prepend (격리)
+- **Full** (GitHub 레포 + CLAUDE.md): `/api/teams` → `~/Developer/my-company/{repo}/`, `policies.md` 풀 prepend
+- system 관리자는 메인 폴더 (`~/Developer/my-company/company-hq`) 직접 작업
+
+### 사용자 규칙 MD 자동 prepend (`claude_runner._RULE_FILES`)
+| team_id | 파일 | 역할 |
+|---|---|---|
+| `hq-ops` | `server/hq_ops_rules.md` | 운영·회독·1차 패치 (사용자 직접 편집) |
+| `agent-6d883e` (MD 메이커) | `server/md_maker_rules.md` | 신규 에이전트 채용·MD 생성·인사 |
+변경 즉시 반영 (서버 재시작 X). 충돌 시 사용자 규칙 우선.
+
+### hq-ops 2단계 패치 권한
+- **1차** (≤2 파일·≤50줄·위험영역 X·정책/텍스트만) → 직접 수정 + git commit + 한 줄 보고
+- **2차** (큰 변경 / `HubOffice.tsx`·`deploy.sh`·`auth.py`·DB·`claude_runner.py`·`.env`) → 사용자 컨펌 → CPO 위임
+- 2차 컨펌은 응답에 `[yes / no]` 포함 → 프론트가 자동 ✓ Yes / ✗ No 버튼 렌더 → 클릭 시 wsSendDirect 자동 전송
+
+### 처리 중 메시지 (Debouncer 3초)
+사용자가 작업 중 추가 메시지 보냄 → `task_queue.debouncer` 가 3초 윈도우로 합침:
+- 정확 중복 dedup (같은 텍스트 1번만)
+- 상충 시 **최신 우선** (합쳐진 prompt 에 `🎯 처리 원칙: 마지막 메시지가 최종 의도` 명시)
+- ws_handler 가 "📋 이전 작업 중 — 3초 안에 더 보내면 합쳐 처리, 상충 시 최신 우선" 상태 표시
+
+### 세션 분리 동시 실행 (`task_queue.queues[team_id::session_id]`)
+- 같은 팀 안 다른 세션은 **별개 worker** → 동시 실행
+- 사용자 직접 채팅 + 백그라운드 patch + auto-recovery 큐 대기 X, 병렬 진행
+- 같은 세션 안에서만 직렬 (메시지 흐름 보존)
+
+### `/api/admin/*` + `/api/internal/*` 엔드포인트
 | endpoint | 용도 |
 |---|---|
-| GET `/git-head` | main HEAD commit + next_version 계산 |
-| POST `/deploy` + GET `/deploy/status` | 무중단 배포 트리거 + 진행률 |
-| GET `/memory/status` + POST `/memory/optimize` | 외부 앱 graceful quit |
+| GET `/admin/git-head` | main HEAD commit + next_version |
+| POST `/admin/deploy` + GET `/admin/deploy/status` | 무중단 배포 + 진행률 |
+| GET `/admin/memory/status` + POST `/admin/memory/optimize` | graceful quit |
+| GET `/admin/patch-log?limit=N&since_days=D&type=X&group=Y` | post-commit hook 누적 commit 히스토리 회독 |
+| GET `/admin/patch-log/{sha}` | 단일 commit 상세 (full text + files) |
+| POST `/internal/notify-update` | post-commit hook 자동 호출 → push 발송 (10분 dedup) |
+| POST `/diag/auto-fix/{ts}` | 사용자 신고 버그 → CPO 자동 위임 |
 
-### SQLite (진행 중)
-- `server/db.py` (외부 의존 0): `messages` / `sessions` / `state_kv`
-- `sessions_store._save_messages` 가 JSON + SQLite **dual-write**
-- 다음 단계: read cutover + JSON 제거
+### SQLite (read cutover 완료)
+- `server/db.py` (외부 의존 0, `with closing(_conn()) as c:` 필수): `messages` / `sessions` / `state_kv`
+- `_load_doogeun_state` 가 **SQLite 우선 read** (warm 5ms), JSON 은 fallback (1회 자동 마이그레이션)
+- `_save_doogeun_state` 는 dual-write (SQLite + JSON 백업)
+- 30s polling 디스크 I/O 1/100 절감
+
+## 책장 (`/timeline` + `TimelineModal`)
+- post-commit hook (`scripts/post_commit_hook.sh`) 이 매 commit 후 `server/patch_log.jsonl` append
+- `scripts/install_hooks.sh` 한 번 실행으로 hook 설치 + 기존 git log 백필
+- 4 그룹 분류 (디버깅/개선/롤백/정비), 카드 클릭 → 상세 모달 (변경 파일·body·stat·GitHub diff 링크)
+- 모바일: 사이드바 [📚 책장] 또는 hq-ops 옆 [📚] 버튼 → 모달 팝업 (페이지 이동 X)
+- `patch_log.jsonl` 은 gitignore (post-commit hook 으로 자동 재생성)
+
+## UI 레이아웃 (3-column)
+1. 좌측 사이드바 — 메뉴 (서버실·연구소·설정 등)
+2. **씬** (Phaser HubOffice, flex-1 자동)
+3. **🆕 중앙 에이전트 목록 column** (220px 고정) — 검색바 + ★ 즐겨찾기 핀 + 3 그룹(시스템/개발/에이전트) 토글 + 자동 정렬 (핀 → 활성 24h → 일반 → 휴면 30d+)
+4. 우측 채팅 패널 — selected 팀 메시지·입력 단독 (collapsible)
+- 사이드바 그룹 collapse 상태: `localStorage["doogeun-hq-sidebar-groups"]`
+- 핀 목록: `localStorage["doogeun-hq-pinned-agents"]`
 
 ## 운영 노트 (반복 발생 패턴)
 
@@ -293,6 +337,20 @@ HubOffice.tsx 수정 시 `npx next build` 필수 검증. 흔한 에러:
 ### 캐릭 풀 무결성
 `doogeun-hq/public/assets/chars/` 만 관리 (ui/ 삭제 후 단일 디렉토리). 모든 PNG **128×192**. **CHAR_COUNT = 241** (HubOffice.tsx) 와 일치 필수. 비표준 해상도(160×192/192×192/129×192) 는 우측 잘림 발생 → 추가 시 필터링.
 
+### "WS 연결 끊김" 무한 반복 — 한 달 누적 root cause
+**SQLite connection 누수가 진짜 원인** (5/5 fix 됨, `f5f6da242`):
+- `with _conn() as c:` 가 sqlite3 standard 상 **transaction commit 만** 하고 connection close 는 안 함
+- 매 read/write 마다 누수 → `lsof -p $(pgrep uvicorn)` 에서 `doogeun.db` fd 200+ 누적 → `OSError: [Errno 24] Too many open files` → 서버 hang → CF Tunnel keepalive 1011 timeout → 클라 "❌ 연결 끊김"
+- **fix**: `from contextlib import closing` + `with closing(_conn()) as c:` 일괄
+- 진단 명령: `UVPID=$(pgrep -f "uvicorn main:app"); lsof -p $UVPID | grep doogeun.db | wc -l` (정상=0~3, 누수=수십~수백)
+
+### CPO 캐릭 hit area
+`char_cpo.png` 는 다른 캐릭과 동일 128×192 캔버스지만 그 안 sprite 픽셀이 작음 → 시각상 작아 보임. `HubOffice.tsx:874` 에서 CPO 만 hitArea 80×110 (다른 56×80). 시각 크기는 그대로, 선택/우클릭 hit 만 확장.
+
+### 에이전트 충돌 처리 (renderAgents + dragend)
+- `renderAgents` forEach 처리 순서 — **영속 `position` 있는 에이전트 먼저 정렬** → 자기 자리 유지, 신규 (position null) 만 spread
+- dragend — 드롭 위치 56px 이내에 다른 에이전트 있으면 → 드래그된 자만 `homePos` 로 walk back. 충돌 대상은 그대로
+
 ## 세션 복원
 
 이 프로젝트 작업 이어할 때:
@@ -300,3 +358,34 @@ HubOffice.tsx 수정 시 `npx next build` 필수 검증. 흔한 에러:
 2. `CLAUDE.md` (이 파일) — 공통 원칙
 3. `doogeun-hq/CLAUDE.md` (메인 프론트), `server/CLAUDE.md` (백엔드)
 4. `~/.claude/projects/-Users-600mac/memory/MEMORY.md` (자동 로드 — 프로젝트 맥락)
+5. `server/hq_ops_rules.md` (관리자 hq-ops 규칙), `server/md_maker_rules.md` (MD 메이커 규칙) — 사용자 직접 편집
+
+## 이번 세션 검증된 진단/측정 명령
+
+```bash
+# fd 누수 측정 (SQLite connection)
+UVPID=$(pgrep -f "uvicorn main:app" | head -1)
+lsof -p $UVPID | grep "doogeun.db" | wc -l          # 0~3 정상, 그 이상 = 누수
+
+# uvicorn 재시작 빈도
+grep "Started server process" server/logs/company-hq.log | tail -50 | wc -l
+
+# WS keepalive 끊김 / Cloudflare proxy restart 빈도
+grep -E "ConnectionClosed|keepalive|CloudFlare" server/logs/company-hq.log | tail -20
+
+# 자동 복구 dispatch 호출 로그
+grep "auto-recovery" server/logs/company-hq.log | tail -20
+
+# 백엔드 patch-log 회독 (1줄)
+curl -s "http://localhost:8000/api/admin/patch-log?limit=10" | python3 -m json.tool
+
+# Ollama 모델 메모리 (KEEP_ALIVE 누수 검증)
+curl -s http://localhost:11434/api/ps    # models=[] 인데 RSS 큰지 점검
+```
+
+## 자주 잊는 함정 (실수 누적)
+- **module-level logger 누락**: `main.py`, `ws_handler.py` 에 `import logging; logger = logging.getLogger(...)` 없으면 try/except 안의 logger 호출이 silent NameError → 자동복구·진단 무용
+- **sqlite3 `with _conn() as c:`**: connection close 안 됨. 반드시 `with closing(_conn()) as c:`
+- **VersionBanner cooldown**: sessionStorage 사용 X (탭/시크릿 사라짐) — 무조건 localStorage + `dismissedCommit` 영속
+- **hq-ops 단순 요청 자동 haiku 다운그레이드 제외**: claude_runner 의 `_is_simple` 분기에서 `team_id != "hq-ops"` 체크. 짧은 요청도 multi-step 작업 가능해서 sonnet 유지
+- **새 에이전트 만들 때 role 필드**: `teams.json[role]` 미지정 시 dispatch 가드가 default `dev` 적용. system 권한 필요하면 명시

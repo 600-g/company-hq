@@ -37,3 +37,9 @@
 - **재발 방지**: 공통 기능(취소, 스크롤 등)은 하나의 로직으로 통일하고, UI만 모드별로 다르게 렌더링
 - [2026-04-10 02:23] design-team: env: node: No such file or directory
 - [2026-04-10 02:39] cpo-claude: env: node: No such file or directory
+- [2026-04-27 21:31] agent-0ca86d: No conversation found with session ID: aa44c622-8880-4572-a4c2-4000b73145cf
+- [2026-04-27 21:31] agent-0ca86d: No conversation found with session ID: aa44c622-8880-4572-a4c2-4000b73145cf
+- [2026-04-28 01:58] agent-0ca86d: No conversation found with session ID: aa44c622-8880-4572-a4c2-4000b73145cf
+- [2026-04-28 02:11] agent-0ca86d: No conversation found with session ID: aa44c622-8880-4572-a4c2-4000b73145cf
+- [2026-04-28 15:50] agent-0ca86d: No conversation found with session ID: aa44c622-8880-4572-a4c2-4000b73145cf
+- [2026-04-29 00:29] agent-0ca86d: idle timeout after 300s

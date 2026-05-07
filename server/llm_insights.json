@@ -1,35 +1,38 @@
 {
-  "run_at": "2026-04-26T18:00:00.848382",
+  "run_at": "2026-05-06T18:00:04.665958",
   "model": "gemma4:26b",
   "yesterday_message_count": 0,
   "staff_stats_summary": {
-    "total_handled": 10,
+    "total_handled": 0,
     "by_provider": {
-      "gemini": 8,
+      "gemini": 0,
       "gemma_e4b": 0,
       "gemma_main": 0,
-      "claude_fallback": 2
+      "claude_fallback": 0
     },
     "by_intent": {
-      "chat": 6,
-      "status": 1,
-      "lookup": 1,
+      "chat": 0,
+      "status": 0,
+      "lookup": 0,
       "calc": 0,
       "summarize": 0,
-      "escalate": 2
+      "escalate": 0
     },
     "by_language": {
-      "ko": 10,
+      "ko": 0,
       "en": 0,
       "ja": 0,
       "zh": 0,
       "other": 0
     },
-    "claude_tokens_saved_estimate": 40000,
-    "last_updated": "2026-04-26T16:55:46.659622"
+    "claude_tokens_saved_estimate": 0,
+    "reset_date": "2026-05-05",
+    "last_updated": "2026-05-05T11:37:24.316637",
+    "lifetime_total": 10,
+    "lifetime_tokens_saved": 40000
   },
   "savings_analysis": "(분석 실패)",
-  "log_anomalies_count": 76811,
+  "log_anomalies_count": 401,
   "log_anomalies_sample": [
     "company-hq.log: 2026-04-07 07:45:10,566 [ERROR] ConnectionClosedError exception in shielded future",
     "company-hq.log: future: <Future finished exception=ConnectionClosedError(None, Close(code=<CloseCode.INTERNAL_ERROR: 1011>, reason='keepalive ping timeout'), None)>",

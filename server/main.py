@@ -4632,6 +4632,41 @@ async def qa_restart_server():
         return {"ok": False, "error": str(e)}
 
 
+# ── 트레이딩 대시보드 proxy (api.600g.net/trading/* → :9000) ─────────────
+# system-api(:9000) 의 통합 페르소나 페이지 + endpoint 모두 통과시킴.
+import httpx as _httpx_trading
+from fastapi import Response as _Response_trading
+
+@app.api_route("/trading/{path:path}", methods=["GET", "POST"])
+async def trading_proxy(path: str, request: Request):
+    """trading-dashboard system-api(:9000) 으로 reverse proxy.
+    - GET  /trading/persona_unified.html       → :9000/persona_unified.html
+    - GET  /trading/api/markets/summary        → :9000/api/markets/summary
+    - POST /trading/api/personas/weight        → :9000/api/personas/weight
+    """
+    target = f"http://127.0.0.1:9000/{path}"
+    body = await request.body() if request.method == "POST" else None
+    try:
+        async with _httpx_trading.AsyncClient(timeout=10.0) as client:
+            r = await client.request(
+                request.method, target,
+                content=body,
+                params=dict(request.query_params),
+                headers={
+                    "content-type": request.headers.get("content-type", "application/json"),
+                    "accept": request.headers.get("accept", "*/*"),
+                },
+            )
+        return _Response_trading(
+            content=r.content,
+            status_code=r.status_code,
+            media_type=r.headers.get("content-type", "text/html"),
+        )
+    except _httpx_trading.ConnectError:
+        return _Response_trading("trading-dashboard offline (port 9000)",
+                        status_code=503, media_type="text/plain")
+
+
 # ── 서버 실행 ─────────────────────────────────────────
 
 if __name__ == "__main__":
