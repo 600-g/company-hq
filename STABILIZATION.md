@@ -107,7 +107,46 @@
 - ✅ **1단계-11: page.tsx 분할 3차** — Lab.tsx + AgentsModal.tsx (-137)
 - ✅ **1단계-12: page.tsx 분할 4차** — Sidebar.tsx (-87)
 - ✅ **1단계-13: main.py 분할 7차** — agents 라우터 (-169) lazy import 패턴
+- ✅ **1단계-14: main.py 분할 8차** — teams 라우터 (-179) read-only + order
+- ✅ **1단계-15: teams 라우터 + guide/evolution/activity** (-93)
+- ✅ **1단계-16: main.py 분할 9·10·11차** — auth + push + trading 라우터 (-241)
 - ✅ **4단계: 에이전트 생성 트랜잭션화** — `/api/teams/light` 4단계 롤백
+
+### 누적 효과 (2026-05-08 최종)
+
+| 파일 | 시작 | 현재 | 누적 감소 |
+|---|---|---|---|
+| `server/main.py` | 4,681 | **2,819** | **-1,862 (-39.8%)** |
+| `doogeun-hq/src/app/hub/page.tsx` | 1,996 | **1,201** | **-795 (-39.8%)** |
+| `doogeun-hq/src/components/HubOffice.tsx` | 1,585 | **1,465** | -120 (-7.6%) |
+| `server/claude_runner.py` | 1,388 | **1,232** | -156 (-11.2%) |
+| **합계** | 9,650 | **6,717** | **-2,933 줄** |
+
+신규 자체 완결 모듈 (총 16개):
+
+**백엔드 라우터 (10개)**:
+- `routers/admin_patch.py` 247 — patch-log + release-notes
+- `routers/admin_ops.py` 309 — git-head + deploy + memory
+- `routers/office_layout.py` 68 — 사무실 가구
+- `routers/furniture.py` 84 — 카탈로그 오버라이드
+- `routers/diag.py` 463 — 진단 + 버그 + 자동복구
+- `routers/system.py` 134 — standby + budget + staff
+- `routers/agents.py` 188 — agent CRUD
+- `routers/teams.py` 282 — 팀 + 순서 + 층 + 가이드 + 진화
+- `routers/auth.py` 79 — 인증
+- `routers/push.py` 145 — 푸시 + 알림
+- `routers/trading.py` 62 — 매매봇
+
+**프론트 컴포넌트 (5개)**:
+- `components/AgentSelector.tsx` 244
+- `components/hub/Bugs.tsx` 248
+- `components/hub/Lab.tsx` 111
+- `components/hub/AgentsModal.tsx` 154
+- `components/hub/Sidebar.tsx` 100
+
+**서비스 모듈 (2개)**:
+- `lib/office-helpers.ts` 134
+- `budget.py` 187
 
 ### 누적 효과 (2026-05-08 끝)
 
