@@ -989,52 +989,6 @@ async def get_agents_status():
     }
 
 
-@app.get("/api/teams/{team_id}/guide")
-async def get_team_guide(team_id: str):
-    """팀의 CLAUDE.md + 시스템프롬프트 반환 (가이드 팝업용)"""
-    team = next((t for t in TEAMS if t["id"] == team_id), None)
-    if not team:
-        return {"ok": False, "error": "팀을 찾을 수 없습니다."}
-
-    local_path = os.path.expanduser(team.get("localPath", ""))
-    claude_md = ""
-    claude_md_path = os.path.join(local_path, "CLAUDE.md") if local_path else ""
-    if claude_md_path and os.path.isfile(claude_md_path):
-        with open(claude_md_path, "r", encoding="utf-8") as f:
-            claude_md = f.read()
-
-    from claude_runner import TEAM_SYSTEM_PROMPTS, DEFAULT_SYSTEM_PROMPT
-    system_prompt = TEAM_SYSTEM_PROMPTS.get(team_id, DEFAULT_SYSTEM_PROMPT)
-
-    return {
-        "ok": True,
-        "team_id": team_id,
-        "name": team.get("name", ""),
-        "emoji": team.get("emoji", ""),
-        "claude_md": claude_md,
-        "system_prompt": system_prompt,
-    }
-
-
-@app.put("/api/teams/{team_id}/guide")
-async def update_team_guide(team_id: str, body: dict):
-    """팀 CLAUDE.md 수정 — 실제 파일에 저장"""
-    team = next((t for t in TEAMS if t["id"] == team_id), None)
-    if not team:
-        return {"ok": False, "error": "팀을 찾을 수 없습니다."}
-
-    local_path = os.path.expanduser(team.get("localPath", ""))
-    if not local_path or not os.path.isdir(local_path):
-        return {"ok": False, "error": "프로젝트 경로를 찾을 수 없습니다."}
-
-    claude_md = body.get("claude_md", "")
-    claude_md_path = os.path.join(local_path, "CLAUDE.md")
-
-    with open(claude_md_path, "w", encoding="utf-8") as f:
-        f.write(claude_md)
-
-    _log_activity(team_id, "📝 CLAUDE.md 수정됨")
-    return {"ok": True, "team_id": team_id}
 
 
 # ── 서비스 상태 (백그라운드 체크, 논블로킹) ──
@@ -1095,53 +1049,6 @@ def _load_evolution() -> dict:
 def _save_evolution(data: dict):
     _EVOLUTION_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
-@app.get("/api/teams/{team_id}/evolution")
-async def get_team_evolution(team_id: str):
-    """팀 자가학습 히스토리 조회"""
-    evo = _load_evolution()
-    team_evo = evo.get(team_id, {"version": "1.0", "history": []})
-    # lessons.md가 있으면 카운트
-    team = next((t for t in TEAMS if t["id"] == team_id), None)
-    lessons_count = 0
-    if team:
-        lp = Path(os.path.expanduser(team.get("localPath", ""))).resolve() / "lessons.md"
-        if lp.exists():
-            lessons_count = sum(1 for line in lp.read_text(encoding="utf-8", errors="ignore").splitlines() if line.strip().startswith("-") or line.strip().startswith("["))
-    return {"ok": True, "team_id": team_id, **team_evo, "lessons_count": lessons_count}
-
-@app.get("/api/teams/{team_id}/activity")
-async def get_team_activity(team_id: str):
-    """팀 최근 활동 — 커밋, 작업 상태"""
-    team = next((t for t in TEAMS if t["id"] == team_id), None)
-    if not team:
-        return {"ok": False, "error": "팀 없음"}
-    local = Path(os.path.expanduser(team.get("localPath", ""))).resolve()
-    # 최근 커밋 5개
-    commits = []
-    if (local / ".git").exists():
-        import subprocess
-        try:
-            out = subprocess.run(
-                ["git", "log", "--oneline", "-5", "--format=%h|%s|%ar"],
-                capture_output=True, text=True, cwd=str(local), timeout=5
-            )
-            for line in out.stdout.strip().splitlines():
-                parts = line.split("|", 2)
-                if len(parts) == 3:
-                    commits.append({"hash": parts[0], "message": parts[1], "ago": parts[2]})
-        except Exception:
-            pass
-    # 에이전트 상태
-    from ws_handler import AGENT_STATUS
-    status = AGENT_STATUS.get(team_id, {})
-    return {
-        "ok": True,
-        "team_id": team_id,
-        "commits": commits,
-        "status": status.get("state", "idle"),
-        "current_tool": status.get("tool"),
-        "last_active": status.get("last_active"),
-    }
 
 
 @app.post("/api/trading-bot/mode")

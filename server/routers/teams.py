@@ -170,6 +170,108 @@ async def update_team_positions(body: dict):
     return {"ok": True, "positions": current}
 
 
+@router.get("/api/teams/{team_id}/guide")
+async def get_team_guide(team_id: str):
+    """팀의 CLAUDE.md + 시스템프롬프트 반환 (가이드 팝업용)"""
+    import main as _main
+    from claude_runner import TEAM_SYSTEM_PROMPTS, DEFAULT_SYSTEM_PROMPT
+    team = next((t for t in _main.TEAMS if t["id"] == team_id), None)
+    if not team:
+        return {"ok": False, "error": "팀을 찾을 수 없습니다."}
+
+    local_path = os.path.expanduser(team.get("localPath", ""))
+    claude_md = ""
+    claude_md_path = os.path.join(local_path, "CLAUDE.md") if local_path else ""
+    if claude_md_path and os.path.isfile(claude_md_path):
+        with open(claude_md_path, "r", encoding="utf-8") as f:
+            claude_md = f.read()
+
+    system_prompt = TEAM_SYSTEM_PROMPTS.get(team_id, DEFAULT_SYSTEM_PROMPT)
+
+    return {
+        "ok": True,
+        "team_id": team_id,
+        "name": team.get("name", ""),
+        "emoji": team.get("emoji", ""),
+        "claude_md": claude_md,
+        "system_prompt": system_prompt,
+    }
+
+
+@router.put("/api/teams/{team_id}/guide")
+async def update_team_guide(team_id: str, body: dict):
+    """팀 CLAUDE.md 수정 — 실제 파일에 저장"""
+    import main as _main
+    from ws_handler import _log_activity
+    team = next((t for t in _main.TEAMS if t["id"] == team_id), None)
+    if not team:
+        return {"ok": False, "error": "팀을 찾을 수 없습니다."}
+
+    local_path = os.path.expanduser(team.get("localPath", ""))
+    if not local_path or not os.path.isdir(local_path):
+        return {"ok": False, "error": "프로젝트 경로를 찾을 수 없습니다."}
+
+    claude_md = body.get("claude_md", "")
+    claude_md_path = os.path.join(local_path, "CLAUDE.md")
+
+    with open(claude_md_path, "w", encoding="utf-8") as f:
+        f.write(claude_md)
+
+    _log_activity(team_id, "📝 CLAUDE.md 수정됨")
+    return {"ok": True, "team_id": team_id}
+
+
+@router.get("/api/teams/{team_id}/evolution")
+async def get_team_evolution(team_id: str):
+    """팀 자가학습 히스토리 조회"""
+    from pathlib import Path as _Path
+    import main as _main
+    evo = _main._load_evolution()
+    team_evo = evo.get(team_id, {"version": "1.0", "history": []})
+    team = next((t for t in _main.TEAMS if t["id"] == team_id), None)
+    lessons_count = 0
+    if team:
+        lp = _Path(os.path.expanduser(team.get("localPath", ""))).resolve() / "lessons.md"
+        if lp.exists():
+            lessons_count = sum(1 for line in lp.read_text(encoding="utf-8", errors="ignore").splitlines() if line.strip().startswith("-") or line.strip().startswith("["))
+    return {"ok": True, "team_id": team_id, **team_evo, "lessons_count": lessons_count}
+
+
+@router.get("/api/teams/{team_id}/activity")
+async def get_team_activity(team_id: str):
+    """팀 최근 활동 — 커밋, 작업 상태"""
+    from pathlib import Path as _Path
+    import main as _main
+    from ws_handler import AGENT_STATUS
+    team = next((t for t in _main.TEAMS if t["id"] == team_id), None)
+    if not team:
+        return {"ok": False, "error": "팀 없음"}
+    local = _Path(os.path.expanduser(team.get("localPath", ""))).resolve()
+    commits = []
+    if (local / ".git").exists():
+        import subprocess
+        try:
+            out = subprocess.run(
+                ["git", "log", "--oneline", "-5", "--format=%h|%s|%ar"],
+                capture_output=True, text=True, cwd=str(local), timeout=5
+            )
+            for line in out.stdout.strip().splitlines():
+                parts = line.split("|", 2)
+                if len(parts) == 3:
+                    commits.append({"hash": parts[0], "message": parts[1], "ago": parts[2]})
+        except Exception:
+            pass
+    status = AGENT_STATUS.get(team_id, {})
+    return {
+        "ok": True,
+        "team_id": team_id,
+        "commits": commits,
+        "status": status.get("state", "idle"),
+        "current_tool": status.get("tool"),
+        "last_active": status.get("last_active"),
+    }
+
+
 @router.put("/api/layout/floors")
 async def update_floor_layout(body: dict):
     """층 배치 업데이트 — 프론트에서 팀 드래그 후 저장 시 호출."""
