@@ -342,7 +342,7 @@ async def _auto_recovery_dispatch(
         # 직전 ticket 이 있으면 critical 마킹
         if last_ticket_ts:
             try:
-                from main import _mark_auto_recovery_critical
+                from routers.diag import _mark_auto_recovery_critical
                 _mark_auto_recovery_critical(last_ticket_ts)
             except Exception as _e:
                 logger.warning("[auto-recovery] critical 마킹 실패: %s", _e)
@@ -386,7 +386,7 @@ async def _auto_recovery_dispatch(
     # 자체 ticket 작성 — bug_reports.jsonl 에 자동 기록 (CPO 가 완료 시 ts 로 resolved 마킹)
     ticket_ts: str | None = None
     try:
-        from main import _record_auto_recovery_ticket
+        from routers.diag import _record_auto_recovery_ticket
         ticket_ts = _record_auto_recovery_ticket(
             team_id=team_id,
             team_name=team_name,
