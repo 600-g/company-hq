@@ -2741,8 +2741,29 @@ async def push_trading(req: dict):
         tag=f"trading-{bot}-{side}",
         url="/",
         team_id="trading-bot",
+        topic="trading",  # 트레이딩 구독자에만 발송
     )
-    return {"ok": True, "sent": count, "bot": bot, "side": side}
+    return {"ok": True, "sent": count, "bot": bot, "side": side, "topic": "trading"}
+
+
+@app.post("/api/push/topics")
+async def push_update_topics(body: dict):
+    """구독자 topic 변경 — 두근컴퍼니/트레이딩 알림 on/off 토글.
+    body: {endpoint: '...', topics: ['hq','trading'|'hq'|'trading']}
+    """
+    from push_notifications import update_topics
+    endpoint = body.get("endpoint", "")
+    topics = body.get("topics") or ["hq", "trading"]
+    if not endpoint:
+        return {"ok": False, "error": "endpoint 필요"}
+    ok = update_topics(endpoint, topics)
+    return {"ok": ok, "topics": topics}
+
+
+@app.get("/api/push/topics")
+async def push_get_topics(endpoint: str = ""):
+    from push_notifications import get_topics
+    return {"endpoint": endpoint, "topics": get_topics(endpoint)}
 
 
 

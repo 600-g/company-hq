@@ -150,10 +150,14 @@ def delete_notification(notif_id: str) -> bool:
 def get_vapid_public_key() -> str:
     return _get_vapid()["public"]
 
-def add_subscription(sub_info: dict) -> bool:
+def add_subscription(sub_info: dict, topics: list[str] | None = None) -> bool:
+    """sub_info 에 topics 필드 추가. 기본 ['hq','trading'] 둘 다 받음."""
     endpoint = sub_info.get("endpoint", "")
     if not endpoint:
         return False
+    if topics is None:
+        topics = sub_info.get("topics") or ["hq", "trading"]
+    sub_info["topics"] = topics
     for i, s in enumerate(_subscriptions):
         if s.get("endpoint") == endpoint:
             _subscriptions[i] = sub_info
@@ -161,8 +165,24 @@ def add_subscription(sub_info: dict) -> bool:
             return True
     _subscriptions.append(sub_info)
     _save_subscriptions(_subscriptions)
-    _log.info(f"[PUSH] 새 구독 등록 (총 {len(_subscriptions)}개)")
+    _log.info(f"[PUSH] 새 구독 등록 topics={topics} (총 {len(_subscriptions)}개)")
     return True
+
+def update_topics(endpoint: str, topics: list[str]) -> bool:
+    """기존 구독자의 topics 변경 (사용자가 토글로 on/off)."""
+    for s in _subscriptions:
+        if s.get("endpoint") == endpoint:
+            s["topics"] = topics
+            _save_subscriptions(_subscriptions)
+            _log.info(f"[PUSH] topics 변경: {topics}")
+            return True
+    return False
+
+def get_topics(endpoint: str) -> list[str]:
+    for s in _subscriptions:
+        if s.get("endpoint") == endpoint:
+            return s.get("topics") or ["hq", "trading"]
+    return []
 
 def remove_subscription(endpoint: str) -> bool:
     before = len(_subscriptions)
@@ -177,10 +197,12 @@ def remove_subscription(endpoint: str) -> bool:
 
 # ── 푸시 발송 (+ 인앱 알림 자동 저장) ───────────────────
 
-def send_push(title: str, body: str, tag: str = "default", url: str = "/", team_id: str = "") -> int:
-    """푸시 발송 + 인앱 알림 저장. 유저가 웹 접속 중이면 푸시만 스킵."""
-    # 인앱 알림 저장 (항상)
-    _add_notification(title, body, team_id=team_id, tag=tag)
+def send_push(title: str, body: str, tag: str = "default", url: str = "/", team_id: str = "", topic: str = "hq") -> int:
+    """푸시 발송 + 인앱 알림 저장. topic 매칭 구독자에만 발송.
+    topic: 'hq' (두근컴퍼니) | 'trading' (트레이딩봇)
+    """
+    # 인앱 알림 저장 (항상) — topic 별 구분 위해 tag 에 prefix
+    _add_notification(title, body, team_id=team_id, tag=f"{topic}:{tag}")
 
     # 유저가 웹에서 보고 있으면 푸시 알림 스킵
     if _user_is_online():
@@ -198,6 +220,7 @@ def send_push(title: str, body: str, tag: str = "default", url: str = "/", team_
         "tag": tag,
         "url": url,
         "team_id": team_id,
+        "topic": topic,
         "badge_count": unread,
         "timestamp": datetime.now().isoformat(),
     }, ensure_ascii=False)
@@ -206,6 +229,10 @@ def send_push(title: str, body: str, tag: str = "default", url: str = "/", team_
     expired = []
 
     for sub in _subscriptions:
+        # topic 매칭 — 구독자가 해당 topic 구독 중이어야 발송
+        sub_topics = sub.get("topics") or ["hq", "trading"]  # 기본: 둘 다
+        if topic not in sub_topics:
+            continue
         try:
             webpush(
                 subscription_info=sub,
