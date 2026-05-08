@@ -148,6 +148,14 @@
 - `lib/office-helpers.ts` 134
 - `budget.py` 187
 
+### 추가 작업 (이번 세션 후반)
+- ✅ **dispatch 라우터 (-820)** — DISPATCH_TASKS/PENDING/APPROVAL/DISCUSS_TASKS + 7 endpoints
+- ✅ **doogeun_state 라우터 (-174)** — SQLite + JSON dual + WS broadcast
+- ✅ **dashboard 라우터 (-327)** — services + token-usage 5h 윈도우
+- ✅ **runner_helpers (-110)** — _parse_status/_summarize_tool_input/_session_*
+- ✅ **POST /api/teams 트랜잭션화** — 4단계 롤백 (GitHub repo 보존)
+- ✅ **Docker + README + .env.example** — 외부 검증 가능한 토대
+
 ### 누적 효과 (2026-05-08 끝)
 
 | 파일 | 시작 | 현재 | 감소 |
