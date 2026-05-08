@@ -238,12 +238,14 @@ from routers.office_layout import router as office_layout_router
 from routers.furniture import router as furniture_router
 from routers.diag import router as diag_router
 from routers.system import router as system_router
+from routers.agents import router as agents_router
 app.include_router(admin_patch_router)
 app.include_router(admin_ops_router)
 app.include_router(office_layout_router)
 app.include_router(furniture_router)
 app.include_router(diag_router)
 app.include_router(system_router)
+app.include_router(agents_router)
 
 
 # ── 에이전트 워치독 (자동 복구, 토큰 0) ───────────────
@@ -1410,175 +1412,6 @@ async def get_dashboard():
     }
 
 
-VALID_MODELS = {
-    "haiku", "sonnet", "opus",  # Claude (Max 플랜)
-    "gemini_flash",              # 클라우드 무료
-    "gemma_main", "gemma_e4b",   # 로컬 무한
-}
-
-
-@app.post("/api/agents/{team_id}/model")
-async def set_agent_model(team_id: str, body: dict):
-    """팀 AI 모델 변경.
-    Claude: haiku|sonnet|opus
-    무료 LLM: gemini_flash|gemma_main|gemma_e4b (Claude 토큰 0)
-    """
-    model = body.get("model", "")
-    if model not in VALID_MODELS:
-        return {"ok": False, "error": f"model 은 {sorted(VALID_MODELS)} 중 하나"}
-    TEAM_MODELS[team_id] = model
-    _log_activity(team_id, f"🔧 모델 변경: {model}")
-    return {"ok": True, "team_id": team_id, "model": model}
-
-
-@app.get("/api/agents/{team_id}/info")
-async def get_agent_info(team_id: str):
-    """팀 세션/모델 정보."""
-    return {
-        "ok": True,
-        "team_id": team_id,
-        "model": TEAM_MODELS.get(team_id, "sonnet"),
-        "session_id": TEAM_SESSIONS.get(team_id),
-        "has_session": team_id in TEAM_SESSIONS,
-    }
-
-
-@app.get("/api/agents/{team_id}/activity")
-async def get_agent_activity(team_id: str):
-    """에이전트 활동 로그 — 최근 커밋/메시지/상태 집계.
-
-    프론트 '활동 로그' 뷰어용. commits + recent_messages + current_status.
-    """
-    team = next((t for t in TEAMS if t["id"] == team_id), None)
-    if not team:
-        return {"ok": False, "error": "팀 없음"}
-    local = Path(os.path.expanduser(team.get("localPath", ""))).resolve()
-
-    commits: list[dict] = []
-    if (local / ".git").exists():
-        import subprocess
-        try:
-            out = subprocess.run(
-                ["git", "log", "--oneline", "-10", "--format=%h|%s|%ar|%an"],
-                capture_output=True, text=True, cwd=str(local), timeout=5
-            )
-            for line in out.stdout.strip().splitlines():
-                parts = line.split("|", 3)
-                if len(parts) == 4:
-                    commits.append({
-                        "hash": parts[0], "message": parts[1],
-                        "ago": parts[2], "author": parts[3],
-                    })
-        except Exception:
-            pass
-
-    # 최근 메시지 요약 (chat_history 에서 마지막 N 개 assistant 메시지)
-    recent_messages: list[dict] = []
-    try:
-        history_dir = Path("chat_history") / team_id
-        if history_dir.exists():
-            # 가장 최근 수정된 세션 파일
-            session_files = sorted(
-                history_dir.glob("*.json"),
-                key=lambda p: p.stat().st_mtime,
-                reverse=True,
-            )
-            for sf in session_files[:1]:  # 활성 세션 하나만
-                try:
-                    data = json.loads(sf.read_text(encoding="utf-8"))
-                    msgs = data.get("messages", []) if isinstance(data, dict) else data
-                    # 마지막 assistant/ai 메시지 5개, 짧은 요약 (첫 80자)
-                    for m in reversed(msgs):
-                        role = m.get("type") or m.get("role", "")
-                        if role in ("ai", "assistant"):
-                            content = str(m.get("content", ""))[:120].replace("\n", " ")
-                            recent_messages.append({
-                                "role": "assistant",
-                                "preview": content,
-                                "ts": m.get("ts") or m.get("timestamp"),
-                            })
-                            if len(recent_messages) >= 5:
-                                break
-                except Exception:
-                    pass
-    except Exception:
-        pass
-
-    # 현재 상태
-    from ws_handler import AGENT_STATUS
-    status = AGENT_STATUS.get(team_id, {})
-
-    return {
-        "ok": True,
-        "team_id": team_id,
-        "commits": commits,
-        "recent_messages": recent_messages,
-        "status": status.get("state", "idle"),
-        "current_tool": status.get("tool"),
-        "last_active": status.get("last_active"),
-    }
-
-
-@app.post("/api/agents/{team_id}/test")
-async def test_agent(team_id: str):
-    """에이전트 스모크 테스트 — CLI가 실제로 응답하는지 30초 안에 확인.
-
-    returns: {ok, response, duration_ms, error}
-    """
-    team = next((t for t in TEAMS if t["id"] == team_id), None)
-    if not team:
-        return {"ok": False, "error": "팀을 찾을 수 없음"}
-    local_path = os.path.expanduser(team.get("localPath", ""))
-    if not os.path.isdir(local_path):
-        return {"ok": False, "error": f"로컬 경로 없음: {local_path}"}
-
-    prompt = "테스트입니다. 정확히 '작동함'이라는 두 글자로만 답해주세요."
-    started = time.time()
-    collected = ""
-    try:
-        async def _collect():
-            nonlocal collected
-            async for chunk in run_claude(prompt, team["localPath"], team_id, is_auto=True):
-                if chunk.get("kind") == "text":
-                    collected += chunk.get("content", "")
-                    if len(collected) > 200:
-                        break
-        await asyncio.wait_for(_collect(), timeout=30)
-    except asyncio.TimeoutError:
-        return {"ok": False, "error": "30초 타임아웃", "duration_ms": int((time.time() - started) * 1000)}
-    except Exception as e:
-        return {"ok": False, "error": f"CLI 에러: {e}", "duration_ms": int((time.time() - started) * 1000)}
-
-    duration_ms = int((time.time() - started) * 1000)
-    resp = collected.strip()
-    passed = bool(resp) and ("작동" in resp or "동작" in resp or "ok" in resp.lower())
-    return {"ok": passed, "response": resp[:300], "duration_ms": duration_ms}
-
-
-@app.post("/api/agents/{team_id}/restart")
-async def restart_agent(team_id: str):
-    """에이전트 세션 초기화 (재부팅)"""
-    import signal
-
-    # 실행 중인 프로세스 종료
-    pid = AGENT_PIDS.get(team_id)
-    if pid:
-        try:
-            os.kill(pid, signal.SIGTERM)
-        except Exception:
-            pass
-        AGENT_PIDS.pop(team_id, None)
-
-    # 세션 초기화
-    if team_id in TEAM_SESSIONS:
-        del TEAM_SESSIONS[team_id]
-        _save_sessions(TEAM_SESSIONS)
-
-    # 상태 초기화
-    AGENT_STATUS[team_id] = {"working": False, "tool": None, "last_active": None, "last_prompt": ""}
-    _log_activity(team_id, "🔄 재부팅됨 (세션 초기화)")
-
-    return {"ok": True, "team_id": team_id}
 
 
 # ── 토큰 사용량 ──────────────────────────────────────
