@@ -105,6 +105,8 @@
 - ✅ **1단계-9: main.py 분할 6차** — system 라우터 (-108) standby/budget/staff/notify
 - ✅ **1단계-10: page.tsx 분할 2차** — Bugs.tsx (-345)
 - ✅ **1단계-11: page.tsx 분할 3차** — Lab.tsx + AgentsModal.tsx (-137)
+- ✅ **1단계-12: page.tsx 분할 4차** — Sidebar.tsx (-87)
+- ✅ **1단계-13: main.py 분할 7차** — agents 라우터 (-169) lazy import 패턴
 - ✅ **4단계: 에이전트 생성 트랜잭션화** — `/api/teams/light` 4단계 롤백
 
 ### 누적 효과 (2026-05-08 끝)
