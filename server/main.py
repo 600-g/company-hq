@@ -244,6 +244,7 @@ from routers.auth import router as auth_router
 from routers.push import router as push_router
 from routers.trading import router as trading_router
 from routers.dispatch import router as dispatch_router
+from routers.doogeun_state import router as doogeun_state_router
 app.include_router(admin_patch_router)
 app.include_router(admin_ops_router)
 app.include_router(office_layout_router)
@@ -256,6 +257,7 @@ app.include_router(auth_router)
 app.include_router(push_router)
 app.include_router(trading_router)
 app.include_router(dispatch_router)
+app.include_router(doogeun_state_router)
 
 
 # ── 에이전트 워치독 (자동 복구, 토큰 0) ───────────────
@@ -706,180 +708,6 @@ async def get_repos():
 
 # ── 팀 순서/층 변경 API ───────────────────────────────
 
-
-
-
-# ── doogeun-hq 상태 동기화 (에이전트 + 레이아웃) ───────
-# 로컬 localStorage + 서버 JSON + WebSocket 실시간 브로드캐스트
-DOOGEUN_STATE_PATH = os.path.join(os.path.dirname(__file__), "doogeun_state.json")
-_doogeun_ws_clients: set = set()
-
-
-def _load_doogeun_state() -> dict:
-    """SQLite state_kv 우선 read (디스크 I/O 1/100). 없으면 JSON 파일 fallback (1회 마이그레이션)."""
-    try:
-        from db import state_kv_get, state_kv_set
-        v = state_kv_get("doogeun_state")
-        if isinstance(v, dict):
-            return v
-        # 첫 호출 — JSON 파일에서 read 후 SQLite 로 1회 마이그레이션
-        if os.path.exists(DOOGEUN_STATE_PATH):
-            try:
-                with open(DOOGEUN_STATE_PATH, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                if isinstance(data, dict):
-                    state_kv_set("doogeun_state", data)
-                    logger.info("[doogeun_state] JSON → SQLite 마이그레이션 완료")
-                    return data
-            except Exception as e:
-                logger.warning("doogeun_state.json load failed: %s", e)
-    except Exception as e:
-        # SQLite 실패 → JSON fallback
-        logger.warning("[doogeun_state] SQLite read 실패, JSON fallback: %s", e)
-        if os.path.exists(DOOGEUN_STATE_PATH):
-            try:
-                with open(DOOGEUN_STATE_PATH, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                if isinstance(data, dict):
-                    return data
-            except Exception as ee:
-                logger.warning("doogeun_state.json load failed: %s", ee)
-    return {"agents": [], "layout": {"floors": {}}, "version": 0, "updated_at": None}
-
-
-def _save_doogeun_state(data: dict) -> None:
-    """원자적 쓰기 + 시간별 백업 + SQLite dual-write. 무결성 + 빠른 read 둘 다 보장."""
-    # SQLite dual-write — read path 가 여기서 즉시 hit
-    try:
-        from db import state_kv_set
-        state_kv_set("doogeun_state", data)
-    except Exception as e:
-        logger.warning("[doogeun_state] SQLite dual-write 실패 (JSON 만 저장): %s", e)
-    try:
-        # 4시간 단위 백업 로테이션 (6개 = 24시간 보존, 디스크 I/O 1/4)
-        if os.path.exists(DOOGEUN_STATE_PATH):
-            backup_dir = os.path.join(os.path.dirname(DOOGEUN_STATE_PATH), "doogeun_state_backups")
-            os.makedirs(backup_dir, exist_ok=True)
-            now = datetime.utcnow()
-            bucket = (now.hour // 4) * 4
-            stamp = f"{now.strftime('%Y%m%d')}-{bucket:02d}"
-            backup_path = os.path.join(backup_dir, f"doogeun_state.{stamp}.json")
-            if not os.path.exists(backup_path):
-                try:
-                    shutil.copy2(DOOGEUN_STATE_PATH, backup_path)
-                    import glob as _glob
-                    backups = sorted(_glob.glob(os.path.join(backup_dir, "doogeun_state.*.json")))
-                    while len(backups) > 6:
-                        try: os.remove(backups[0])
-                        except OSError: pass
-                        backups.pop(0)
-                except Exception as be:
-                    logger.warning("doogeun_state backup failed: %s", be)
-        # 원자적 쓰기 — tmp 파일에 쓰고 rename (POSIX atomic)
-        # 쓰기 도중 재시작돼도 원본 파일 무결성 유지
-        tmp_path = DOOGEUN_STATE_PATH + ".tmp"
-        with open(tmp_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-            f.flush()
-            os.fsync(f.fileno())  # 디스크 sync 강제
-        os.replace(tmp_path, DOOGEUN_STATE_PATH)  # atomic rename
-    except Exception as e:
-        logger.error("doogeun_state.json save failed: %s", e)
-
-
-@app.get("/api/doogeun/state")
-async def get_doogeun_state() -> dict:
-    """전체 doogeun-hq 상태 — 에이전트 + 레이아웃.
-
-    GET 시 teams.json 의 새 팀(예: staff)을 자동 보충 — 클라가 빠진 팀 못 받는 문제 방지.
-    """
-    state = _load_doogeun_state()
-    existing_ids = {a.get("id") for a in state.get("agents", [])}
-    server_skip = {"server-monitor"}  # 캐릭 없는 팀
-    added = []
-    now_ts = int(time.time() * 1000)
-    for t in TEAMS:
-        tid = t.get("id")
-        if not tid or tid in existing_ids or tid in server_skip:
-            continue
-        # 새 팀 자동 추가
-        new_agent = {
-            "id": tid,
-            "name": t.get("name", tid),
-            "emoji": t.get("emoji", "🧑"),
-            "role": t.get("category", ""),
-            "description": t.get("status", ""),
-            "systemPromptMd": "",
-            "status": "idle",
-            "floor": 1,
-            "createdAt": now_ts,
-            "updatedAt": now_ts,
-            "activity": [],
-        }
-        state.setdefault("agents", []).append(new_agent)
-        added.append(tid)
-    if added:
-        _save_doogeun_state(state)
-        logger.info("[doogeun_state] 자동 보충: %s", added)
-    return {"ok": True, "state": state}
-
-
-@app.put("/api/doogeun/state")
-async def update_doogeun_state(body: dict, request: Request) -> dict:
-    """전체 상태 덮어쓰기 + 연결된 모든 WS 클라이언트에 브로드캐스트.
-    body: { agents: [...], layout: {floors: {...}}, client_id?: str }
-    client_id 를 같이 보내면 자기 자신에겐 WS push 스킵 (echo 방지).
-    """
-    agents = body.get("agents")
-    layout = body.get("layout")
-    client_id = body.get("client_id") or ""
-    if agents is None and layout is None:
-        return {"ok": False, "error": "agents 또는 layout 필요"}
-    prev = _load_doogeun_state()
-    new_state = {
-        "agents": agents if agents is not None else prev.get("agents", []),
-        "layout": layout if layout is not None else prev.get("layout", {"floors": {}}),
-        "version": int(prev.get("version", 0)) + 1,
-        "updated_at": datetime.utcnow().isoformat(),
-    }
-    _save_doogeun_state(new_state)
-    # WS 브로드캐스트 (sender 제외)
-    dead: list = []
-    for ws in list(_doogeun_ws_clients):
-        try:
-            if getattr(ws, "_doogeun_client_id", None) == client_id:
-                continue
-            await ws.send_json({"type": "state_update", "state": new_state})
-        except Exception:
-            dead.append(ws)
-    for ws in dead:
-        _doogeun_ws_clients.discard(ws)
-    return {"ok": True, "state": new_state}
-
-
-@app.websocket("/ws/doogeun/state")
-async def doogeun_state_ws(ws: WebSocket):
-    """실시간 상태 동기화 WS — 다른 디바이스가 변경하면 푸시 받음."""
-    await ws.accept()
-    # 클라이언트가 첫 메시지로 client_id 보냄 (자기 변경 에코 방지용)
-    try:
-        hello = await ws.receive_json()
-        ws._doogeun_client_id = hello.get("client_id") or ""  # type: ignore[attr-defined]
-    except Exception:
-        ws._doogeun_client_id = ""  # type: ignore[attr-defined]
-    _doogeun_ws_clients.add(ws)
-    try:
-        # 초기 상태 전송
-        await ws.send_json({"type": "state_update", "state": _load_doogeun_state()})
-        # keepalive 루프 — 클라이언트는 ping 만 보냄
-        while True:
-            msg = await ws.receive_json()
-            if msg.get("type") == "ping":
-                await ws.send_json({"type": "pong"})
-    except Exception:
-        pass
-    finally:
-        _doogeun_ws_clients.discard(ws)
 
 
 # ── 캐릭터 상태 API ────────────────────────────────────
