@@ -234,8 +234,10 @@ app.add_middleware(
 # 안정화 2026-05-08 — main.py 분할 1·2차: admin 라우터들
 from routers.admin_patch import router as admin_patch_router
 from routers.admin_ops import router as admin_ops_router
+from routers.office_layout import router as office_layout_router
 app.include_router(admin_patch_router)
 app.include_router(admin_ops_router)
+app.include_router(office_layout_router)
 
 
 # ── 에이전트 워치독 (자동 복구, 토큰 0) ───────────────
@@ -964,53 +966,6 @@ async def update_floor_layout(body: dict):
     return {"ok": True, "layout": FLOOR_LAYOUT}
 
 
-# ── 사무실 가구 레이아웃 동기화 (모든 기기 공유) ──────────────────
-
-OFFICE_LAYOUT_PATH = Path(__file__).parent / "office_layout.json"
-
-
-def _load_office_layout() -> dict:
-    if OFFICE_LAYOUT_PATH.exists():
-        try:
-            with open(OFFICE_LAYOUT_PATH, encoding="utf-8") as f:
-                return json.load(f)
-        except Exception as e:
-            logger.warning("office_layout.json load failed: %s", e)
-    return {"version": 2, "items": [], "removed": []}
-
-
-def _save_office_layout(layout: dict) -> None:
-    try:
-        with open(OFFICE_LAYOUT_PATH, "w", encoding="utf-8") as f:
-            json.dump(layout, f, ensure_ascii=False, indent=2)
-    except Exception as e:
-        logger.error("office_layout.json save failed: %s", e)
-
-
-@app.get("/api/layout/office")
-async def get_office_layout() -> dict:
-    """사무실 가구 배치 — 모든 기기 공유 (PC/모바일 동기화)"""
-    return {"ok": True, "layout": _load_office_layout()}
-
-
-@app.put("/api/layout/office")
-async def update_office_layout(body: dict) -> dict:
-    """사무실 가구 배치 저장 — 에디터에서 placement 변경 시 호출
-
-    body: {"layout": {"version": 2, "items": [...], "removed": [...]}}
-    """
-    layout = body.get("layout") or {}
-    items = layout.get("items")
-    if not isinstance(items, list):
-        return {"ok": False, "error": "layout.items 배열이 필요합니다"}
-    cleaned = {
-        "version": 2,
-        "items": items,
-        "removed": layout.get("removed") or [],
-        "updated_at": datetime.utcnow().isoformat(),
-    }
-    _save_office_layout(cleaned)
-    return {"ok": True, "layout": cleaned}
 
 
 # ── 브라우저 진단 로그 + 버그 리포트 ────────────────────
