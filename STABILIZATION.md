@@ -99,6 +99,9 @@
 - ✅ **1단계-5: claude_runner.py 분할 1차** — `claude_runner.py` 1388→1232 (-156, -11.2%)
   - `budget.py` 187줄 (토큰 예산 + JSONL 파싱 + rate limit 추적)
   - STANDBY_FLAG는 claude_runner 유지 (main.py 호환)
+- ✅ **1단계-6: main.py 분할 3차** — office_layout 라우터 (-47)
+- ✅ **1단계-7: main.py 분할 4차** — furniture 라우터 (-63)
+- ✅ **1단계-8: main.py 분할 5차** — diag 라우터 (-451, ws_handler import 갱신)
 - ✅ **4단계: 에이전트 생성 트랜잭션화** — `/api/teams/light` 4단계 롤백
   - sandbox/TEAMS/prompts/layout 단계별 try/except + 자동 롤백
   - 어느 단계 실패하든 ghost 에이전트 안 생김
