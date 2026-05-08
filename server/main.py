@@ -240,6 +240,9 @@ from routers.diag import router as diag_router
 from routers.system import router as system_router
 from routers.agents import router as agents_router
 from routers.teams import router as teams_router
+from routers.auth import router as auth_router
+from routers.push import router as push_router
+from routers.trading import router as trading_router
 app.include_router(admin_patch_router)
 app.include_router(admin_ops_router)
 app.include_router(office_layout_router)
@@ -248,6 +251,9 @@ app.include_router(diag_router)
 app.include_router(system_router)
 app.include_router(agents_router)
 app.include_router(teams_router)
+app.include_router(auth_router)
+app.include_router(push_router)
+app.include_router(trading_router)
 
 
 # ── 에이전트 워치독 (자동 복구, 토큰 0) ───────────────
@@ -338,71 +344,6 @@ async def _shutdown_cleanup():
 
 # ── 인증 API ─────────────────────────────────────────
 
-@app.post("/api/auth/owner")
-async def auth_owner(body: dict):
-    """오너 비밀번호 로그인"""
-    password = body.get("password", "")
-    result = owner_login(password)
-    if not result:
-        return {"ok": False, "error": "비밀번호가 틀렸습니다."}
-    return {"ok": True, **result}
-
-
-@app.post("/api/auth/register")
-async def auth_register(body: dict):
-    """초대코드로 회원가입"""
-    nickname = body.get("nickname", "").strip()
-    code = body.get("code", "").strip()
-    if not nickname or not code:
-        return {"ok": False, "error": "닉네임과 초대코드를 입력하세요."}
-    result = register_user(nickname, code)
-    if not result:
-        return {"ok": False, "error": "초대코드가 유효하지 않습니다."}
-    return {"ok": True, **result}
-
-
-@app.post("/api/auth/verify")
-async def auth_verify(body: dict):
-    """토큰 검증"""
-    token = body.get("token", "")
-    user = verify_token(token)
-    if not user:
-        return {"ok": False}
-    return {"ok": True, **user}
-
-
-@app.post("/api/auth/create-code")
-async def auth_create_code(body: dict):
-    """초대코드 생성 (오너/관리자만)"""
-    token = body.get("token", "")
-    user = verify_token(token)
-    if not user or ROLES.get(user["role"], {}).get("level", 0) < 4:
-        return {"ok": False, "error": "권한이 없습니다."}
-    role = body.get("role", "member")
-    max_uses = body.get("max_uses", 1)
-    code = create_invite_code(role=role, created_by=user["nickname"], max_uses=max_uses)
-    return {"ok": True, "code": code, "role": role}
-
-
-@app.get("/api/auth/codes")
-async def auth_list_codes():
-    """초대코드 목록 (관리용)"""
-    return get_all_codes()
-
-
-@app.get("/api/auth/users")
-async def auth_list_users():
-    """사용자 목록 (관리용)"""
-    return get_all_users()
-
-
-@app.get("/api/auth/roles")
-async def auth_roles():
-    """역할 목록"""
-    return ROLES
-
-
-# ── REST API ──────────────────────────────────────────
 
 @app.post("/api/teams")
 async def add_team(body: dict):
@@ -1050,51 +991,6 @@ def _save_evolution(data: dict):
     _EVOLUTION_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-
-@app.post("/api/trading-bot/mode")
-async def switch_trading_bot_mode(request: dict):
-    """매매봇 데모/리얼 모드 전환 — Firebase upbit_control에 기록"""
-    import requests as req_lib
-    target = request.get("mode", "")
-    pin = request.get("pin", "")
-    if target not in ("demo", "real"):
-        return {"ok": False, "error": "mode must be 'demo' or 'real'"}
-    if target == "real" and (not pin or len(pin) != 4):
-        return {"ok": False, "error": "PIN 4자리 필요"}
-    fb_url = "https://firestore.googleapis.com/v1/projects/datemap-759bf/databases/(default)/documents/upbit_control"
-    fields: dict = {
-        "action": {"stringValue": "switch"},
-        "mode": {"stringValue": target},
-        "ts": {"timestampValue": datetime.now().strftime('%Y-%m-%dT%H:%M:%S.000Z')},
-    }
-    if pin:
-        fields["pin"] = {"stringValue": pin}
-    try:
-        resp = req_lib.post(fb_url, json={"fields": fields}, timeout=10)
-        if resp.status_code in (200, 201):
-            return {"ok": True, "message": f"{target} 모드 전환 요청 전송됨"}
-        return {"ok": False, "error": f"Firebase 응답 {resp.status_code}"}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
-
-
-@app.get("/api/trading-bot/status")
-async def get_trading_bot_status():
-    """매매봇 status.json 프록시 — 대시보드 팝업용"""
-    status_path = Path.home() / "Desktop" / "업비트자동" / "docs" / "status.json"
-    if not status_path.exists():
-        return {"ok": False, "error": "status.json not found"}
-    try:
-        data = json.loads(status_path.read_text(encoding="utf-8"))
-        return {"ok": True, **data}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
-
-
-@app.get("/api/trading/stats")
-async def get_trading_stats_api():
-    """매매봇 통계 API — 승률, 손익, 포지션, 모멘텀 등 통합 조회"""
-    return get_trading_stats()
 
 
 @app.get("/api/dashboard")
@@ -2208,137 +2104,6 @@ async def get_discuss(discuss_id: str):
 
 # ── 웹 푸시 알림 ──────────────────────────────────────
 
-@app.get("/api/push/vapid-key")
-async def push_vapid_key():
-    """VAPID 공개키 반환 (프론트에서 구독 시 사용)"""
-    return {"ok": True, "publicKey": get_vapid_public_key()}
-
-
-@app.post("/api/push/subscribe")
-async def push_subscribe(body: dict):
-    """푸시 알림 구독 등록"""
-    sub_info = body.get("subscription")
-    if not sub_info or not sub_info.get("endpoint"):
-        return {"ok": False, "error": "subscription 정보가 필요합니다"}
-    ok = add_subscription(sub_info)
-    return {"ok": ok}
-
-
-@app.post("/api/push/unsubscribe")
-async def push_unsubscribe(body: dict):
-    """푸시 알림 구독 해제"""
-    endpoint = body.get("endpoint", "")
-    if not endpoint:
-        return {"ok": False, "error": "endpoint가 필요합니다"}
-    ok = remove_subscription(endpoint)
-    return {"ok": ok}
-
-
-@app.post("/api/push/test")
-async def push_test():
-    """테스트 푸시 발송"""
-    count = send_push(
-        title="🏢 두근컴퍼니 알림 테스트",
-        body="푸시 알림이 정상적으로 작동합니다!",
-        tag="test",
-    )
-    return {"ok": True, "sent": count}
-
-
-@app.post("/api/push/119")
-async def push_119(req: dict):
-    """🚒 119 긴급 알림 — claude_guard.sh에서 호출"""
-    title = req.get("title", "🚒 119 긴급출동")
-    body = req.get("body", "")
-    count = send_push(
-        title=title,
-        body=body[:200],
-        tag="119-alert",
-        url="/",
-        team_id="cpo-claude",
-    )
-    return {"ok": True, "sent": count}
-
-
-@app.post("/api/push/trading")
-async def push_trading(req: dict):
-    """📈 코인봇/주식봇 매수·매도·긴급 알림 — trader.py에서 호출"""
-    bot = req.get("bot", "trading")  # coin / stock
-    side = req.get("side", "")  # buy / sell / system
-    severity = req.get("severity", "info")  # info / warn / danger
-    title = req.get("title", f"{bot} 알림")
-    body = req.get("body", "")
-    icon_map = {"buy": "🟢", "sell": "🔴", "danger": "🚨", "warn": "⚠️", "info": "💹"}
-    icon = icon_map.get(side, icon_map.get(severity, "💹"))
-    count = send_push(
-        title=f"{icon} {title}",
-        body=body[:200],
-        tag=f"trading-{bot}-{side}",
-        url="/",
-        team_id="trading-bot",
-        topic="trading",  # 트레이딩 구독자에만 발송
-    )
-    return {"ok": True, "sent": count, "bot": bot, "side": side, "topic": "trading"}
-
-
-@app.post("/api/push/topics")
-async def push_update_topics(body: dict):
-    """구독자 topic 변경 — 두근컴퍼니/트레이딩 알림 on/off 토글.
-    body: {endpoint: '...', topics: ['hq','trading'|'hq'|'trading']}
-    """
-    from push_notifications import update_topics
-    endpoint = body.get("endpoint", "")
-    topics = body.get("topics") or ["hq", "trading"]
-    if not endpoint:
-        return {"ok": False, "error": "endpoint 필요"}
-    ok = update_topics(endpoint, topics)
-    return {"ok": ok, "topics": topics}
-
-
-@app.get("/api/push/topics")
-async def push_get_topics(endpoint: str = ""):
-    from push_notifications import get_topics
-    return {"endpoint": endpoint, "topics": get_topics(endpoint)}
-
-
-
-
-# 업데이트 알림 dedup — 같은 sha 에 중복 push 방지 (10분 내)
-
-# ── 인앱 알림 ────────────────────────────────────────
-
-@app.get("/api/notifications")
-async def get_notifs():
-    """알림 목록 + 안 읽은 수"""
-    return {"ok": True, "notifications": get_notifications(), "unread": get_unread_count()}
-
-
-@app.post("/api/notifications/{notif_id}/read")
-async def read_notif(notif_id: str):
-    """개별 알림 읽음 처리"""
-    ok = mark_read(notif_id)
-    return {"ok": ok, "unread": get_unread_count()}
-
-
-@app.post("/api/notifications/read-all")
-async def read_all_notifs():
-    """전체 읽음 처리"""
-    count = mark_all_read()
-    return {"ok": True, "marked": count, "unread": 0}
-
-
-@app.post("/api/notifications/team/{team_id}/read")
-async def read_team_notifs(team_id: str):
-    """특정 팀 알림 일괄 읽음 처리 (채팅창 열 때 자동 호출)"""
-    count = mark_team_read(team_id)
-    return {"ok": True, "marked": count, "unread": get_unread_count()}
-
-
-@app.delete("/api/notifications/{notif_id}")
-async def del_notif(notif_id: str):
-    """알림 삭제"""
-    ok = delete_notification(notif_id)
-    return {"ok": ok, "unread": get_unread_count()}
 
 
 # ── 층 배치 (서버 영구 저장) ──────────────────────────
