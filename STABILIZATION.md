@@ -102,7 +102,29 @@
 - ✅ **1단계-6: main.py 분할 3차** — office_layout 라우터 (-47)
 - ✅ **1단계-7: main.py 분할 4차** — furniture 라우터 (-63)
 - ✅ **1단계-8: main.py 분할 5차** — diag 라우터 (-451, ws_handler import 갱신)
+- ✅ **1단계-9: main.py 분할 6차** — system 라우터 (-108) standby/budget/staff/notify
+- ✅ **1단계-10: page.tsx 분할 2차** — Bugs.tsx (-345)
+- ✅ **1단계-11: page.tsx 분할 3차** — Lab.tsx + AgentsModal.tsx (-137)
 - ✅ **4단계: 에이전트 생성 트랜잭션화** — `/api/teams/light` 4단계 롤백
+
+### 누적 효과 (2026-05-08 끝)
+
+| 파일 | 시작 | 현재 | 감소 |
+|---|---|---|---|
+| `server/main.py` | 4,681 | **3,495** | **-1,186 (-25.3%)** |
+| `server/claude_runner.py` | 1,388 | **1,232** | -156 (-11.2%) |
+| `doogeun-hq/src/app/hub/page.tsx` | 1,996 | **1,288** | **-708 (-35.5%)** |
+| `doogeun-hq/src/components/HubOffice.tsx` | 1,585 | **1,465** | -120 (-7.6%) |
+| **합계** | 9,650 | **7,480** | **-2,170 줄** |
+
+신규 자체 완결 모듈 (이번 세션 +5):
+- `routers/office_layout.py` 68줄
+- `routers/furniture.py` 84줄
+- `routers/diag.py` 463줄 (ws_handler 도 import)
+- `routers/system.py` 134줄
+- `components/hub/Bugs.tsx` 248줄
+- `components/hub/Lab.tsx` 111줄
+- `components/hub/AgentsModal.tsx` 154줄
   - sandbox/TEAMS/prompts/layout 단계별 try/except + 자동 롤백
   - 어느 단계 실패하든 ghost 에이전트 안 생김
   - 사용자 "에이전트 1개도 못 만든다" 체감 직접 해소
