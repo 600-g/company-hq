@@ -1,0 +1,43 @@
+# 두근컴퍼니 HQ — 로컬 개발/외부 검증용
+# 사용:
+#   cp .env.example .env  (그리고 키 입력)
+#   docker-compose up -d
+#   curl http://localhost:8000/api/teams
+#
+# 주의:
+# - 프론트엔드(Next.js)는 별도 빌드 (Cloudflare Pages 권장 — bash deploy.sh)
+# - Mac 사용자는 launchd 권장 (docker 없이 venv 직접 실행)
+# - Claude Code CLI 는 컨테이너 내부에 없음 (host에서 실행 필요 — Mac mini 시나리오)
+
+version: "3.9"
+
+services:
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    image: company-hq-server:latest
+    container_name: company-hq-server
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      # 런타임 데이터 영속 (재시작 시 보존)
+      - ./server/teams.json:/app/teams.json
+      - ./server/team_prompts.json:/app/team_prompts.json
+      - ./server/team_sessions.json:/app/team_sessions.json
+      - ./server/floor_layout.json:/app/floor_layout.json
+      - ./server/doogeun_state.json:/app/doogeun_state.json
+      - ./server/staff_stats.json:/app/staff_stats.json
+      - ./server/chat_history:/app/chat_history
+      - ./server/diag:/app/diag
+      - ./server/logs:/app/logs
+      - ./server/doogeun_state_backups:/app/doogeun_state_backups
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/api/teams"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
