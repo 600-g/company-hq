@@ -184,6 +184,32 @@ def get_topics(endpoint: str) -> list[str]:
             return s.get("topics") or ["hq", "trading"]
     return []
 
+# ── 트레이딩봇 전용 인앱 알림 저장소 ─────────────
+_TRADING_NOTIF_FILE = Path(__file__).resolve().parent / "trading_notifications.json"
+def _load_trading_notif() -> list[dict]:
+    if _TRADING_NOTIF_FILE.exists():
+        try: return json.loads(_TRADING_NOTIF_FILE.read_text(encoding="utf-8"))
+        except Exception: return []
+    return []
+def _save_trading_notif(items: list[dict]):
+    _TRADING_NOTIF_FILE.write_text(json.dumps(items[-200:], ensure_ascii=False, indent=2), encoding="utf-8")
+def add_trading_notif(title: str, body: str, severity: str = "info") -> dict:
+    items = _load_trading_notif()
+    item = {
+        "id": f"tr_{int(datetime.now().timestamp() * 1000)}",
+        "title": title, "body": body, "severity": severity,
+        "ts": datetime.now().isoformat(), "read": False,
+    }
+    items.append(item)
+    _save_trading_notif(items)
+    return item
+def get_trading_notif(limit: int = 50) -> list[dict]:
+    return list(reversed(_load_trading_notif()))[:limit]
+def mark_trading_notif_read():
+    items = _load_trading_notif()
+    for it in items: it["read"] = True
+    _save_trading_notif(items)
+
 def remove_subscription(endpoint: str) -> bool:
     before = len(_subscriptions)
     subs = [s for s in _subscriptions if s.get("endpoint") != endpoint]
@@ -199,13 +225,23 @@ def remove_subscription(endpoint: str) -> bool:
 
 def send_push(title: str, body: str, tag: str = "default", url: str = "/", team_id: str = "", topic: str = "hq") -> int:
     """푸시 발송 + 인앱 알림 저장. topic 매칭 구독자에만 발송.
-    topic: 'hq' (두근컴퍼니) | 'trading' (트레이딩봇)
+    topic: 'hq' (두근컴퍼니, 인앱창에 표시) | 'trading' (트레이딩봇, 두근컴퍼니 인앱 분리 + 항상 푸시)
     """
-    # 인앱 알림 저장 (항상) — topic 별 구분 위해 tag 에 prefix
-    _add_notification(title, body, team_id=team_id, tag=f"{topic}:{tag}")
+    is_trading = (topic == "trading")
 
-    # 유저가 웹에서 보고 있으면 푸시 알림 스킵
-    if _user_is_online():
+    if is_trading:
+        # 트레이딩봇 — 별도 저장소 (두근컴퍼니 인앱창과 분리)
+        try:
+            sev = "danger" if any(x in title for x in ("🚨","❌")) else ("warn" if "⚠️" in title else "info")
+            add_trading_notif(title, body, severity=sev)
+        except Exception as e:
+            _log.warning(f"[PUSH] trading notif 저장 실패: {e}")
+    else:
+        # 두근컴퍼니 — 기존 인앱 알림창
+        _add_notification(title, body, team_id=team_id, tag=tag)
+
+    # trading 토픽은 두근컴퍼니 _user_is_online 무시 — 사용자가 두근컴퍼니 보고 있어도 트레이딩 푸시는 받아야 함
+    if not is_trading and _user_is_online():
         _log.info(f"[PUSH] 유저 온라인 — 푸시 스킵 (인앱만 저장): {title}")
         return 0
 

@@ -108,6 +108,21 @@ async def push_get_topics(endpoint: str = ""):
     return {"endpoint": endpoint, "topics": get_topics(endpoint)}
 
 
+# ── 트레이딩봇 전용 인앱 알림 (두근컴퍼니 인앱창과 분리) ──
+@router.get("/api/push/trading-notifications")
+async def push_trading_notif_list(limit: int = 50):
+    """트레이딩봇 알림만 조회 (두근컴퍼니 알림창에 안 섞임)"""
+    from push_notifications import get_trading_notif
+    return {"items": get_trading_notif(limit)}
+
+
+@router.post("/api/push/trading-notifications/read")
+async def push_trading_notif_read():
+    from push_notifications import mark_trading_notif_read
+    mark_trading_notif_read()
+    return {"ok": True}
+
+
 # ── 인앱 알림 ────────────────────────────────────────────────
 @router.get("/api/notifications")
 async def get_notifs():
