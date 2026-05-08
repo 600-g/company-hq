@@ -1401,6 +1401,15 @@ function AgentSelector({ agents, selectedId, onSelect, onStaffStatsClick, onTime
                 📚
               </button>
             )}
+            {isStaff && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onStaffStatsClick?.(); }}
+                className="shrink-0 w-7 flex items-center justify-center text-[12px] transition-colors text-amber-300 hover:bg-amber-500/15 hover:text-amber-100 border-l border-gray-800/60"
+                title="📊 스태프 통계 — Claude 토큰 절감 / 무료 LLM 사용"
+              >
+                📊
+              </button>
+            )}
           </div>
         );
   };
