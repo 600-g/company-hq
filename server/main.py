@@ -239,6 +239,7 @@ from routers.furniture import router as furniture_router
 from routers.diag import router as diag_router
 from routers.system import router as system_router
 from routers.agents import router as agents_router
+from routers.teams import router as teams_router
 app.include_router(admin_patch_router)
 app.include_router(admin_ops_router)
 app.include_router(office_layout_router)
@@ -246,6 +247,7 @@ app.include_router(furniture_router)
 app.include_router(diag_router)
 app.include_router(system_router)
 app.include_router(agents_router)
+app.include_router(teams_router)
 
 
 # ── 에이전트 워치독 (자동 복구, 토큰 0) ───────────────
@@ -401,42 +403,6 @@ async def auth_roles():
 
 
 # ── REST API ──────────────────────────────────────────
-
-@app.get("/api/teams")
-async def get_teams():
-    """팀 목록 + 프로젝트 현황(버전, 최근 커밋일 포함) — order 순 정렬"""
-    sorted_teams = sorted(TEAMS, key=lambda t: t.get("order", 999))
-    return scan_all(PROJECTS_ROOT, sorted_teams)
-
-
-@app.get("/api/teams/info")
-async def get_teams_info():
-    """팀 목록 + 버전/업데이트일 간략 정보 (폴링용 경량 API) — order 순 정렬"""
-    from project_scanner import scan_project
-    result = []
-    for team in sorted(TEAMS, key=lambda t: t.get("order", 999)):
-        local_path = os.path.expanduser(team.get("localPath", ""))
-        scan = scan_project(local_path)
-        result.append({
-            "id": team["id"],
-            "name": team["name"],
-            "emoji": team.get("emoji", ""),
-            "version": scan.get("version"),
-            "version_updated": scan.get("version_updated"),
-            "last_commit_date": scan.get("last_commit_date"),
-            "last_commit": scan.get("last_commit"),
-        })
-    return result
-
-
-@app.get("/api/project-types")
-async def get_project_types():
-    """프로젝트 타입 목록 반환 (UI 선택지용)"""
-    return [
-        {"id": k, "label": v["label"], "tech": v["tech"]}
-        for k, v in PROJECT_TYPES.items()
-    ]
-
 
 @app.post("/api/teams")
 async def add_team(body: dict):
@@ -797,151 +763,8 @@ async def get_repos():
 
 # ── 팀 순서/층 변경 API ───────────────────────────────
 
-@app.put("/api/teams/{team_id}/order")
-async def update_team_order(team_id: str, body: dict):
-    """단일 팀의 order(순서)와 layer(층) 변경
-
-    body: {"order": 3, "layer": 1}
-    - pinned 팀(server-monitor, cpo-claude)은 order 변경 불가
-    - layer는 pinned 팀도 변경 불가 (layer=0 고정)
-    """
-    team = next((t for t in TEAMS if t["id"] == team_id), None)
-    if not team:
-        return {"ok": False, "error": "팀을 찾을 수 없습니다."}
-    if team.get("pinned"):
-        return {"ok": False, "error": f"{team['name']}은(는) 고정 팀이라 순서를 변경할 수 없습니다."}
-
-    new_order = body.get("order")
-    new_layer = body.get("layer")
-
-    if new_order is not None:
-        # order 2 미만은 pinned 전용 — 일반 팀은 2 이상만 허용
-        if int(new_order) < 2:
-            return {"ok": False, "error": "order 0, 1은 고정 팀 전용입니다."}
-        team["order"] = int(new_order)
-
-    if new_layer is not None:
-        team["layer"] = int(new_layer)
-
-    _save_teams(TEAMS)
-    _log_activity(team_id, f"🔀 순서 변경 → order:{team['order']} layer:{team['layer']}")
-    return {"ok": True, "team_id": team_id, "order": team["order"], "layer": team["layer"]}
 
 
-@app.put("/api/teams/reorder")
-async def reorder_teams(body: dict):
-    """다수 팀 순서 일괄 변경 (드래그 앤 드롭 후 저장)
-
-    body: {"orders": [{"id": "trading-bot", "order": 3, "layer": 1}, ...]}
-    - pinned 팀(server-monitor, cpo-claude) 항목은 무시됨
-    """
-    orders: list[dict] = body.get("orders", [])
-    if not orders:
-        return {"ok": False, "error": "orders 필드가 필요합니다."}
-
-    team_map = {t["id"]: t for t in TEAMS}
-    updated = []
-    for item in orders:
-        tid = item.get("id", "")
-        team = team_map.get(tid)
-        if not team or team.get("pinned"):
-            continue  # pinned 팀은 건너뜀
-        new_order = item.get("order")
-        new_layer = item.get("layer")
-        if new_order is not None and int(new_order) >= 2:
-            team["order"] = int(new_order)
-        if new_layer is not None:
-            team["layer"] = int(new_layer)
-        updated.append(tid)
-
-    _save_teams(TEAMS)
-    return {"ok": True, "updated": updated}
-
-
-# ── 층 배치 API ────────────────────────────────────────
-
-@app.get("/api/layout/floors")
-async def get_floor_layout():
-    """층 배치 반환 — 각 층에 어떤 팀이 있는지 + 팀 메타 포함
-
-    응답:
-    {
-      "ok": true,
-      "floors": [
-        {"floor": 1, "teams": [{"id":"trading-bot","name":"매매봇","emoji":"🤖",...}]},
-        ...
-      ]
-    }
-    """
-    team_map = {t["id"]: t for t in TEAMS}
-    floors = []
-    for floor_str, team_ids in sorted(FLOOR_LAYOUT.items(), key=lambda x: int(x[0])):
-        teams_in_floor = []
-        for tid in team_ids:
-            if tid in ("cpo-claude", "server-monitor"):  # CPO·서버실은 게임에서 별도 렌더링 (스태프는 일반 캐릭으로 렌더)
-                continue
-            team = team_map.get(tid)
-            if team:
-                teams_in_floor.append({
-                    "id": team["id"],
-                    "name": team.get("name", ""),
-                    "emoji": team.get("emoji", ""),
-                    "status": team.get("status", "운영중"),
-                    "model": team.get("model", "sonnet"),
-                })
-        floors.append({"floor": int(floor_str), "teams": teams_in_floor})
-    return {"ok": True, "floors": floors}
-
-
-@app.get("/api/layout/positions")
-async def get_team_positions():
-    """팀별 그리드 위치 반환 — 웹/모바일 동기화용
-
-    응답: {"ok": true, "positions": {"team-id": {"floor": 1, "gx": 5, "gy": 8}}}
-    """
-    return {"ok": True, "positions": _load_positions()}
-
-
-@app.put("/api/layout/positions")
-async def update_team_positions(body: dict):
-    """팀 위치 저장 — 프론트 드래그 후 호출
-
-    body: {"positions": {"team-id": {"floor": 1, "gx": 5, "gy": 8}}}
-    """
-    incoming = body.get("positions") or {}
-    current = _load_positions()
-    # 병합 (incoming이 우선)
-    for tid, pos in incoming.items():
-        if isinstance(pos, dict) and "gx" in pos and "gy" in pos:
-            current[tid] = {
-                "floor": int(pos.get("floor", 1)),
-                "gx": int(pos["gx"]),
-                "gy": int(pos["gy"]),
-            }
-    _save_positions(current)
-    return {"ok": True, "positions": current}
-
-
-@app.put("/api/layout/floors")
-async def update_floor_layout(body: dict):
-    """층 배치 업데이트 — 프론트에서 팀 드래그 후 저장 시 호출
-
-    body: {"layout": {"1": ["team-a","team-b"], "2": ["team-c"]}}
-    """
-    global FLOOR_LAYOUT
-    new_layout: dict[str, list[str]] = body.get("layout", {})
-    if not new_layout:
-        return {"ok": False, "error": "layout 필드가 필요합니다"}
-    # 유효한 팀만 허용
-    valid_ids = {t["id"] for t in TEAMS}
-    cleaned: dict[str, list[str]] = {}
-    for floor_str, ids in new_layout.items():
-        filtered = [tid for tid in ids if tid in valid_ids]
-        if filtered:
-            cleaned[floor_str] = filtered
-    FLOOR_LAYOUT = cleaned
-    _save_layout(FLOOR_LAYOUT)
-    return {"ok": True, "layout": FLOOR_LAYOUT}
 
 # ── doogeun-hq 상태 동기화 (에이전트 + 레이아웃) ───────
 # 로컬 localStorage + 서버 JSON + WebSocket 실시간 브로드캐스트
