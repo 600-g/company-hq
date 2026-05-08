@@ -454,37 +454,52 @@ async def add_team(body: dict):
 
 @app.post("/api/agents/generate-config")
 async def generate_agent_config(body: dict):
-    """TM generateAgentConfig 패턴 — 설명 1줄로 LLM이 역할/스텝/산출물 자동 생성.
+    """TM generateAgentConfig + Skill Router + LLM 도메인 강화 (2026-05-09 업그레이드).
 
-    body: {name?, description}
-    returns: {ok, role, description, outputHint, steps, system_prompt}
+    body: {name?, description, project_type?, framework?}
+      - project_type: "web" / "backend" / "general" (기본 추론)
+      - framework: "nextjs" / "fastapi" 등 (선택)
+
+    합성 흐름:
+      1) LLM 으로 role/description/outputHint/steps 자동 생성 (기존)
+      2) skill_router.select_skill_md() — 5개 SOP MD 중 매칭 1개 선택 (TeamMaker)
+      3) skill_router.select_references() — 프레임워크별 reference 최대 3개 첨부 (TeamMaker)
+      4) skill_router.enhance_sop_with_llm() — 무료 LLM 으로 도메인 특화 가이드 동적 생성 (NEW)
+      5) compose_system_prompt() — 페르소나 + SOP + 강화 + reference + 격리/협업 합성
+
+    returns: {ok, role, description, outputHint, steps, system_prompt,
+              skill_key, refs_used, enhanced_sop_len}
     """
+    from skill_router import (
+        select_skill_md, select_references, enhance_sop_with_llm,
+        compose_system_prompt,
+    )
+
     agent_name = (body.get("name") or "").strip() or "새 에이전트"
     desc = (body.get("description") or "").strip()
+    project_type = (body.get("project_type") or "").strip() or None
+    framework = (body.get("framework") or "").strip() or None
     if not desc:
         return {"ok": False, "error": "description 필요"}
 
-    system_prompt = (
+    # 1) 기본 config LLM 생성 (기존 로직 보존)
+    cfg_prompt = (
         "너는 AI 에이전트 역할 설계 전문가다. 유저가 설명한 역할에 맞는 단일 AI 에이전트를 설계해.\n\n"
         "반드시 아래 JSON 형식으로만 응답. 다른 텍스트 금지.\n\n"
         "{\n"
         '  "role": "역할명 (한국어, 간결, ~담당 형식)",\n'
         '  "description": "이 에이전트가 뭘 하는지 쉬운 한국어 1-2문장",\n'
-        '  "outputHint": "산출물 형식 (쉼표구분 2~4개, 예: 설계문서, 코드, 테스트)",\n'
-        '  "steps": ["1단계 설명", "2단계 설명", "3단계 설명"]\n'
+        '  "outputHint": "산출물 형식 (쉼표구분 2~4개)",\n'
+        '  "steps": ["1단계", "2단계", "3단계"]\n'
         "}\n\n"
-        "규칙:\n"
-        "- 단일 에이전트가 모든 책임 통합 수행\n"
-        "- role은 '~담당' 형식 (예: 마케팅 담당)\n"
-        "- description은 비개발자도 이해 가능한 평이한 말\n"
-        "- outputHint는 구체 산출물 나열\n"
-        "- steps 2~4단계, 각 한 문장"
+        "규칙: 단일 에이전트, role='~담당', description은 평이한 말, steps 2~4개."
     )
     user_msg = f"에이전트 이름: {agent_name}\n에이전트 설명: {desc}\n\n이 에이전트를 설계해줘."
-
-    full_prompt = f"{system_prompt}\n\n{user_msg}"
     try:
-        result = await run_claude_light(full_prompt, os.path.expanduser("~/Developer/my-company/company-hq"))
+        result = await run_claude_light(
+            f"{cfg_prompt}\n\n{user_msg}",
+            os.path.expanduser("~/Developer/my-company/company-hq"),
+        )
     except Exception as e:
         return {"ok": False, "error": f"LLM 호출 실패: {e}"}
 
@@ -497,10 +512,32 @@ async def generate_agent_config(body: dict):
     except json.JSONDecodeError as e:
         return {"ok": False, "error": f"JSON 파싱 에러: {e}", "raw": result[:300]}
 
-    # 생성된 config로 system_prompt 합성
-    steps_text = "\n".join(f"{i+1}. {s}" for i, s in enumerate(cfg.get("steps", [])))
     role = cfg.get("role", "담당자")
-    sys_prompt = (
+
+    # 2) skill MD 자동 선택 (TeamMaker)
+    skill_key, skill_md = select_skill_md(
+        role=role,
+        description=cfg.get("description", desc),
+        project_type=project_type,
+        framework=framework,
+    )
+
+    # 3) reference 자동 선택 (TeamMaker)
+    refs = select_references(
+        role=role,
+        description=cfg.get("description", desc),
+        project_type=project_type,
+        framework=framework,
+        task_description=desc,
+        max_refs=3,
+    )
+
+    # 4) 무료 LLM 도메인 특화 강화 (TeamMaker 초과)
+    enhanced_sop = await enhance_sop_with_llm(agent_name, role, desc, skill_key)
+
+    # 5) 페르소나 베이스
+    steps_text = "\n".join(f"{i+1}. {s}" for i, s in enumerate(cfg.get("steps", [])))
+    base_persona = (
         f"# {agent_name} ({role})\n\n"
         f"## 페르소나\n"
         f"너는 10년 경력의 시니어 {role}다. 실무 경험 풍부, 실수 줄이고 실행력 강함.\n"
@@ -515,15 +552,31 @@ async def generate_agent_config(body: dict):
         "- 협업 필요 시 `@팀명`으로 다른 에이전트 호출\n\n"
         "## CLAUDE.md 연계\n"
         "프로젝트 폴더에 CLAUDE.md 있으면 그걸 최우선으로 따른다.\n"
-        "없으면 이 프롬프트가 최상위 지침.\n"
+        "없으면 이 프롬프트가 최상위 지침."
     )
+
+    # 6) 최종 system_prompt 합성
+    sys_prompt = compose_system_prompt(
+        name=agent_name,
+        role=role,
+        base_persona=base_persona,
+        skill_key=skill_key,
+        skill_md=skill_md,
+        enhanced_sop=enhanced_sop,
+        references=refs,
+    )
+
     return {
         "ok": True,
-        "role": cfg.get("role", ""),
+        "role": role,
         "description": cfg.get("description", desc),
         "outputHint": cfg.get("outputHint", ""),
         "steps": cfg.get("steps", []),
         "system_prompt": sys_prompt,
+        # ── 메타 (TeamMaker 흡수 + LLM 강화 검증용) ──
+        "skill_key": skill_key,
+        "refs_used": [k for k, _ in refs],
+        "enhanced_sop_len": len(enhanced_sop),
     }
 
 
