@@ -245,6 +245,7 @@ from routers.push import router as push_router
 from routers.trading import router as trading_router
 from routers.dispatch import router as dispatch_router
 from routers.doogeun_state import router as doogeun_state_router
+from routers.dashboard import router as dashboard_router
 app.include_router(admin_patch_router)
 app.include_router(admin_ops_router)
 app.include_router(office_layout_router)
@@ -258,6 +259,7 @@ app.include_router(push_router)
 app.include_router(trading_router)
 app.include_router(dispatch_router)
 app.include_router(doogeun_state_router)
+app.include_router(dashboard_router)
 
 
 # ── 에이전트 워치독 (자동 복구, 토큰 0) ───────────────
@@ -762,48 +764,6 @@ async def get_agents_status():
 
 
 
-# ── 서비스 상태 (백그라운드 체크, 논블로킹) ──
-_svc_cache: dict = {"data": []}
-
-def _check_services_sync():
-    """별도 스레드에서 실행 — 메인 루프 블로킹 없음"""
-    import urllib.request
-    import urllib.error
-    import socket
-
-    # 외부 서비스 (자기 자신 호출 X)
-    checks = [
-        ("Cloudflare Pages", "https://600g.net", "프론트엔드"),
-        ("Upbit API", "https://api.upbit.com/v1/market/all", "매매봇 데이터"),
-    ]
-    results = []
-    for name, url, desc in checks:
-        try:
-            req = urllib.request.Request(url, method="GET")
-            req.add_header("User-Agent", "health-check/1.0")
-            resp = urllib.request.urlopen(req, timeout=3)
-            results.append({"name": name, "desc": desc, "status": "ok", "code": resp.getcode(), "error": None})
-        except urllib.error.HTTPError as e:
-            results.append({"name": name, "desc": desc, "status": "warn", "code": e.code, "error": str(e.reason)})
-        except Exception as e:
-            results.append({"name": name, "desc": desc, "status": "down", "code": None, "error": str(e)[:40]})
-
-    # 로컬 포트 체크 (FastAPI만 — Next.js 개발서버는 프로덕션과 무관, Cloudflare Pages로 서비스)
-    for name, port, desc in [("FastAPI", 8000, "백엔드")]:
-        try:
-            s = socket.create_connection(("127.0.0.1", port), timeout=1)
-            s.close()
-            results.append({"name": name, "desc": desc, "status": "ok", "code": None, "error": None})
-        except Exception:
-            results.append({"name": name, "desc": desc, "status": "down", "code": None, "error": "연결 불가"})
-
-    _svc_cache["data"] = results
-
-async def _check_services() -> list:
-    """논블로킹: 별도 스레드에서 헬스체크 실행"""
-    loop = asyncio.get_event_loop()
-    loop.run_in_executor(None, _check_services_sync)  # fire-and-forget
-    return _svc_cache["data"]  # 이전 캐시 즉시 반환
 
 
 # ── 자가학습 히스토리 API ──────────────────────────────
@@ -823,291 +783,6 @@ def _save_evolution(data: dict):
 
 
 
-@app.get("/api/dashboard")
-async def get_dashboard():
-    """대시보드 전체 상태 반환"""
-    agents = []
-    for team in TEAMS:
-        tid = team["id"]
-        status = AGENT_STATUS.get(tid, {})
-        session = TEAM_SESSIONS.get(tid)
-        model_key = TEAM_MODELS.get(tid, "sonnet")
-        model_id = MODEL_IDS.get(model_key, model_key)
-
-        # 실행 중인 subprocess 리소스
-        pid = AGENT_PIDS.get(tid)
-        proc_stats = get_process_stats(pid) if pid else None
-
-        agents.append({
-            "id": tid,
-            "name": team["name"],
-            "emoji": team["emoji"],
-            "model_key": model_key,
-            "model_id": model_id,
-            "working": status.get("working", False),
-            "tool": status.get("tool"),
-            "last_active": status.get("last_active"),
-            "last_prompt": status.get("last_prompt", ""),
-            "session": session[:8] if session else None,
-            "pid": pid,
-            "tokens": AGENT_TOKENS.get(tid, {"prompts": 0, "chars": 0}),
-            "cpu": proc_stats["cpu"] if proc_stats else None,
-            "memory_mb": proc_stats["memory_mb"] if proc_stats else None,
-        })
-
-    return {
-        "agents": agents,
-        "system": get_system(),
-        "services": await _check_services(),
-        "activity": list(reversed(RECENT_ACTIVITY)),
-        "version": {
-            "server": "1.0.0",
-            "python": sys.version.split()[0],
-            "claude_cli": get_claude_version(),
-        },
-    }
-
-
-
-
-# ── 토큰 사용량 ──────────────────────────────────────
-
-# 모델별 컨텍스트 윈도우 크기 (토큰)
-MODEL_CONTEXT_WINDOW = {
-    "claude-opus-4-6": 200_000,
-    "claude-opus-4-5": 200_000,
-    "claude-sonnet-4-6": 200_000,
-    "claude-sonnet-4-5": 200_000,
-    "claude-haiku-4-5": 200_000,
-    "default": 200_000,
-}
-
-def _get_context_window(model: str) -> int:
-    for key, size in MODEL_CONTEXT_WINDOW.items():
-        if key in model:
-            return size
-    return MODEL_CONTEXT_WINDOW["default"]
-
-def _get_context_pct_from_folder(folder_path: str) -> float:
-    """해당 프로젝트 폴더의 가장 최근 JSONL에서 마지막 assistant 메시지의 컨텍스트 사용률(%) 반환"""
-    import glob as _glob
-    jsonl_files = sorted(
-        _glob.glob(f"{folder_path}/*.jsonl"),
-        key=os.path.getmtime,
-        reverse=True
-    )
-    for jsonl_path in jsonl_files[:3]:  # 최신 3개 파일만 확인
-        try:
-            last_usage = None
-            last_model = "default"
-            with open(jsonl_path, "r", encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        obj = json.loads(line)
-                    except Exception:
-                        continue
-                    if obj.get("type") != "assistant":
-                        continue
-                    msg = obj.get("message") or {}
-                    usage = msg.get("usage") or {}
-                    if usage:
-                        last_usage = usage
-                        last_model = msg.get("model", "default")
-            if last_usage:
-                ctx_size = _get_context_window(last_model)
-                used = (
-                    last_usage.get("input_tokens", 0)
-                    + last_usage.get("cache_read_input_tokens", 0)
-                    + last_usage.get("cache_creation_input_tokens", 0)
-                )
-                return round(min(used / ctx_size * 100, 100), 1)
-        except Exception:
-            continue
-    return 0.0
-
-def _parse_token_usage_today() -> dict:
-    """~/.claude/projects/ 아래 JSONL 파일에서 최근 5시간 슬라이딩 윈도우 기준 토큰 사용량 파싱"""
-    import glob as _glob
-    from datetime import timezone
-
-    projects_root = os.path.expanduser("~/.claude/projects")
-    now_utc = datetime.now(timezone.utc)
-    window_start = now_utc - timedelta(hours=5)
-    today = now_utc.strftime("%Y-%m-%d")  # 표시용
-
-    # 프로젝트 폴더 → (표시 이름, 이모지) 매핑
-    PROJECT_LABEL_MAP: dict[str, tuple[str, str]] = {
-        "-Users-600mac-Developer-my-company-company-hq": ("company-hq", "🖥"),
-        "-Users-600mac-Developer-my-company-upbit-auto-trading-bot": ("매매봇", "🤖"),
-        "-Users-600mac-Developer-my-company-date-map": ("데이트지도", "🗺️"),
-        "-Users-600mac-Developer-my-company-claude-biseo-v1-0": ("클로드비서", "🤵"),
-        "-Users-600mac-Developer-my-company-ai900": ("AI900", "📚"),
-        "-Users-600mac-Developer-my-company-design-team": ("디자인팀", "🎨"),
-        "-Users-600mac-Developer-my-company-content-lab": ("콘텐츠랩", "🔬"),
-    }
-
-    totals: dict[str, dict] = {}  # label -> {input, output, cache_read, cache_create, emoji, folders}
-
-    for jsonl_path in _glob.glob(f"{projects_root}/**/*.jsonl", recursive=True):
-        rel = os.path.relpath(jsonl_path, projects_root)
-        folder = rel.split(os.sep)[0]
-
-        if folder in PROJECT_LABEL_MAP:
-            label, emoji = PROJECT_LABEL_MAP[folder]
-        elif "company-hq--claude-worktrees" in folder or "company-hq-server" in folder:
-            label, emoji = "company-hq", "🖥"
-        else:
-            label = folder.split("-")[-1] if "-" in folder else folder
-            emoji = "💻"
-
-        if label not in totals:
-            totals[label] = {"input": 0, "output": 0, "cache_read": 0, "cache_create": 0, "emoji": emoji, "folders": set()}
-        totals[label]["folders"].add(os.path.join(projects_root, folder))
-
-        try:
-            with open(jsonl_path, "r", encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        obj = json.loads(line)
-                    except Exception:
-                        continue
-
-                    # 최근 5시간 슬라이딩 윈도우 필터
-                    ts_str = obj.get("timestamp", "")
-                    if not ts_str:
-                        continue
-                    try:
-                        ts_dt = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
-                        if ts_dt < window_start:
-                            continue
-                    except Exception:
-                        continue
-
-                    if obj.get("type") != "assistant":
-                        continue
-                    usage = (obj.get("message") or {}).get("usage") or {}
-                    if not usage:
-                        continue
-
-                    totals[label]["input"] += usage.get("input_tokens", 0)
-                    totals[label]["output"] += usage.get("output_tokens", 0)
-                    totals[label]["cache_read"] += usage.get("cache_read_input_tokens", 0)
-                    totals[label]["cache_create"] += (
-                        usage.get("cache_creation_input_tokens", 0)
-                        + (usage.get("cache_creation") or {}).get("ephemeral_1h_input_tokens", 0)
-                        + (usage.get("cache_creation") or {}).get("ephemeral_5m_input_tokens", 0)
-                    )
-        except Exception:
-            continue
-
-    # 컨텍스트 사용률 계산 (각 에이전트의 가장 최근 세션 기준)
-    context_pcts: dict[str, float] = {}
-    for label, vals in totals.items():
-        best_pct = 0.0
-        for folder_path in vals.get("folders", set()):
-            pct = _get_context_pct_from_folder(folder_path)
-            if pct > best_pct:
-                best_pct = pct
-        context_pcts[label] = best_pct
-
-    # 합계 계산
-    grand = {"input": 0, "output": 0, "cache_read": 0, "cache_create": 0}
-    projects = []
-    for label, vals in sorted(totals.items(), key=lambda x: -(x[1]["input"] + x[1]["output"])):
-        total_tokens = vals["input"] + vals["output"]
-        if total_tokens == 0:
-            continue
-        projects.append({
-            "label": label,
-            "emoji": vals["emoji"],
-            "input": vals["input"],
-            "output": vals["output"],
-            "cache_read": vals["cache_read"],
-            "cache_create": vals["cache_create"],
-            "total": total_tokens,
-            "context_pct": context_pcts.get(label, 0.0),
-        })
-        for k in ("input", "output", "cache_read", "cache_create"):
-            grand[k] += vals[k]
-
-    grand["total"] = grand["input"] + grand["output"]
-
-    # ── 오늘 전체 사용량 계산 (첫 번째 루프에서 이미 읽은 데이터 재활용 + 보충) ──
-    daily_total = {"input": 0, "output": 0, "cache_read": 0, "cache_create": 0}
-    today_start = now_utc.replace(hour=0, minute=0, second=0, microsecond=0)
-
-    # 5시간 윈도우 바깥 + 오늘 안의 데이터도 포함해야 하므로 전체 재스캔
-    for jsonl_path in _glob.glob(f"{projects_root}/**/*.jsonl", recursive=True):
-        try:
-            with open(jsonl_path, "r", encoding="utf-8", errors="ignore") as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        obj = json.loads(line)
-                    except Exception:
-                        continue
-                    if obj.get("type") != "assistant":
-                        continue
-                    ts_str = obj.get("timestamp", "")
-                    if not ts_str:
-                        continue
-                    try:
-                        ts_dt = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
-                        if ts_dt < today_start:
-                            continue
-                    except Exception:
-                        continue
-                    usage = (obj.get("message") or {}).get("usage") or {}
-                    if not usage:
-                        continue
-                    daily_total["input"] += usage.get("input_tokens", 0)
-                    daily_total["output"] += usage.get("output_tokens", 0)
-                    daily_total["cache_read"] += usage.get("cache_read_input_tokens", 0)
-                    daily_total["cache_create"] += (
-                        usage.get("cache_creation_input_tokens", 0)
-                        + (usage.get("cache_creation") or {}).get("ephemeral_1h_input_tokens", 0)
-                        + (usage.get("cache_creation") or {}).get("ephemeral_5m_input_tokens", 0)
-                    )
-        except Exception:
-            continue
-
-    daily_total["total"] = daily_total["input"] + daily_total["output"] + daily_total["cache_create"]
-
-    # Claude Max 일일 한도 추정 (환경변수로 조정 가능)
-    # 실측: cache_creation 포함 ~45M tokens/day가 89% → ~50M/day 추정
-    daily_limit = int(os.getenv("DAILY_TOKEN_LIMIT", "50000000"))
-    usage_pct = round(daily_total["total"] / daily_limit * 100, 1) if daily_limit > 0 else 0.0
-
-    # 5시간 윈도우 표시용 (하위 호환)
-    window_limit = int(os.getenv("WINDOW_TOKEN_LIMIT", "800000"))
-    window_pct = round(grand["total"] / window_limit * 100, 1) if window_limit > 0 else 0.0
-    window_label = window_start.strftime("%H:%M") + " ~ " + now_utc.strftime("%H:%M") + " UTC"
-
-    return {
-        "today": today,
-        "window_label": window_label,
-        "projects": projects,
-        "grand": grand,
-        "daily_total": daily_total,
-        "daily_limit": daily_limit,
-        "usage_pct": usage_pct,          # 오늘 전체 기준 (메인 게이지)
-        "window_pct": window_pct,        # 5시간 윈도우 기준 (보조)
-    }
-
-
-@app.get("/api/token-usage")
-async def get_token_usage():
-    """오늘 날짜 Claude 토큰 사용량 반환"""
-    loop = asyncio.get_event_loop()
-    result = await loop.run_in_executor(None, _parse_token_usage_today)
     return result
 
 
@@ -1726,13 +1401,15 @@ async def run_qa():
 
     # 2. 대시보드 데이터
     try:
-        dash = _svc_cache.get("data", [])
+        from routers.dashboard import _svc_cache as _dash_cache
+        dash = _dash_cache.get("data", [])
         checks.append({"name": "대시보드", "pass": True})
     except Exception:
         checks.append({"name": "대시보드", "pass": False})
 
     # 3. 멘션 코드 존재 확인 (코드 레벨 체크)
     import inspect
+    from routers.dispatch import smart_dispatch
     src = inspect.getsource(smart_dispatch)
     has_mention = "mention_pattern" in src
     no_integration = "통합 요약해줘" not in src
