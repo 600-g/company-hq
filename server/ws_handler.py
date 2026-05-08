@@ -306,8 +306,30 @@ async def _auto_recovery_dispatch(
     - CPO 가 진단/수정 후 원래 prompt 를 해당 에이전트에 재발사
     - 사용자 채팅창에 진행 메시지 + CPO 채팅창에도 작업 표시
     - 무한 루프 방지: 같은 (team, prompt) 가 5분 내 재발생하면 스킵
+
+    [안정화 2026-05-08] AUTO_RECOVERY=0 환경변수로 비활성화 가능.
+    OFF 시: 실패하면 그냥 실패. 사용자에게 ❌ 직접 노출 → 진짜 원인 가시화.
     """
-    import hashlib, time
+    import hashlib, os, time
+    # 비활성화 모드 — 실패는 실패로 두고 사용자에게 직접 알림
+    if os.environ.get("AUTO_RECOVERY", "1") == "0":
+        logger.info("[auto-recovery] DISABLED — team=%s err=%s", team_id, error_summary[:120])
+        try:
+            await manager.send_json(team_id, {
+                "type": "ai_chunk",
+                "content": (
+                    f"\n\n❌ 작업 실패 (자동 복구 비활성화 상태)\n"
+                    f"   원인: {error_summary[:200]}\n"
+                    f"   AUTO_RECOVERY=0 으로 자동 재시도 안 함. 직접 재요청 또는 다른 표현 시도하세요."
+                ),
+                "session_id": "default",
+            })
+        except Exception:
+            pass
+        return
+    # 활성화 모드일 때도 로그에 기록 → 빈도 모니터링 가능
+    logger.warning("[auto-recovery] TRIGGER team=%s prompt_head=%r err=%s",
+                   team_id, original_prompt[:80], error_summary[:120])
     if team_id == "cpo-claude" or team_id == "staff":
         return  # CPO 자신은 자동 보고 안 함
     key = f"{team_id}:{hashlib.md5(original_prompt.encode()).hexdigest()[:12]}"

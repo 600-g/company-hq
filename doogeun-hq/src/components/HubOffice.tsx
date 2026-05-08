@@ -5,136 +5,21 @@ import { useWeatherStore } from "@/components/Weather";
 import { useAgentStore, type Agent } from "@/stores/agentStore";
 import { useHandoffStore, type WalkEvent } from "@/stores/handoffStore";
 import { useLayoutStore, type PlacedFurniture } from "@/stores/layoutStore";
-import { getFurnitureDef, TM_FURNITURE_SHEET, WALKABLE_CATEGORIES } from "@/game/tm-furniture-catalog";
+import { getFurnitureDef, TM_FURNITURE_SHEET } from "@/game/tm-furniture-catalog";
 import { useChatStore } from "@/stores/chatStore";
-
-/** TM 정책 이식 — 배치된 가구 중 "통과 불가" 셀 집합 반환 (키 "col,row").
- *  · WALKABLE_CATEGORIES + isSeat + label "쇼파/sofa/bench" 는 통과 가능
- */
-function buildBlockedCells(placed: PlacedFurniture[]): Set<string> {
-  const blocked = new Set<string>();
-  for (const item of placed) {
-    const def = getFurnitureDef(item.defId);
-    if (!def) continue;
-    const lbl = (def.label || "").toLowerCase();
-    const walkSet = new Set((def.walkableCells || []).map(([x, y]) => `${x},${y}`));
-    const bottomRow = def.heightCells - 1;
-
-    const isDeskLike = def.category === "desk";
-    // 책상 h≥2 만 반쪽 walkable (상단 row walk, 하단 row block)
-    // 의자/쇼파 는 완전 walkable — Y-sort 가 "상단=캐릭 뒤, 하단=캐릭 앞" 자동 처리 (쇼파처럼 통과)
-    const halfWalkable = isDeskLike && def.heightCells >= 2;
-
-    if (!halfWalkable) {
-      if (WALKABLE_CATEGORIES.has(def.category)) continue;
-      if (def.isSeat) continue;
-      if (/쇼파|sofa|bench|소파|의자|chair|쇼쇼파|걸상|좌석/.test(lbl)) continue;
-    }
-
-    for (let dr = 0; dr < def.heightCells; dr++) {
-      for (let dc = 0; dc < def.widthCells; dc++) {
-        if (walkSet.has(`${dc},${dr}`)) continue;
-        if (halfWalkable) {
-          const isBottom = dr === bottomRow;
-          if (!isBottom) continue;  // 책상 상단 walk (상단 row 들 통과 허용)
-        }
-        blocked.add(`${item.col + dc},${item.row + dr}`);
-      }
-    }
-  }
-  return blocked;
-}
-
-/** 의자/쇼파 셀 집합 반환 — blocked여도 앉을 수 있는 예외 셀 */
-function buildSeatCells(placed: PlacedFurniture[]): Set<string> {
-  const seats = new Set<string>();
-  for (const item of placed) {
-    const def = getFurnitureDef(item.defId);
-    if (!def) continue;
-    const lbl = (def.label || "").toLowerCase();
-    if (!def.isSeat && !/쇼파|sofa|bench|소파|의자|chair|좌석/.test(lbl)) continue;
-    for (let dr = 0; dr < def.heightCells; dr++) {
-      for (let dc = 0; dc < def.widthCells; dc++) {
-        seats.add(`${item.col + dc},${item.row + dr}`);
-      }
-    }
-  }
-  return seats;
-}
-
-/** 가장 가까운 free 셀 탐색 (BFS, 원 주변 최대 10셀).
- *  seatCells 전달 시 — blocked이어도 의자/쇼파 위는 통과 허용 */
-function nearestFree(col: number, row: number, blocked: Set<string>, maxRow: number, seatCells?: Set<string>): { col: number; row: number } {
-  const minRow = Math.ceil(64 / 32); // WINDOW_ZONE_HEIGHT
-  const canPlace = (c: number, r: number) => {
-    const k = `${c},${r}`;
-    return (!blocked.has(k) || seatCells?.has(k)) && r >= minRow && r < maxRow;
-  };
-  if (canPlace(col, row)) return { col, row };
-  const visited = new Set<string>([`${col},${row}`]);
-  const queue: Array<{ c: number; r: number }> = [{ c: col, r: row }];
-  const dirs = [[0,-1],[0,1],[-1,0],[1,0],[-1,-1],[1,-1],[-1,1],[1,1]];
-  while (queue.length > 0) {
-    const cur = queue.shift()!;
-    if (canPlace(cur.c, cur.r)) {
-      return { col: cur.c, row: cur.r };
-    }
-    if (visited.size > 200) break;
-    for (const [dc, dr] of dirs) {
-      const nc = cur.c + dc, nr = cur.r + dr;
-      const k = `${nc},${nr}`;
-      if (visited.has(k)) continue;
-      visited.add(k);
-      if (nc < 0 || nc >= 40 || nr < minRow || nr >= maxRow) continue;
-      queue.push({ c: nc, r: nr });
-    }
-  }
-  return { col, row };
-}
+import {
+  buildBlockedCells, buildSeatCells, nearestFree,
+  isManagerAgent, findManagerAgent, pickSpriteKey, pickFloorTile,
+  MANAGER_FALLBACK, WALK_SPEED, CHAR_COUNT, NPC_COUNT, FLOOR_TILE_COUNT,
+  WINDOW_ZONE_HEIGHT, DEFAULT_FLOOR_TILE_KEY,
+} from "@/lib/office-helpers";
 
 interface Props {
   floor: number;
   agentCount: number;
 }
 
-const MANAGER_FALLBACK = { x: 640, y: 420 } as const;
-const WALK_SPEED = 180; // px/sec
-const CHAR_COUNT = 241; // char_0 ~ char_240 (중복 103 제거 + 재번호)
-const NPC_COUNT = 28;   // npc_01 ~ npc_28
-const FLOOR_TILE_COUNT = 9; // floor_0 ~ floor_8
-const WINDOW_ZONE_HEIGHT = 64; // 그리드 32*2 — 창가/하늘 영역. 배치 불가 (컴팩트)
 
-/** CPO 여부 판정 */
-function isManagerAgent(a: Agent): boolean {
-  const s = `${a.id} ${a.role} ${a.name}`.toLowerCase();
-  return s.includes("cpo") || s.includes("관리자") || s.includes("매니저");
-}
-
-/** CPO 를 모든 층에서 감지 (floor 무시) — 관리자는 어디든 있어야 함 */
-function findManagerAgent(agents: Agent[]): Agent | null {
-  return agents.find(isManagerAgent) ?? null;
-}
-
-/** 에이전트 ID 해시로 sprite 자동 할당 (재방문 시 동일)
- *  - CPO/관리자 → char_cpo (특수)
- *  - 그 외 일반 에이전트 → char_0~char_(CHAR_COUNT-1)
- */
-function pickSpriteKey(a: Agent): string {
-  if (a.spriteKey) return a.spriteKey;
-  const s = `${a.id} ${a.role} ${a.name}`.toLowerCase();
-  if (s.includes("cpo") || s.includes("관리자") || s.includes("매니저")) return "char_cpo";
-  let h = 0;
-  for (let i = 0; i < a.id.length; i++) h = (h * 31 + a.id.charCodeAt(i)) | 0;
-  return `char_${Math.abs(h) % CHAR_COUNT}`;
-}
-
-/** 기본 바닥 타일 — 구 두근컴퍼니 1번째 타일 (연한 회색톤 177,177,177)
- *  Room_Builder 시트 (320,192,32,32) 영역을 런타임에 canvas 로 추출 */
-const DEFAULT_FLOOR_TILE_KEY = "doogeun_floor_default";
-function pickFloorTile(_floor: number): string {
-  void _floor;
-  return DEFAULT_FLOOR_TILE_KEY;
-}
 
 /**
  * Phaser 오피스 씬 — 픽셀 스프라이트 기반.
