@@ -469,162 +469,25 @@ AGENT_TOKENS: dict[str, dict] = {}  # team_id -> {prompts: int, chars: int}
 MAX_CONCURRENT_AGENTS = 8  # 동시 실행 상한 (팀 9개 중 8개까지 동시 가능)
 STANDBY_FLAG = False  # main.py에서 직접 설정 (순환 import 방지)
 
-# ── 토큰 예산 제한 (에이전트 폭주 방지) ─────────────────
-TOKEN_BUDGET_WINDOW   = 3600     # 1시간 윈도우 (초)
-TOKEN_BUDGET_LIMIT    = 999_999_999  # 수동 실행 — 사실상 무제한 (Max 플랜 한도가 궁극적 제한)
-TOKEN_BUDGET_AUTO     = 5_000_000   # 자동 실행 1시간 상한 (5M)
-TOKEN_SPIKE_WINDOW    = 600         # 급등 감지 윈도우 (10분)
-TOKEN_SPIKE_LIMIT     = 999_999_999 # 스파이크 감지 — 사실상 비활성 (자동만 예산 체크로 충분)
-
-_token_budget_log: list[tuple[float, int]] = []  # [(timestamp, tokens), ...]
-_budget_paused = False            # 예산 초과 시 True → 에이전트 실행 거부
-# Claude CLI 의 rate_limit_event 최근 기록 (Max 플랜 5h 세션 한도)
-_last_rate_limit: dict | None = None
-
-# JSONL 캐시 — 30초마다 실제 파일 다시 읽음
-_jsonl_cache: tuple[float, int] | None = None
-_JSONL_CACHE_TTL = 30            # 초
-
-# 팀별 토큰 사용 집계 (로깅용)
-_team_token_totals: dict[str, int] = {}
-
-
-def _read_jsonl_tokens(window_seconds: int) -> int:
-    """~/.claude/projects/**/*.jsonl 에서 window 내 실제 토큰 합산.
-    claude_guard.sh 와 동일한 파싱 로직."""
-    from datetime import datetime, timezone
-    projects_dir = Path.home() / ".claude" / "projects"
-    cutoff_ts = time.time() - window_seconds
-    cutoff_dt = datetime.fromtimestamp(cutoff_ts, tz=timezone.utc)
-    total = 0
-    try:
-        for jsonl_file in projects_dir.glob("**/*.jsonl"):
-            try:
-                if jsonl_file.stat().st_mtime < cutoff_ts - 60:
-                    continue
-                with open(jsonl_file, encoding="utf-8", errors="ignore") as fh:
-                    for line in fh:
-                        try:
-                            entry = json.loads(line)
-                            if entry.get("type") != "assistant":
-                                continue
-                            ts_str = entry.get("timestamp", "")
-                            if not ts_str:
-                                continue
-                            entry_time = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
-                            if entry_time < cutoff_dt:
-                                continue
-                            usage = entry.get("message", {}).get("usage", {})
-                            total += (
-                                usage.get("input_tokens", 0)
-                                + usage.get("output_tokens", 0)
-                                + usage.get("cache_creation_input_tokens", 0)
-                            )
-                        except Exception:
-                            pass
-            except Exception:
-                pass
-    except Exception:
-        pass
-    return total
-
-
-def _get_jsonl_tokens(window_seconds: int = TOKEN_BUDGET_WINDOW) -> int:
-    """JSONL 기반 토큰 수 (30초 캐시)"""
-    global _jsonl_cache
-    now = time.time()
-    if _jsonl_cache and now - _jsonl_cache[0] < _JSONL_CACHE_TTL:
-        return _jsonl_cache[1]
-    total = _read_jsonl_tokens(window_seconds)
-    _jsonl_cache = (now, total)
-    return total
-
-
-def _log_tokens(count: int, team_id: str = ""):
-    """토큰 사용량 기록 (in-memory + 팀별 집계)"""
-    now = time.time()
-    _token_budget_log.append((now, count))
-    # 윈도우 밖 오래된 기록 정리
-    cutoff = now - TOKEN_BUDGET_WINDOW
-    while _token_budget_log and _token_budget_log[0][0] < cutoff:
-        _token_budget_log.pop(0)
-    # 팀별 누적
-    if team_id:
-        _team_token_totals[team_id] = _team_token_totals.get(team_id, 0) + count
-
-
-def _get_window_tokens(window_seconds: int = TOKEN_BUDGET_WINDOW) -> int:
-    """JSONL 실제 값 우선, 실패 시 in-memory 추정치 반환"""
-    try:
-        jsonl_total = _get_jsonl_tokens(window_seconds)
-        if jsonl_total > 0:
-            return jsonl_total
-    except Exception:
-        pass
-    cutoff = time.time() - window_seconds
-    return sum(t for ts, t in _token_budget_log if ts >= cutoff)
-
-
-def _check_budget(is_auto: bool = False) -> tuple[bool, int]:
-    """예산 확인. (허용 여부, 현재 사용량) 반환
-    is_auto=True 이면 자동 실행 상한 적용, 수동(대화)은 무제한 통과"""
-    global _budget_paused
-    used = _get_window_tokens()
-    # 수동(대화)은 무조건 통과 — 차단 없음
-    if not is_auto:
-        _budget_paused = False
-        return True, used
-    # 자동 실행만 예산 체크
-    if used >= TOKEN_BUDGET_AUTO:
-        _budget_paused = True
-        return False, used
-    _budget_paused = False
-    return True, used
+# ── 토큰 예산 (안정화 2026-05-08: budget.py 로 분리) ─────
+import budget as _budget
+from budget import (
+    TOKEN_BUDGET_WINDOW, TOKEN_BUDGET_LIMIT, TOKEN_BUDGET_AUTO,
+    TOKEN_SPIKE_WINDOW, TOKEN_SPIKE_LIMIT,
+    _read_jsonl_tokens, _get_jsonl_tokens, _log_tokens, _get_window_tokens,
+    _check_budget, reset_budget, get_budget_status,
+)
 
 
 def _check_token_spike(is_auto: bool = False) -> bool:
-    """최근 TOKEN_SPIKE_WINDOW(10분) 내 급등 감지 → 자동 실행만 스탠바이 전환
-    수동 대화는 스파이크 감지 무시"""
-    if not is_auto:
-        return False
+    """budget._check_token_spike 래퍼 — 스파이크 감지 시 STANDBY_FLAG 토글."""
     global STANDBY_FLAG
-    spike_tokens = _get_window_tokens(TOKEN_SPIKE_WINDOW)
-    if spike_tokens >= TOKEN_SPIKE_LIMIT:
-        if not STANDBY_FLAG:
-            STANDBY_FLAG = True
-            logger.warning(
-                "[토큰급등] %dK / %d분 — 자동 실행만 스탠바이 전환 (수동 대화 정상)",
-                spike_tokens // 1000, TOKEN_SPIKE_WINDOW // 60,
-            )
-        return True
-    return False
+    spiked = _budget._check_token_spike(is_auto=is_auto)
+    if spiked and not STANDBY_FLAG:
+        STANDBY_FLAG = True
+        logger.warning("[토큰급등] STANDBY_FLAG 자동 ON")
+    return spiked
 
-
-def reset_budget():
-    """수동으로 예산 리셋 (두근이 허용할 때)"""
-    global _budget_paused, _jsonl_cache
-    _token_budget_log.clear()
-    _jsonl_cache = None   # 캐시도 무효화
-    _budget_paused = False
-    return "✅ 토큰 예산 리셋 완료"
-
-
-def get_budget_status() -> dict:
-    """현재 토큰 예산 상태 (JSONL 실제값 포함) + Max 플랜 세션 한도"""
-    used = _get_window_tokens()
-    spike = _get_window_tokens(TOKEN_SPIKE_WINDOW)
-    return {
-        "used": used,
-        "limit": TOKEN_BUDGET_LIMIT,
-        "limit_auto": TOKEN_BUDGET_AUTO,
-        "remaining": max(0, TOKEN_BUDGET_LIMIT - used),
-        "paused": _budget_paused,
-        "window_minutes": TOKEN_BUDGET_WINDOW // 60,
-        "spike_10min": spike,
-        "spike_limit": TOKEN_SPIKE_LIMIT,
-        "team_totals": dict(_team_token_totals),
-        "max_plan_rate_limit": _last_rate_limit,  # None 또는 {status, type, resets_at, recorded_at}
-    }
 
 # ── 라우팅 전용 경량 실행 (haiku, 세션 없음) ──────────
 async def run_claude_light(prompt: str, project_path: str | None = None, task_type: str = "routing") -> str:
@@ -1267,14 +1130,13 @@ async def run_claude(
             rl = evt.get("rate_limit_info", {}) or {}
             status_ = rl.get("status")
             resets_at = rl.get("resetsAt")
-            # 전역 캐시 — 클라이언트가 /api/budget 에서 조회 가능
-            global _last_rate_limit
-            _last_rate_limit = {
+            # 전역 캐시 — 클라이언트가 /api/budget 에서 조회 가능 (budget.py 에 위임)
+            _budget.set_rate_limit_event({
                 "status": status_,
                 "type": rl.get("rateLimitType", ""),
                 "resets_at": resets_at,
                 "recorded_at": time.time(),
-            }
+            })
             if status_ and status_ != "allowed":
                 msg = f"⚠️ Max 플랜 {rl.get('rateLimitType', '')} 한도: {status_}"
                 if resets_at:
