@@ -91,3 +91,7 @@
 - 회귀 검증 자동화 (30초 안에 5종 그린/레드)
 - 자동복구 가시성 확보 (이젠 로그에서 빈도 측정 가능)
 - 다음 스파이크 발생 시 진짜 원인 가시화 옵션 (`AUTO_RECOVERY=0`)
+- ✅ **1단계-3: main.py 분할 1차** — `main.py` 4681→4394 (-287, -6.1%)
+  - `routers/admin_patch.py` 247줄 (patch-log/release-notes + commit 파싱 헬퍼)
+  - APIRouter 패턴 정착 — 다음 분할 표준
+  - 라이브 검증: smoke 6/6 통과 + patch-log 420 commit 응답
