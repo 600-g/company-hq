@@ -353,7 +353,15 @@ async def _shutdown_cleanup():
 
 @app.post("/api/teams")
 async def add_team(body: dict):
-    """신규 팀 추가: GitHub 레포 생성 + 로컬 클론 + CLAUDE.md + 시스템프롬프트 자동 등록"""
+    """신규 팀 추가: GitHub 레포 생성 + 로컬 클론 + CLAUDE.md + 시스템프롬프트 자동 등록.
+
+    [안정화 2026-05-08] 4단계 트랜잭션화:
+    1. GitHub 레포 생성 → 실패 시 즉시 반환 (rollback 불가, 만들어진 게 없음)
+    2. TEAMS 등록 + 저장 → 실패 시 반환 (GitHub repo 는 사용자에게 안내)
+    3. 시스템프롬프트 등록 → 실패 시 TEAMS 롤백
+    4. floor_layout 동기화 → 실패 시 prompts/TEAMS 롤백
+    GitHub repo 자체 삭제는 안전상 자동 X — 부분 실패 시 사용자가 수동 정리.
+    """
     name = body.get("name", "").strip()
     repo_name = body.get("repo", name).strip()
     emoji = body.get("emoji", "🆕")
@@ -363,12 +371,40 @@ async def add_team(body: dict):
     if not name or not repo_name:
         return {"ok": False, "error": "name과 repo는 필수입니다."}
 
+    # ─ 단계 1: GitHub 레포 생성 ─
     result = create_repo(repo_name, description, project_type=project_type, emoji=emoji)
     if not result["ok"]:
         return result
 
-    # category: "dev"=개발/서포트, "product"=독자 프로젝트
-    category = body.get("category", "product")  # 기본값 = 독자 프로젝트
+    # 트랜잭션 롤백 헬퍼 (GitHub 레포는 보존, 그 외만 되돌림)
+    def _rollback(stage: str, err: Exception, *, teams_added: bool = False, prompt_set: bool = False) -> dict:
+        global TEAMS, FLOOR_LAYOUT
+        try:
+            if prompt_set:
+                from claude_runner import TEAM_SYSTEM_PROMPTS as _TSP, _SAVED_PROMPTS as _SP, _save_prompts as _save_p
+                _TSP.pop(repo_name, None)
+                _SP.pop(repo_name, None)
+                try: _save_p(_SP)
+                except Exception: pass
+            if teams_added:
+                TEAMS = [t for t in TEAMS if t["id"] != repo_name]
+                try: _save_teams(TEAMS); set_team_lookup(TEAMS)
+                except Exception: pass
+        except Exception as roll_err:
+            logger.warning("[create-team] 롤백 실패 (%s): %s", stage, roll_err)
+        logger.error("[create-team] %s 단계 실패: %s — GitHub 레포는 보존됨 (%s)",
+                     stage, err, result.get("repo_url"))
+        return {
+            "ok": False,
+            "error": f"{stage} 실패: {err}",
+            "stage": stage,
+            "rolled_back": True,
+            "github_repo_remaining": result.get("repo_url"),
+            "warning": f"GitHub 레포는 자동 삭제 안 됨. 필요 시 직접 삭제: {result.get('repo_url')}",
+        }
+
+    # ─ 단계 2: TEAMS 등록 + 저장 ─
+    category = body.get("category", "product")
     new_team = {
         "id": repo_name,
         "name": name,
@@ -380,24 +416,33 @@ async def add_team(body: dict):
         "order": _next_order(TEAMS),
         "layer": 1,
     }
-    # 중복 체크
-    if not any(t["id"] == repo_name for t in TEAMS):
-        TEAMS.append(new_team)
-        _save_teams(TEAMS)  # JSON 영구 저장
-        set_team_lookup(TEAMS)  # 푸시 룩업 갱신
+    try:
+        if not any(t["id"] == repo_name for t in TEAMS):
+            TEAMS.append(new_team)
+            _save_teams(TEAMS)
+            set_team_lookup(TEAMS)
+    except Exception as e:
+        return _rollback("TEAMS 등록", e)
 
-    # 시스템프롬프트 자동 등록 (claude_runner에 동적 추가 + 파일 영구 저장)
-    from claude_runner import TEAM_SYSTEM_PROMPTS, _save_prompts, _SAVED_PROMPTS
-    if result.get("system_prompt"):
-        TEAM_SYSTEM_PROMPTS[repo_name] = result["system_prompt"]
-        _SAVED_PROMPTS[repo_name] = result["system_prompt"]
-        _save_prompts(_SAVED_PROMPTS)
+    # ─ 단계 3: 시스템프롬프트 등록 + 저장 ─
+    try:
+        from claude_runner import TEAM_SYSTEM_PROMPTS, _save_prompts, _SAVED_PROMPTS
+        if result.get("system_prompt"):
+            TEAM_SYSTEM_PROMPTS[repo_name] = result["system_prompt"]
+            _SAVED_PROMPTS[repo_name] = result["system_prompt"]
+            _save_prompts(_SAVED_PROMPTS)
+    except Exception as e:
+        return _rollback("시스템 프롬프트 등록", e, teams_added=True)
 
-    # 층 배치 동기화 (신규 팀 자동 배치)
+    # ─ 단계 4: 층 배치 동기화 ─
     global FLOOR_LAYOUT
-    FLOOR_LAYOUT = _sync_layout_with_teams(TEAMS, FLOOR_LAYOUT)
-    _save_layout(FLOOR_LAYOUT)
+    try:
+        FLOOR_LAYOUT = _sync_layout_with_teams(TEAMS, FLOOR_LAYOUT)
+        _save_layout(FLOOR_LAYOUT)
+    except Exception as e:
+        return _rollback("층 배치", e, teams_added=True, prompt_set=True)
 
+    logger.info("[create-team] ✅ %s 생성 완료 — 4/4 단계 (repo=%s)", repo_name, result.get("repo_url"))
     return {
         "ok": True,
         "team": new_team,
