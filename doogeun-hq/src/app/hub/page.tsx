@@ -1286,6 +1286,10 @@ function getPinned(): Set<string> {
   catch { return new Set(); }
 }
 
+const AGENT_SITES: Record<string, { url: string; title: string }> = {
+  "ai900": { url: "https://600-g.github.io/exam-hub/", title: "🔗 시험 준비 사이트 (AI-900 + SQLD)" },
+};
+
 function AgentSelector({ agents, selectedId, onSelect, onStaffStatsClick, onTimelineClick, onContextMenu }: { agents: Agent[]; selectedId: string | null; onSelect: (id: string) => void; onStaffStatsClick?: () => void; onTimelineClick?: () => void; onContextMenu?: (agentId: string, x: number, y: number) => void }) {
   const streamingByTeam = useChatStore((s) => s.streamingByTeam);
   const unreadByTeam = useChatStore((s) => s.unreadByTeam);
@@ -1409,6 +1413,18 @@ function AgentSelector({ agents, selectedId, onSelect, onStaffStatsClick, onTime
               >
                 📊
               </button>
+            )}
+            {AGENT_SITES[a.id] && (
+              <a
+                href={AGENT_SITES[a.id].url}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="shrink-0 w-7 flex items-center justify-center text-[12px] transition-colors text-emerald-300 hover:bg-emerald-500/15 hover:text-emerald-100 border-l border-gray-800/60"
+                title={AGENT_SITES[a.id].title}
+              >
+                🔗
+              </a>
             )}
           </div>
         );
