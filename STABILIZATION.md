@@ -93,5 +93,13 @@
 - 다음 스파이크 발생 시 진짜 원인 가시화 옵션 (`AUTO_RECOVERY=0`)
 - ✅ **1단계-3: main.py 분할 1차** — `main.py` 4681→4394 (-287, -6.1%)
   - `routers/admin_patch.py` 247줄 (patch-log/release-notes + commit 파싱 헬퍼)
+- ✅ **1단계-4: main.py 분할 2차** — `main.py` 4394→4099 (-299, 누적 -12.4%)
+  - `routers/admin_ops.py` 309줄 (git-head/deploy/memory + 모듈 상태)
   - APIRouter 패턴 정착 — 다음 분할 표준
-  - 라이브 검증: smoke 6/6 통과 + patch-log 420 commit 응답
+- ✅ **1단계-5: claude_runner.py 분할 1차** — `claude_runner.py` 1388→1232 (-156, -11.2%)
+  - `budget.py` 187줄 (토큰 예산 + JSONL 파싱 + rate limit 추적)
+  - STANDBY_FLAG는 claude_runner 유지 (main.py 호환)
+- ✅ **4단계: 에이전트 생성 트랜잭션화** — `/api/teams/light` 4단계 롤백
+  - sandbox/TEAMS/prompts/layout 단계별 try/except + 자동 롤백
+  - 어느 단계 실패하든 ghost 에이전트 안 생김
+  - 사용자 "에이전트 1개도 못 만든다" 체감 직접 해소

@@ -591,7 +591,15 @@ async def generate_agent_config(body: dict):
 
 @app.post("/api/teams/light")
 async def add_light_agent(body: dict):
-    """경량 에이전트 — GitHub/레포 없이 빠르게 추가 (단독 / 협업 가능)"""
+    """경량 에이전트 — GitHub/레포 없이 빠르게 추가 (단독 / 협업 가능)
+
+    [안정화 2026-05-08] 4단계 트랜잭션화:
+    1. sandbox 폴더 생성    → 실패 시 즉시 반환
+    2. TEAMS 등록 + 저장    → 실패 시 sandbox 삭제 후 반환
+    3. 시스템 프롬프트 등록  → 실패 시 TEAMS 롤백 + sandbox 삭제
+    4. floor_layout 동기화  → 실패 시 prompts/TEAMS 롤백 + sandbox 삭제
+    각 단계 실패 시 이전 모든 단계 자동 롤백 → ghost 에이전트 제거.
+    """
     import re as _re
     description = (body.get("description") or "").strip()
     if not description:
@@ -618,27 +626,52 @@ async def add_light_agent(body: dict):
     if any(t["id"] == team_id for t in TEAMS):
         return {"ok": False, "error": f"이미 존재하는 id: {team_id}"}
 
-    # 🛡 light 팀 격리 — 두근컴퍼니 메인 폴더 CLAUDE.md 자동 로드 차단
-    # 각 팀별 sandbox 폴더 (~/Developer/agents/{team_id}/) 자동 생성
-    # 그 안에 자기 역할만 담은 CLAUDE.md 작성 → cwd 진입 시 깔끔한 컨텍스트
+    # 트랜잭션 롤백 헬퍼 — 어느 단계든 실패 시 이전 단계 모두 되돌리기
+    def _rollback(stage: str, err: Exception, *, sandbox_created: bool = False,
+                   teams_added: bool = False, prompt_set: bool = False) -> dict:
+        global TEAMS, FLOOR_LAYOUT
+        try:
+            if prompt_set:
+                from claude_runner import TEAM_SYSTEM_PROMPTS as _TSP, _SAVED_PROMPTS as _SP, _save_prompts as _save_p
+                _TSP.pop(team_id, None)
+                _SP.pop(team_id, None)
+                try: _save_p(_SP)
+                except Exception: pass
+            if teams_added:
+                TEAMS = [t for t in TEAMS if t["id"] != team_id]
+                try: _save_teams(TEAMS); set_team_lookup(TEAMS)
+                except Exception: pass
+            if sandbox_created:
+                import shutil as _sh
+                _sh.rmtree(os.path.expanduser(f"~/Developer/agents/{team_id}"), ignore_errors=True)
+        except Exception as roll_err:
+            logger.warning("[create-light] 롤백 자체 실패 (%s): %s", stage, roll_err)
+        logger.error("[create-light] %s 단계 실패: %s — 이전 단계 롤백 완료", stage, err)
+        return {"ok": False, "error": f"{stage} 실패: {err}", "stage": stage, "rolled_back": True}
+
+    # ─ 단계 1: sandbox 폴더 생성 ─
     sandbox = os.path.expanduser(f"~/Developer/agents/{team_id}")
-    os.makedirs(sandbox, exist_ok=True)
-    sandbox_md = os.path.join(sandbox, "CLAUDE.md")
-    if not os.path.exists(sandbox_md):
-        with open(sandbox_md, "w", encoding="utf-8") as f:
-            f.write(
-                f"# {name} ({team_id})\n\n"
-                f"## 역할\n{description}\n\n"
-                "## 작업 폴더\n"
-                f"이 폴더(`~/Developer/agents/{team_id}/`) 안에서만 작업한다.\n"
-                "산출물(코드/문서/에셋) 모두 여기에 저장.\n\n"
-                "## 격리 정책\n"
-                "- 두근컴퍼니 메인(~/Developer/my-company/company-hq/) 의 CLAUDE.md / policies.md 무시\n"
-                "- 두근컴퍼니 운영 / 오피스 씬 / 멀티에이전트 시스템에 관여 금지\n"
-                "- 본인 역할 외 메타 컨텍스트 (회사 정책/팀 디스패치 등) 는 사용자가 명시적으로 요청할 때만 응답\n"
-            )
+    try:
+        os.makedirs(sandbox, exist_ok=True)
+        sandbox_md = os.path.join(sandbox, "CLAUDE.md")
+        if not os.path.exists(sandbox_md):
+            with open(sandbox_md, "w", encoding="utf-8") as f:
+                f.write(
+                    f"# {name} ({team_id})\n\n"
+                    f"## 역할\n{description}\n\n"
+                    "## 작업 폴더\n"
+                    f"이 폴더(`~/Developer/agents/{team_id}/`) 안에서만 작업한다.\n"
+                    "산출물(코드/문서/에셋) 모두 여기에 저장.\n\n"
+                    "## 격리 정책\n"
+                    "- 두근컴퍼니 메인(~/Developer/my-company/company-hq/) 의 CLAUDE.md / policies.md 무시\n"
+                    "- 두근컴퍼니 운영 / 오피스 씬 / 멀티에이전트 시스템에 관여 금지\n"
+                    "- 본인 역할 외 메타 컨텍스트 (회사 정책/팀 디스패치 등) 는 사용자가 명시적으로 요청할 때만 응답\n"
+                )
+    except Exception as e:
+        return _rollback("sandbox 폴더 생성", e)
     local_path = sandbox
 
+    # ─ 단계 2: TEAMS 등록 + 저장 ─
     new_team = {
         "id": team_id, "name": name, "emoji": emoji,
         "repo": "", "localPath": local_path,
@@ -646,9 +679,12 @@ async def add_light_agent(body: dict):
         "order": _next_order(TEAMS), "layer": 1,
         "lightweight": True, "collaborative": collaborative,
     }
-    TEAMS.append(new_team)
-    _save_teams(TEAMS)
-    set_team_lookup(TEAMS)
+    try:
+        TEAMS.append(new_team)
+        _save_teams(TEAMS)
+        set_team_lookup(TEAMS)
+    except Exception as e:
+        return _rollback("TEAMS 등록", e, sandbox_created=True)
 
     # 시스템 프롬프트: 클라이언트가 generate-config로 만든 프롬프트 넘기면 그거 사용, 없으면 간단 템플릿
     from claude_runner import TEAM_SYSTEM_PROMPTS, _save_prompts, _SAVED_PROMPTS
@@ -680,15 +716,23 @@ async def add_light_agent(body: dict):
             "- 한국어로 자연스럽게 대화\n"
             + isolation_block
         )
-    TEAM_SYSTEM_PROMPTS[team_id] = sys_prompt
-    _SAVED_PROMPTS[team_id] = sys_prompt
-    _save_prompts(_SAVED_PROMPTS)
+    # ─ 단계 3: 시스템 프롬프트 등록 + 저장 ─
+    try:
+        TEAM_SYSTEM_PROMPTS[team_id] = sys_prompt
+        _SAVED_PROMPTS[team_id] = sys_prompt
+        _save_prompts(_SAVED_PROMPTS)
+    except Exception as e:
+        return _rollback("시스템 프롬프트 등록", e, sandbox_created=True, teams_added=True)
 
-    # 층 배치 동기화
+    # ─ 단계 4: 층 배치 동기화 ─
     global FLOOR_LAYOUT
-    FLOOR_LAYOUT = _sync_layout_with_teams(TEAMS, FLOOR_LAYOUT)
-    _save_layout(FLOOR_LAYOUT)
+    try:
+        FLOOR_LAYOUT = _sync_layout_with_teams(TEAMS, FLOOR_LAYOUT)
+        _save_layout(FLOOR_LAYOUT)
+    except Exception as e:
+        return _rollback("층 배치", e, sandbox_created=True, teams_added=True, prompt_set=True)
 
+    logger.info("[create-light] ✅ %s (%s) 생성 완료 — 4/4 단계", team_id, name)
     return {"ok": True, "team": new_team, "lightweight": True}
 
 
