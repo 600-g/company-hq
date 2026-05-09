@@ -442,13 +442,52 @@ async def add_team(body: dict):
     except Exception as e:
         return _rollback("층 배치", e, teams_added=True, prompt_set=True)
 
-    logger.info("[create-team] ✅ %s 생성 완료 — 4/4 단계 (repo=%s)", repo_name, result.get("repo_url"))
+    # ─ 단계 5 (선택): 서브도메인 자동 발급 (subdomain 입력 시) ─
+    public_url: str | None = None
+    subdomain_info: dict | None = None
+    subdomain = (body.get("subdomain") or "").strip().lower()
+    if subdomain:
+        try:
+            from cf_dns import add_subdomain, add_cname_file_to_repo
+            local_path = os.path.expanduser(new_team["localPath"])
+            # 5-1: CF DNS CNAME 등록
+            dns_result = add_subdomain(subdomain)
+            if not dns_result.get("ok"):
+                logger.warning("[create-team] 서브도메인 DNS 등록 실패: %s", dns_result.get("error"))
+                subdomain_info = {"ok": False, "stage": "dns", "error": dns_result.get("error")}
+            else:
+                # 5-2: repo 에 CNAME 파일 추가 + push (GitHub Pages 인식용)
+                cname_result = add_cname_file_to_repo(local_path, dns_result["full_name"])
+                if not cname_result.get("ok"):
+                    logger.warning("[create-team] CNAME 파일 푸시 실패: %s", cname_result.get("error"))
+                    subdomain_info = {
+                        "ok": False, "stage": "cname_file",
+                        "error": cname_result.get("error"),
+                        "dns": dns_result,
+                    }
+                else:
+                    public_url = dns_result["url"]
+                    subdomain_info = {
+                        "ok": True,
+                        "url": public_url,
+                        "full_name": dns_result["full_name"],
+                        "note": "SSL 발급 5분~1시간 — 그동안 https 접속 시 잠시 경고 가능",
+                    }
+                    logger.info("[create-team] ✅ 서브도메인 %s 자동 발급 완료", public_url)
+        except Exception as e:
+            logger.warning("[create-team] 서브도메인 자동화 실패: %s", e)
+            subdomain_info = {"ok": False, "stage": "exception", "error": str(e)}
+
+    logger.info("[create-team] ✅ %s 생성 완료 (repo=%s, public_url=%s)",
+                repo_name, result.get("repo_url"), public_url or "n/a")
     return {
         "ok": True,
         "team": new_team,
         "repo_url": result["repo_url"],
         "project_type": project_type,
         "claude_md": True,
+        "public_url": public_url,
+        "subdomain_info": subdomain_info,
     }
 
 
