@@ -8,14 +8,27 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Trash2, Check, Sun, Moon, Server } from "lucide-react";
 import { useSettingsStore } from "@/stores/settingsStore";
+import InfoBadge from "@/components/InfoBadge";
 import { useThemeStore } from "@/stores/themeStore";
 import { apiBase } from "@/lib/utils";
 
+// 외부 서비스 토큰 — 본인 계정 키를 입력해 사이트/레포를 자기 계정에 만들 때 사용
+// (안 쓰면 빈 값 유지 — 호스트 .env 토큰으로 fallback)
 const TOKEN_KEYS = [
-  { key: "GITHUB_TOKEN",          label: "GitHub",        help: "레포 생성·푸시" },
-  { key: "VERCEL_TOKEN",          label: "Vercel",        help: "프론트 배포" },
-  { key: "CF_TOKEN",              label: "Cloudflare",    help: "Pages 배포" },
-  { key: "SUPABASE_ACCESS_TOKEN", label: "Supabase",      help: "DB/Auth 프로비전" },
+  {
+    key: "GITHUB_TOKEN",
+    label: "GitHub",
+    help: "레포 생성·푸시 (본인 계정 키 권장)",
+    info: "에이전트가 만든 코드를 저장할 곳",
+    detail: "GitHub은 코드 저장소 서비스입니다.\n\n에이전트가 사이트나 게임을 만들면 그 코드를 GitHub에 자동 저장해요. 본인 GitHub 토큰을 넣으면 본인 계정에 저장되고, 비워두면 호스트 토큰을 사용합니다.\n\n토큰 발급: github.com → Settings → Developer settings → Personal access tokens",
+  },
+  {
+    key: "CF_TOKEN",
+    label: "Cloudflare",
+    help: "Pages 배포 + DNS 관리 (game.600g.net 같은 서브도메인 자동 생성)",
+    info: "사이트를 인터넷에 띄우는 곳",
+    detail: "Cloudflare는 무료로 사이트를 호스팅하고 도메인을 관리해주는 서비스입니다.\n\n에이전트가 만든 사이트를 자동으로 배포하고, 본인 도메인의 서브도메인 (예: game.본인도메인.net) 도 자동 발급할 수 있어요.\n\n토큰 발급: dash.cloudflare.com → My Profile → API Tokens → Create",
+  },
 ] as const;
 
 export default function SettingsPage() {
@@ -186,20 +199,23 @@ export default function SettingsPage() {
           <CardHeader>
             <CardTitle>외부 서비스 토큰</CardTitle>
             <CardDescription>
-              GitHub / Vercel / Cloudflare / Supabase — 배포·프로비전 용.
+              GitHub / Cloudflare — 에이전트가 만든 사이트를 본인 계정에 배포할 때 사용.
               <span className="block mt-1 text-[11px]">
-                🟢 서버 <code>.env</code> 에 설정된 토큰은 자동 사용됩니다. 브라우저 개별 키는 오버라이드용.
+                🟢 비워두면 호스트 <code>.env</code> 토큰 자동 사용. 본인 키 넣으면 본인 GitHub/CF 계정에 배포.
               </span>
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
-            {TOKEN_KEYS.map(({ key, label, help }) => {
+            {TOKEN_KEYS.map(({ key, label, help, info, detail }) => {
               const entry = tokens[key];
               const server = serverTokens[key];
               const serverOk = server?.configured;
               return (
                 <div key={key} className="flex items-center gap-2">
-                  <div className="w-28 text-[13px] text-gray-300 font-bold shrink-0">{label}</div>
+                  <div className="w-28 text-[13px] text-gray-300 font-bold shrink-0 flex items-center gap-1">
+                    {label}
+                    <InfoBadge text={info} detail={detail} />
+                  </div>
                   {serverOk && !entry.configured && (
                     <>
                       <span className="text-[12px] text-gray-400 font-mono">{server.masked}</span>

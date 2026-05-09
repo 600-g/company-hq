@@ -144,6 +144,63 @@
 
 ---
 
+## 에이전트 분리 정책 (2026-05-09 추가)
+
+두근컴퍼니의 에이전트는 3가지 타입으로 명확히 분리됩니다. 본인 타입을 인지하고 그에 맞게 행동하세요.
+
+### 🛠 system (5개) — 두근컴퍼니 자체
+- 멤버: `cpo-claude`, `hq-ops`, `staff`, `server-monitor`, `agent-6d883e` (MD 메이커)
+- 작업 영역: `~/Developer/my-company/company-hq/`
+- 외부 사이트: **없음** (분리 불가)
+- 책임: 두근컴퍼니 운영·정책·라우팅
+
+### 💻 dev (5개) — 내부 협업 도구
+- 멤버: `frontend-team`, `backend-team`, `design-team`, `qa-agent`, `content-lab`
+- 작업 영역: 자체 GitHub repo (있음)
+- 외부 사이트: **없음** (도구이지 제품이 아님)
+- 책임: 다른 product 에이전트의 작업을 코드/디자인/검증으로 도움
+
+### 🚀 product (3개+) — 외부 사용자 대상 / 자체 호스팅
+- 멤버: `date-map`, `ai900` (→ exam-hub), 향후 추가 product
+- 작업 영역: 자체 GitHub repo + 자체 호스팅 (GH Pages / CF Pages)
+- 외부 사이트: **있음** (예: `600-g.github.io/exam-hub/`, `600-g.github.io/date-map/`)
+- 책임:
+  - 두근컴퍼니 백엔드와 분리되어 독립 작동 (Mac mini 꺼져도 사이트 정상)
+  - 자기 코드/배포/도메인을 자기 repo 안에서 완결
+  - 두근컴퍼니에 의존하는 동적 API 호출 X (정적 또는 외부 BaaS — Firebase/Supabase 등)
+  - 사용자 데이터는 클라이언트 localStorage 또는 외부 BaaS 활용
+
+### 🔄 분리 자율성
+
+product 에이전트는 다음을 자기 결정으로 진행할 수 있음 (CPO 승인 불필요):
+- 자기 repo 안 코드 수정 / 빌드 / GH Pages 배포
+- 자기 데이터 모델 / 도메인 / 호스팅 옵션 변경
+- 자기 사이트의 UI/UX 결정
+
+product 에이전트가 CPO 위임이 필요한 경우:
+- 두근컴퍼니 메인 백엔드 수정 (회사 공통 영역)
+- 다른 에이전트 코드 변경
+- 호스팅 인프라 (DNS · 도메인 · CF/GH 계정 변경)
+
+### 🚦 dispatch 라우팅 영향
+
+기존 role 카테고리(system/dev/agent)는 dispatch 가드 그대로 유지. 추가:
+- product 에이전트가 외부 사이트 작업할 때는 자기 repo 안에서 자율 실행
+- product → dev (frontend/backend/design/qa) 디스패치는 OK (도구 호출)
+- product → system 디스패치는 CPO 통한 escalate 만 허용
+
+### 📦 외부 호스팅 옵션 (product 에이전트가 신규 사이트 만들 때)
+
+| 호스팅 | 무료 한도 | 추천 용도 |
+|---|---|---|
+| GitHub Pages | 100GB/월 per repo | 정적 사이트, HTML5 게임, 단순 SPA |
+| Cloudflare Pages | 무제한 대역폭 | 트래픽 큰 사이트, Next.js, Workers 함수 |
+| 자체 도메인 옵션 | `name.600g.net` (CF DNS) 또는 `600-g.github.io/name` | 둘 다 무료 |
+
+자세한 분리 결정은 `AGENT_AUDIT.md` 참조.
+
+---
+
 ## 컨텍스트 업데이트 규칙
 
 이 파일 내용이 오래되면 에이전트가 틀린 정책 따름. 코드 변경 시:
@@ -151,4 +208,4 @@
 2. 관련 코드 변경
 3. 커밋 메시지에 "policy: ..." 태그
 
-**마지막 업데이트**: 2026-04-18
+**마지막 업데이트**: 2026-05-09 (에이전트 분리 정책 추가)

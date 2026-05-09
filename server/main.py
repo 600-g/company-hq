@@ -944,7 +944,7 @@ async def settings_tokens():
     """외부 서비스 토큰이 서버 .env 에 설정됐는지 여부 (값은 노출 안 함)."""
     import shutil
     import subprocess
-    names = ["GITHUB_TOKEN", "VERCEL_TOKEN", "CF_TOKEN", "SUPABASE_ACCESS_TOKEN", "ANTHROPIC_API_KEY"]
+    names = ["GITHUB_TOKEN", "CF_TOKEN", "ANTHROPIC_API_KEY", "GEMINI_API_KEY"]
     result = {}
     for n in names:
         v = os.getenv(n, "") or ""
