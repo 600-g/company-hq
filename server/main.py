@@ -1600,18 +1600,13 @@ async def qa_restart_server():
         return {"ok": False, "error": str(e)}
 
 
-# ── 트레이딩 대시보드 proxy (api.600g.net/trading/* → :9000) ─────────────
-# system-api(:9000) 의 통합 페르소나 페이지 + endpoint 모두 통과시킴.
+# ── 트레이딩 대시보드 proxy ─────────────
+# api.600g.net/trading/*  → :9000/{path}        (기존 호환)
+# trading.600g.net/{path} → :9000/{path}        (신규, 별도 도메인)
 import httpx as _httpx_trading
 from fastapi import Response as _Response_trading
 
-@app.api_route("/trading/{path:path}", methods=["GET", "POST"])
-async def trading_proxy(path: str, request: Request):
-    """trading-dashboard system-api(:9000) 으로 reverse proxy.
-    - GET  /trading/persona_unified.html       → :9000/persona_unified.html
-    - GET  /trading/api/markets/summary        → :9000/api/markets/summary
-    - POST /trading/api/personas/weight        → :9000/api/personas/weight
-    """
+async def _trading_proxy_impl(path: str, request: Request):
     target = f"http://127.0.0.1:9000/{path}"
     body = await request.body() if request.method == "POST" else None
     try:
@@ -1633,6 +1628,23 @@ async def trading_proxy(path: str, request: Request):
     except _httpx_trading.ConnectError:
         return _Response_trading("trading-dashboard offline (port 9000)",
                         status_code=503, media_type="text/plain")
+
+@app.api_route("/trading/{path:path}", methods=["GET", "POST"])
+async def trading_proxy(path: str, request: Request):
+    """기존 api.600g.net/trading/* — 호환 유지."""
+    return await _trading_proxy_impl(path, request)
+
+@app.middleware("http")
+async def _trading_subdomain_proxy(request: Request, call_next):
+    """trading.600g.net 으로 들어온 요청은 자동으로 :9000 으로 proxy.
+    Host 헤더 분기 — api.600g.net 또는 LAN 은 기존 라우팅 그대로."""
+    host = request.headers.get("host", "").lower().split(":")[0]
+    if host == "trading.600g.net":
+        # / → /index.html, /persona_unified.html → :9000/persona_unified.html
+        path = request.url.path.lstrip("/")
+        if not path: path = "persona_unified.html"  # root → 통합 페르소나 메인
+        return await _trading_proxy_impl(path, request)
+    return await call_next(request)
 
 
 # ── 서버 실행 ─────────────────────────────────────────

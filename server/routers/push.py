@@ -25,12 +25,24 @@ async def push_vapid_key():
 
 @router.post("/api/push/subscribe")
 async def push_subscribe(body: dict):
-    """푸시 알림 구독 등록"""
+    """푸시 알림 구독 등록 — body.topics 로 구독 채널 지정 (기본: hq+trading)"""
     sub_info = body.get("subscription")
     if not sub_info or not sub_info.get("endpoint"):
         return {"ok": False, "error": "subscription 정보가 필요합니다"}
-    ok = add_subscription(sub_info)
+    topics = body.get("topics") or None  # add_subscription 가 None 이면 기본 ['hq','trading']
+    ok = add_subscription(sub_info, topics=topics)
     return {"ok": ok}
+
+
+@router.post("/api/push/subscribe-trading")
+async def push_subscribe_trading(body: dict):
+    """트레이딩 전용 PWA (trading.600g.net) 의 push 구독 — topic=['trading'] 만 등록.
+    두근컴퍼니 알림 안 받음."""
+    sub_info = body.get("subscription")
+    if not sub_info or not sub_info.get("endpoint"):
+        return {"ok": False, "error": "subscription 정보가 필요합니다"}
+    ok = add_subscription(sub_info, topics=["trading"])
+    return {"ok": ok, "topics": ["trading"]}
 
 
 @router.post("/api/push/unsubscribe")

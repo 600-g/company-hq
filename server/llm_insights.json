@@ -1,5 +1,5 @@
 {
-  "run_at": "2026-05-07T18:00:05.295308",
+  "run_at": "2026-05-08T18:00:05.235796",
   "model": "gemma4:26b",
   "yesterday_message_count": 0,
   "staff_stats_summary": {
@@ -26,13 +26,13 @@
       "other": 0
     },
     "claude_tokens_saved_estimate": 0,
-    "reset_date": "2026-05-05",
-    "last_updated": "2026-05-05T11:37:24.316637",
+    "reset_date": "2026-05-08",
+    "last_updated": "2026-05-08T10:06:17.566075",
     "lifetime_total": 10,
     "lifetime_tokens_saved": 40000
   },
   "savings_analysis": "(분석 실패)",
-  "log_anomalies_count": 401,
+  "log_anomalies_count": 402,
   "log_anomalies_sample": [
     "company-hq.log: 2026-04-07 07:45:10,566 [ERROR] ConnectionClosedError exception in shielded future",
     "company-hq.log: future: <Future finished exception=ConnectionClosedError(None, Close(code=<CloseCode.INTERNAL_ERROR: 1011>, reason='keepalive ping timeout'), None)>",
