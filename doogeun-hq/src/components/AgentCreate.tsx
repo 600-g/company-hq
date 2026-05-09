@@ -52,6 +52,42 @@ export default function AgentCreate({ onDone }: Props) {
   const [subdomain, setSubdomain] = useState("");
   const [repoName, setRepoName] = useState("");
   const [cfTokenOk, setCfTokenOk] = useState<boolean | null>(null);
+  /* 카테고리: web | game | other — 토큰 라벨링 */
+  type CfCategory = "web" | "game" | "other";
+  const [cfCategory, setCfCategory] = useState<CfCategory>("web");
+  const [cfCategoryAuto, setCfCategoryAuto] = useState(true);  // 사용자 수동 변경 후엔 false
+  const [cfTokensByCat, setCfTokensByCat] = useState<Record<string, { configured: boolean }>>({});
+
+  // 서브도메인 키워드 → 카테고리 자동 추천 (백엔드 cf_dns.suggest_category 와 동일 로직)
+  const suggestCategory = (sub: string): CfCategory => {
+    const s = sub.toLowerCase();
+    const gameKeywords = ["puzzle", "game", "play", "arcade", "rpg", "quiz", "tetris", "match"];
+    const webKeywords = ["blog", "shop", "exam", "map", "doc", "wiki", "portfolio", "lab", "study", "edu"];
+    const otherKeywords = ["trading", "bot", "api", "admin", "dash", "cron", "tool", "mon", "ops"];
+    if (gameKeywords.some((k) => s.includes(k))) return "game";
+    if (otherKeywords.some((k) => s.includes(k))) return "other";
+    if (webKeywords.some((k) => s.includes(k))) return "web";
+    return "web";
+  };
+
+  // 서브도메인 변경 시 자동 추천 (사용자가 수동 변경 안 했을 때만)
+  const onSubdomainChange = (next: string) => {
+    setSubdomain(next);
+    if (cfCategoryAuto && next.length >= 3) {
+      setCfCategory(suggestCategory(next));
+    }
+  };
+  const onCategoryChange = (cat: CfCategory) => {
+    setCfCategory(cat);
+    setCfCategoryAuto(false);
+  };
+
+  const cfCategoryLabels: Record<CfCategory, { emoji: string; label: string; desc: string }> = {
+    web:   { emoji: "🌐", label: "웹",   desc: "정보·도구 사이트 (블로그·쇼핑·시험 등)" },
+    game:  { emoji: "🎮", label: "게임", desc: "퍼즐·아케이드·RPG 등 인터랙티브" },
+    other: { emoji: "📦", label: "기타", desc: "그 외 분류 안 되는 사이트" },
+  };
+  const selectedCatTokenOk = cfTokensByCat[cfCategory]?.configured ?? null;
 
   // 외부 사이트 토글 ON 시 CF 토큰 상태 확인 → 가이드 인라인 표시
   useState(() => null);  // 더미 (no-op, useEffect 같은 효과는 toggle 이벤트에서 처리)
@@ -160,6 +196,7 @@ export default function AgentCreate({ onDone }: Props) {
               project_type: "general",
               category: "product",
               subdomain: subdomain.trim().toLowerCase(),
+              subdomain_category: cfCategory,  // 'web' | 'game' | 'other' — 토큰 라벨링
             }),
           })
         : await fetch(`${apiBase()}/api/teams/light`, {
@@ -508,18 +545,46 @@ export default function AgentCreate({ onDone }: Props) {
                           const r = await fetch(`${apiBase()}/api/settings/tokens`);
                           const d = await r.json();
                           setCfTokenOk(!!d?.tokens?.CF_TOKEN?.configured);
+                          const byCat = d?.tokens?.CF_TOKEN_BY_CATEGORY || {};
+                          setCfTokensByCat(byCat);
                         } catch { setCfTokenOk(false); }
                       }
                     }}
                     className="accent-sky-500"
                   />
                   <span className="font-bold border-b border-dotted border-gray-500" title="자체 GitHub 레포 + 도메인 자동 발급. CF_TOKEN 설정 시 즉시 작동.">
-                    🌐 외부 공개 사이트로 만들기
+                    🚀 프로덕트로 만들기
                   </span>
                 </label>
                 <div className="text-[11px] text-gray-500 mt-1 ml-5">
-                  자체 GitHub 레포 + 본인 도메인 서브도메인 자동 발급 (예: <code>puzzle.600g.net</code>)
+                  자체 GitHub 레포 + <code>{"{name}"}.600g.net</code> 도메인 자동 발급 (예: <code>puzzle.600g.net</code>)
                 </div>
+
+                {/* 미니 가이드 — 처음 만드는 사용자용. 토큰 1번만 발급하면 그 다음부턴 도메인만 발행. */}
+                {publicSite && (
+                  <details className="mt-2 ml-5 group">
+                    <summary className="cursor-pointer text-[11px] text-sky-300 hover:text-sky-200 select-none">
+                      💡 프로덕트는 어떻게 작동해? (처음이면 펼쳐보기)
+                    </summary>
+                    <div className="mt-2 p-2.5 rounded bg-sky-500/5 border border-sky-400/20 text-[11px] text-gray-300 leading-relaxed space-y-1.5">
+                      <div className="text-gray-200 font-bold mb-1">📌 한 번 셋업, 무한 발행</div>
+                      <ol className="list-decimal list-inside space-y-1 text-gray-300">
+                        <li>
+                          <strong className="text-emerald-300">CF 토큰은 평생 1번만</strong> — 이미 등록됨{" "}
+                          {cfTokenOk ? <span className="text-emerald-400">✓</span> : (
+                            <a href="/settings" target="_blank" rel="noopener noreferrer" className="text-sky-300 underline">설정에서 등록 ↗</a>
+                          )}
+                        </li>
+                        <li>그 다음부터는 <strong className="text-sky-200">서브도메인 이름만 입력</strong> — DNS · CNAME · GitHub Pages 자동 연결</li>
+                        <li><strong>카테고리는 라벨링용</strong> — 토큰 1개로 web/game/other 다 작동 (감사·회수 분리 원할 때만 카테고리별 토큰 추가)</li>
+                        <li>발행 후 <strong className="text-amber-300">SSL 5분~1시간 발급 대기</strong> — 그동안 https 접속 시 "비공개 경고" 정상</li>
+                      </ol>
+                      <div className="pt-1.5 border-t border-sky-400/20 text-[10px] text-gray-400">
+                        예: <code className="text-emerald-300">trading</code> 입력 → <code>trading.600g.net</code> 자동 발급 (카테고리 자동 = 기타)
+                      </div>
+                    </div>
+                  </details>
+                )}
 
                 {publicSite && cfTokenOk === false && (
                   <div className="mt-2 ml-5 p-3 rounded-md bg-amber-500/10 border border-amber-400/40 text-[11px] text-amber-100 space-y-1.5">
@@ -560,7 +625,7 @@ export default function AgentCreate({ onDone }: Props) {
                       <div className="flex items-center gap-1">
                         <input
                           value={subdomain}
-                          onChange={(e) => setSubdomain(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))}
+                          onChange={(e) => onSubdomainChange(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))}
                           placeholder="puzzle"
                           className="flex-1 h-8 rounded border border-gray-700 bg-gray-900/60 px-2.5 text-[12px] text-gray-100 placeholder:text-gray-500 font-mono"
                         />
@@ -572,6 +637,63 @@ export default function AgentCreate({ onDone }: Props) {
                         </div>
                       )}
                     </div>
+
+                    {/* 카테고리 선택 — 토큰 라벨링용 */}
+                    <div>
+                      <label className="text-[11px] text-gray-400 mb-1 block">
+                        <span
+                          className="font-bold border-b border-dotted border-gray-500"
+                          title="CF 토큰 라벨링용. 같은 zone 권한이라 보안상 차이는 없고, 관리/감사용으로 분리"
+                        >
+                          카테고리
+                        </span>
+                        {cfCategoryAuto && (
+                          <span className="ml-1.5 text-[9px] text-sky-400/80">(자동 추천 — 직접 변경 가능)</span>
+                        )}
+                      </label>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {(["web", "game", "other"] as CfCategory[]).map((cat) => {
+                          const meta = cfCategoryLabels[cat];
+                          const tokenOk = cfTokensByCat[cat]?.configured;
+                          const active = cfCategory === cat;
+                          return (
+                            <button
+                              key={cat}
+                              type="button"
+                              onClick={() => onCategoryChange(cat)}
+                              className={`relative flex flex-col items-center gap-0.5 px-2 py-1.5 rounded border transition-all ${
+                                active
+                                  ? "border-sky-400 bg-sky-500/15 text-sky-100"
+                                  : "border-gray-700 bg-gray-900/40 text-gray-400 hover:border-gray-600 hover:text-gray-200"
+                              }`}
+                              title={meta.desc + (tokenOk ? " · 전용 토큰 등록됨" : " · 폴백 CF_TOKEN 사용 (전용 토큰 미설정)")}
+                            >
+                              <span className="text-[14px] leading-none">{meta.emoji}</span>
+                              <span className="text-[10px] font-bold">{meta.label}</span>
+                              {/* 토큰 상태 점 — 우상단 */}
+                              <span
+                                className={`absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full ${
+                                  tokenOk ? "bg-emerald-400" : "bg-gray-600"
+                                }`}
+                              />
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div className="text-[10px] text-gray-500 mt-1 leading-tight">
+                        💡 {cfCategoryLabels[cfCategory].desc}
+                      </div>
+                      {selectedCatTokenOk === false && cfTokenOk && (
+                        <div className="text-[10px] text-amber-300/80 mt-1 p-1.5 rounded bg-amber-500/5 border border-amber-400/20 leading-tight">
+                          전용 <code>CF_TOKEN_{cfCategory.toUpperCase()}</code> 미등록 →{" "}
+                          폴백 <code>CF_TOKEN</code> 사용 (작동은 함). 분리 관리하려면{" "}
+                          <a href="/settings" target="_blank" rel="noopener noreferrer" className="underline text-sky-300">
+                            설정에서 추가 ↗
+                          </a>
+                        </div>
+                      )}
+                    </div>
+
                     <div className="text-[10px] text-amber-300/80 leading-relaxed">
                       ⚠️ 작동 조건: <code>설정</code> 페이지에서 <strong>Cloudflare 토큰</strong> 입력됨 + GitHub 토큰 정상.
                       미설정 시 레포만 만들고 도메인은 수동 작업 안내.

@@ -1422,5 +1422,13 @@
     "severity": "info",
     "ts": "2026-05-09T08:23:57.714182",
     "read": false
+  },
+  {
+    "id": "tr_1778328797213",
+    "title": "💹 두근트레이딩봇",
+    "body": "trading.600g.net 활성화 완료",
+    "severity": "info",
+    "ts": "2026-05-09T21:13:17.213198",
+    "read": false
   }
 ]

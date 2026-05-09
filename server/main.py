@@ -446,12 +446,16 @@ async def add_team(body: dict):
     public_url: str | None = None
     subdomain_info: dict | None = None
     subdomain = (body.get("subdomain") or "").strip().lower()
+    # category: "web" | "game" | "other" — 토큰 라벨링용. 없으면 서브도메인 키워드로 자동 추정.
+    sub_category = (body.get("subdomain_category") or "").strip().lower() or None
     if subdomain:
         try:
-            from cf_dns import add_subdomain, add_cname_file_to_repo
+            from cf_dns import add_subdomain, add_cname_file_to_repo, suggest_category
             local_path = os.path.expanduser(new_team["localPath"])
-            # 5-1: CF DNS CNAME 등록
-            dns_result = add_subdomain(subdomain)
+            if not sub_category:
+                sub_category = suggest_category(subdomain)
+            # 5-1: CF DNS CNAME 등록 (카테고리별 토큰 우선)
+            dns_result = add_subdomain(subdomain, category=sub_category)
             if not dns_result.get("ok"):
                 logger.warning("[create-team] 서브도메인 DNS 등록 실패: %s", dns_result.get("error"))
                 subdomain_info = {"ok": False, "stage": "dns", "error": dns_result.get("error")}
@@ -471,6 +475,7 @@ async def add_team(body: dict):
                         "ok": True,
                         "url": public_url,
                         "full_name": dns_result["full_name"],
+                        "category_used": dns_result.get("category_used", sub_category),
                         "note": "SSL 발급 5분~1시간 — 그동안 https 접속 시 잠시 경고 가능",
                     }
                     logger.info("[create-team] ✅ 서브도메인 %s 자동 발급 완료", public_url)
@@ -980,7 +985,10 @@ async def read_notion(body: dict):
 
 @app.get("/api/settings/tokens")
 async def settings_tokens():
-    """외부 서비스 토큰이 서버 .env 에 설정됐는지 여부 (값은 노출 안 함)."""
+    """외부 서비스 토큰이 서버 .env 에 설정됐는지 여부 (값은 노출 안 함).
+
+    CF_TOKEN 은 카테고리별 (web/game/other) 분리 + 폴백 표시.
+    """
     import shutil
     import subprocess
     names = ["GITHUB_TOKEN", "CF_TOKEN", "ANTHROPIC_API_KEY", "GEMINI_API_KEY"]
@@ -1003,6 +1011,12 @@ async def settings_tokens():
                 result["CF_TOKEN"] = {"configured": True, "masked": f"wrangler · {email}"}
         except Exception:
             pass
+    # 카테고리별 CF 토큰 상태 추가 (UI 에서 어떤 카테고리가 비어있는지 보여줌)
+    try:
+        from cf_dns import list_token_status
+        result["CF_TOKEN_BY_CATEGORY"] = list_token_status()
+    except Exception:
+        pass
     return {"ok": True, "tokens": result}
 
 
@@ -1636,14 +1650,17 @@ async def trading_proxy(path: str, request: Request):
 
 @app.middleware("http")
 async def _trading_subdomain_proxy(request: Request, call_next):
-    """trading.600g.net 으로 들어온 요청은 자동으로 :9000 으로 proxy.
-    Host 헤더 분기 — api.600g.net 또는 LAN 은 기존 라우팅 그대로."""
+    """trading.600g.net 으로 들어온 요청은 :9000 으로 proxy.
+    예외: /api/push/* 는 두근컴퍼니 자체 router (vapid-key/subscribe-trading/topics) 처리."""
     host = request.headers.get("host", "").lower().split(":")[0]
     if host == "trading.600g.net":
-        # / → /index.html, /persona_unified.html → :9000/persona_unified.html
-        path = request.url.path.lstrip("/")
-        if not path: path = "persona_unified.html"  # root → 통합 페르소나 메인
-        return await _trading_proxy_impl(path, request)
+        path = request.url.path
+        # /api/push/* 는 두근컴퍼니 자체 처리 (proxy 안 함)
+        if path.startswith("/api/push/") or path == "/api/push":
+            return await call_next(request)
+        # 그 외 → :9000 system-api proxy
+        proxy_path = path.lstrip("/") or "persona_unified.html"
+        return await _trading_proxy_impl(proxy_path, request)
     return await call_next(request)
 
 
