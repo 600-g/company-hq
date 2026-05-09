@@ -45,6 +45,7 @@ export default function SitesModal({ onSelectAgent }: Props) {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [resultMsg, setResultMsg] = useState<string | null>(null);
   const [cfTokenOk, setCfTokenOk] = useState<boolean | null>(null);
+  const [showDev, setShowDev] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -82,6 +83,12 @@ export default function SitesModal({ onSelectAgent }: Props) {
           githubPagesUrl: `https://600-g.github.io/${t.repo}/`,
           hasRepo: !!t.repo,
         }));
+      // 카테고리별 정렬: product 먼저, 나머지(dev)는 뒤로
+      sites.sort((a, b) => {
+        if (a.category === "product" && b.category !== "product") return -1;
+        if (a.category !== "product" && b.category === "product") return 1;
+        return 0;
+      });
       setRows(sites);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -122,6 +129,74 @@ export default function SitesModal({ onSelectAgent }: Props) {
     } finally {
       setBusyId(null);
     }
+  };
+
+  // 카드 렌더 — product / dev 양쪽에서 재사용
+  const renderCard = (s: SiteRow) => {
+    const liveUrl = s.publicUrl || s.githubPagesUrl;
+    const hasOwnDomain = !!s.publicUrl;
+    return (
+      <div
+        key={s.id}
+        className="p-3 rounded-lg border border-gray-800/60 bg-gray-900/30 hover:border-sky-400/30 transition-colors space-y-2"
+      >
+        <div className="flex items-start gap-2">
+          <span className="text-2xl">{s.emoji}</span>
+          <div className="flex-1 min-w-0">
+            <div className="text-[14px] font-bold text-gray-100 truncate">{s.name}</div>
+            <div className="text-[10px] text-gray-500 font-mono truncate">{s.repo}</div>
+          </div>
+          {hasOwnDomain ? (
+            <Badge variant="success" className="text-[10px]">분리됨</Badge>
+          ) : (
+            <Badge variant="secondary" className="text-[10px]">github.io</Badge>
+          )}
+        </div>
+
+        <div className="text-[11px] text-gray-400 font-mono truncate" title={liveUrl}>
+          <Globe className="w-3 h-3 inline mr-1 mb-0.5" />
+          {liveUrl.replace(/^https?:\/\//, "")}
+        </div>
+
+        <div className="flex flex-wrap gap-1.5 pt-1">
+          <a
+            href={liveUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] bg-sky-500/15 text-sky-200 hover:bg-sky-500/25 transition-colors"
+          >
+            <ExternalLink className="w-3 h-3" /> 열기
+          </a>
+          <a
+            href={`https://github.com/600-g/${s.repo}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] bg-gray-800/60 text-gray-300 hover:bg-gray-700 transition-colors"
+          >
+            <span className="text-[12px]">⌥</span> 코드
+          </a>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 text-[11px] px-2"
+            onClick={() => onSelectAgent?.(s.id)}
+          >
+            <MessageSquare className="w-3 h-3 mr-1" /> 채팅
+          </Button>
+          {!hasOwnDomain && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-6 text-[11px] px-2 ml-auto border-emerald-400/40 text-emerald-300 hover:bg-emerald-500/10"
+              disabled={busyId === s.id}
+              onClick={() => setupSubdomain(s.id, s.id.replace(/[^a-z0-9]/g, ""))}
+            >
+              {busyId === s.id ? <Loader2 className="w-3 h-3 animate-spin" /> : "🌐 도메인 추가"}
+            </Button>
+          )}
+        </div>
+      </div>
+    );
   };
 
   if (loading) {
@@ -209,74 +284,45 @@ export default function SitesModal({ onSelectAgent }: Props) {
           <span className="text-[11px]">에이전트를 만들 때 "🌐 외부 공개 사이트로 만들기" 옵션을 켜면 자동 등록됩니다.</span>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {rows.map((s) => {
-            const liveUrl = s.publicUrl || s.githubPagesUrl;
-            const hasOwnDomain = !!s.publicUrl;
-            return (
-              <div
-                key={s.id}
-                className="p-3 rounded-lg border border-gray-800/60 bg-gray-900/30 hover:border-sky-400/30 transition-colors space-y-2"
-              >
-                <div className="flex items-start gap-2">
-                  <span className="text-2xl">{s.emoji}</span>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[14px] font-bold text-gray-100 truncate">{s.name}</div>
-                    <div className="text-[10px] text-gray-500 font-mono truncate">{s.repo}</div>
-                  </div>
-                  {hasOwnDomain ? (
-                    <Badge variant="success" className="text-[10px]">분리됨</Badge>
-                  ) : (
-                    <Badge variant="secondary" className="text-[10px]">github.io</Badge>
-                  )}
-                </div>
-
-                <div className="text-[11px] text-gray-400 font-mono truncate" title={liveUrl}>
-                  <Globe className="w-3 h-3 inline mr-1 mb-0.5" />
-                  {liveUrl.replace(/^https?:\/\//, "")}
-                </div>
-
-                <div className="flex flex-wrap gap-1.5 pt-1">
-                  <a
-                    href={liveUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] bg-sky-500/15 text-sky-200 hover:bg-sky-500/25 transition-colors"
-                  >
-                    <ExternalLink className="w-3 h-3" /> 열기
-                  </a>
-                  <a
-                    href={`https://github.com/600-g/${s.repo}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] bg-gray-800/60 text-gray-300 hover:bg-gray-700 transition-colors"
-                  >
-                    <span className="text-[12px]">⌥</span> 코드
-                  </a>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 text-[11px] px-2"
-                    onClick={() => onSelectAgent?.(s.id)}
-                  >
-                    <MessageSquare className="w-3 h-3 mr-1" /> 채팅
-                  </Button>
-                  {!hasOwnDomain && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-6 text-[11px] px-2 ml-auto border-emerald-400/40 text-emerald-300 hover:bg-emerald-500/10"
-                      disabled={busyId === s.id}
-                      onClick={() => setupSubdomain(s.id, s.id.replace(/[^a-z0-9]/g, ""))}
-                    >
-                      {busyId === s.id ? <Loader2 className="w-3 h-3 animate-spin" /> : "🌐 도메인 추가"}
-                    </Button>
-                  )}
-                </div>
+        <>
+          {/* 🚀 외부 공개 제품 — 메인 (date-map / ai900 등) */}
+          {rows.filter((s) => s.category === "product").length > 0 && (
+            <div className="space-y-2">
+              <div className="text-[11px] font-bold text-gray-300 uppercase tracking-wider flex items-center gap-2">
+                🚀 외부 공개 제품
+                <span className="text-[10px] font-normal text-gray-500">
+                  ({rows.filter((s) => s.category === "product").length})
+                </span>
               </div>
-            );
-          })}
-        </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {rows.filter((s) => s.category === "product").map(renderCard)}
+              </div>
+            </div>
+          )}
+
+          {/* 💻 내부 개발 도구 — 접힘 (frontend/backend/design 등) */}
+          {rows.filter((s) => s.category !== "product").length > 0 && (
+            <div className="space-y-2 pt-3 border-t border-gray-800/60">
+              <button
+                onClick={() => setShowDev(!showDev)}
+                className="w-full flex items-center gap-2 text-[11px] font-bold text-gray-400 hover:text-gray-200 uppercase tracking-wider"
+                title="dev 카테고리 (프론트엔드/백엔드/디자인 등) — 외부 사이트 아닌 내부 도구"
+              >
+                <span className={`text-[9px] transition-transform ${showDev ? "rotate-90" : ""}`}>▶</span>
+                💻 내부 개발 도구
+                <span className="text-[10px] font-normal text-gray-500">
+                  ({rows.filter((s) => s.category !== "product").length})
+                </span>
+                <span className="text-[10px] font-normal text-gray-500 ml-auto">{showDev ? "접기" : "펼치기"}</span>
+              </button>
+              {showDev && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 opacity-90">
+                  {rows.filter((s) => s.category !== "product").map(renderCard)}
+                </div>
+              )}
+            </div>
+          )}
+        </>
       )}
 
       <div className="text-[11px] text-gray-500 pt-2 border-t border-gray-800/60">

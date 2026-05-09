@@ -61,6 +61,16 @@ export default function AgentCreate({ onDone }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
 
+  /* 성공 가이드 팝업 — 외부 사이트 발급 시 한 번 더 안내 */
+  const [successInfo, setSuccessInfo] = useState<null | {
+    agentId: string;
+    agentName: string;
+    publicUrl?: string;
+    repoUrl?: string;
+    subdomainOk: boolean;
+    subdomainError?: string;
+  }>(null);
+
   /* AI 초안 생성 — light 모드의 quickDesc 또는 고도화 모드의 role+description 기반.
    *  백엔드 /api/agents/generate-config 호출. 실패 시 로컬 fallback.
    *  응답 형식: {ok, role, description, outputHint, steps, system_prompt} (백엔드 반환 키 그대로) */
@@ -197,6 +207,20 @@ export default function AgentCreate({ onDone }: Props) {
         // 실패해도 1초 후 useStateSync debounce가 재시도
       }
 
+      // 외부 사이트 발급 시도가 있었으면 → 성공 팝업으로 한 번 더 안내
+      if (useFullTeam) {
+        const sdInfo = data?.subdomain_info as { ok?: boolean; error?: string; url?: string } | undefined;
+        setSuccessInfo({
+          agentId: agent.id,
+          agentName: name.trim(),
+          publicUrl: data?.public_url || sdInfo?.url,
+          repoUrl: data?.repo_url,
+          subdomainOk: !!sdInfo?.ok,
+          subdomainError: sdInfo?.ok ? undefined : sdInfo?.error,
+        });
+        return;  // onDone 은 사용자가 [채팅 시작] 클릭 시 호출
+      }
+
       onDone(agent.id);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "서버 등록 실패";
@@ -205,6 +229,91 @@ export default function AgentCreate({ onDone }: Props) {
       setSubmitting(false);
     }
   };
+
+  // ── 성공 팝업 — 외부 사이트 발급 직후 한 번 더 안내 ──
+  if (successInfo) {
+    const { agentName, publicUrl, repoUrl, subdomainOk, subdomainError, agentId } = successInfo;
+    return (
+      <div className="p-6 space-y-4 max-w-xl mx-auto">
+        <div className="text-center space-y-2">
+          <div className="text-5xl">🎉</div>
+          <div className="text-[18px] font-bold text-gray-100">{agentName} 생성 완료!</div>
+          <div className="text-[12px] text-gray-400">
+            {subdomainOk ? "GitHub 레포 + 도메인 자동 발급 성공" : "GitHub 레포 생성 성공"}
+          </div>
+        </div>
+
+        {subdomainOk && publicUrl ? (
+          <div className="p-4 rounded-lg bg-emerald-500/10 border border-emerald-400/30 space-y-3">
+            <div className="flex items-center gap-2 text-emerald-200">
+              <CheckCircle2 className="w-4 h-4" />
+              <span className="font-bold text-[13px]">도메인 발급 완료</span>
+            </div>
+            <a
+              href={publicUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block text-center py-3 rounded-md bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/40 transition-colors"
+            >
+              <div className="text-[16px] font-mono text-emerald-100 font-bold">{publicUrl.replace(/^https?:\/\//, "")}</div>
+              <div className="text-[10px] text-emerald-300/70 mt-1">클릭하면 새 탭에서 열림 ↗</div>
+            </a>
+            <div className="text-[12px] text-gray-300 space-y-1.5 pt-1">
+              <div>📌 <strong>지금 바로 접속해도</strong> SSL 발급 중일 수 있어요. 5분~1시간 후 정상 작동.</div>
+              <div>📌 첫 빌드는 <code className="text-emerald-300">index.html</code> 같은 파일이 레포에 push 된 후부터.</div>
+              <div>📌 사이트 콘텐츠는 <strong>채팅으로 이 에이전트에게 요청</strong>하면 자동 작성·푸시.</div>
+            </div>
+          </div>
+        ) : (
+          <div className="p-4 rounded-lg bg-amber-500/10 border border-amber-400/30 space-y-2">
+            <div className="flex items-center gap-2 text-amber-200">
+              <AlertTriangle className="w-4 h-4" />
+              <span className="font-bold text-[13px]">레포는 생성됐지만 도메인 발급은 실패</span>
+            </div>
+            {subdomainError && (
+              <div className="text-[11px] text-amber-200/80 font-mono p-2 rounded bg-black/40 border border-amber-400/20">
+                {subdomainError}
+              </div>
+            )}
+            <div className="text-[12px] text-gray-300">
+              💡 보통 <strong>Cloudflare 토큰 미설정</strong> 때문이에요. {" "}
+              <a href="/settings" target="_blank" rel="noopener noreferrer" className="text-sky-300 hover:underline">
+                설정 페이지에서 등록 ↗
+              </a>
+            </div>
+          </div>
+        )}
+
+        {repoUrl && (
+          <div className="text-[12px] text-gray-400 text-center">
+            <a
+              href={repoUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sky-300 hover:underline"
+            >
+              ⌥ GitHub 레포 보기 ↗
+            </a>
+          </div>
+        )}
+
+        <div className="space-y-2 pt-2">
+          <Button
+            className="w-full"
+            onClick={() => { onDone(agentId); }}
+          >
+            💬 이 에이전트와 채팅 시작
+          </Button>
+          <button
+            onClick={() => { onDone(); }}
+            className="w-full text-[11px] text-gray-500 hover:text-gray-300"
+          >
+            나중에 (모달 닫기)
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-5 space-y-4">
