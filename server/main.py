@@ -1658,8 +1658,8 @@ async def _trading_subdomain_proxy(request: Request, call_next):
         # /api/push/* 는 두근컴퍼니 자체 처리 (proxy 안 함)
         if path.startswith("/api/push/") or path == "/api/push":
             return await call_next(request)
-        # 그 외 → :9000 system-api proxy
-        proxy_path = path.lstrip("/") or "persona_unified.html"
+        # 그 외 → :9000 system-api proxy. root → index.html (트레이딩 홈)
+        proxy_path = path.lstrip("/") or "index.html"
         return await _trading_proxy_impl(proxy_path, request)
     return await call_next(request)
 

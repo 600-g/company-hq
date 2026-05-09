@@ -396,7 +396,7 @@ export default function HubPage() {
             onClick={() => setModalKey("agents")}
           />
           <WorkingAgentsStrip collapsed={sideCollapsed} onSelect={(id) => { setSelectedAgentId(id); setChatOpen(true); }} />
-          <SideItem collapsed={sideCollapsed} icon={Globe} label="외부 사이트" onClick={() => setModalKey("sites")} />
+          <SideItem collapsed={sideCollapsed} icon={Globe} label="프로덕트" onClick={() => setModalKey("sites")} />
           <SideItem collapsed={sideCollapsed} icon={Cpu} label="서버실" onClick={() => setModalKey("server")} />
           <SideItem collapsed={sideCollapsed} icon={Bug} label="연구소" onClick={() => setModalKey("lab")} />
           <SideItem collapsed={sideCollapsed} icon={Settings} label="설정" onClick={() => router.push("/settings")} />
@@ -1144,7 +1144,7 @@ export default function HubPage() {
           onPopoutTerminal={() => { setShowTerminal(true); }}
         />
       </Modal>
-      <Modal open={modalKey === "sites"} onClose={() => setModalKey(null)} title="🌐 외부 사이트" subtitle="에이전트가 만든 사이트 모음 + 도메인 자동 발급" widthClass="max-w-4xl">
+      <Modal open={modalKey === "sites"} onClose={() => setModalKey(null)} title="🚀 프로덕트" subtitle="우리가 만든 프로덕트 모음 + 도메인 자동 발급" widthClass="max-w-4xl">
         <SitesModal onSelectAgent={(id) => {
           setSelectedAgentId(id);
           setChatOpen(true);

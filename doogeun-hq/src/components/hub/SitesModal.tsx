@@ -267,8 +267,8 @@ export default function SitesModal({ onSelectAgent }: Props) {
       )}
 
       <div className="text-[12px] text-gray-400 leading-relaxed">
-        🌐 두근컴퍼니가 만든 외부 사이트 모음. <strong className="text-gray-200">분리된 사이트</strong>는 자체 도메인 + 호스팅으로
-        두근컴퍼니가 꺼져도 정상 작동합니다. 미분리 사이트는 <strong className="text-emerald-300">[도메인 추가하기]</strong> 클릭하면
+        🚀 두근컴퍼니가 만든 프로덕트 모음. <strong className="text-gray-200">분리된 프로덕트</strong>는 자체 도메인 + 호스팅으로
+        두근컴퍼니가 꺼져도 정상 작동합니다. 미분리 프로덕트는 <strong className="text-emerald-300">[도메인 추가하기]</strong> 클릭하면
         본인 Cloudflare 토큰으로 자동 발급됩니다 (5분 후 라이브).
       </div>
 
@@ -280,16 +280,16 @@ export default function SitesModal({ onSelectAgent }: Props) {
 
       {rows.length === 0 ? (
         <div className="p-6 text-center text-gray-500 text-[13px]">
-          외부 사이트가 아직 없습니다. <br />
-          <span className="text-[11px]">에이전트를 만들 때 "🌐 외부 공개 사이트로 만들기" 옵션을 켜면 자동 등록됩니다.</span>
+          프로덕트가 아직 없습니다. <br />
+          <span className="text-[11px]">에이전트를 만들 때 "🚀 프로덕트로 만들기" 옵션을 켜면 자동 등록됩니다.</span>
         </div>
       ) : (
         <>
-          {/* 🚀 외부 공개 제품 — 메인 (date-map / ai900 등) */}
+          {/* 🚀 프로덕트 — 메인 (date-map / ai900 등) */}
           {rows.filter((s) => s.category === "product").length > 0 && (
             <div className="space-y-2">
               <div className="text-[11px] font-bold text-gray-300 uppercase tracking-wider flex items-center gap-2">
-                🚀 외부 공개 제품
+                🚀 프로덕트
                 <span className="text-[10px] font-normal text-gray-500">
                   ({rows.filter((s) => s.category === "product").length})
                 </span>
@@ -306,7 +306,7 @@ export default function SitesModal({ onSelectAgent }: Props) {
               <button
                 onClick={() => setShowDev(!showDev)}
                 className="w-full flex items-center gap-2 text-[11px] font-bold text-gray-400 hover:text-gray-200 uppercase tracking-wider"
-                title="dev 카테고리 (프론트엔드/백엔드/디자인 등) — 외부 사이트 아닌 내부 도구"
+                title="dev 카테고리 (프론트엔드/백엔드/디자인 등) — 프로덕트 아닌 내부 도구"
               >
                 <span className={`text-[9px] transition-transform ${showDev ? "rotate-90" : ""}`}>▶</span>
                 💻 내부 개발 도구

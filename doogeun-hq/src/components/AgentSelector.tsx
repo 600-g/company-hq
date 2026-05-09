@@ -6,9 +6,9 @@ import { useChatStore } from "@/stores/chatStore";
 
 // 그룹 라벨에 마우스 hover 시 한 줄 설명 (native title — z-index 무관, 가벼움)
 const GROUP_HOVER: Record<"system" | "dev" | "agent", string> = {
-  system: "두근컴퍼니 운영 자체 (CPO·관리자·스태프·서버실·MD메이커). 외부 사이트 없음.",
+  system: "두근컴퍼니 운영 자체 (CPO·관리자·스태프·서버실·MD메이커). 프로덕트 없음.",
   dev: "내부 협업 도구 (프론트·백엔드·디자인·QA·콘텐츠랩). 다른 에이전트가 호출해 사용.",
-  agent: "외부 사용자 대상 제품/사이트. 자체 GitHub 레포 + 호스팅, 두근컴퍼니 꺼져도 작동.",
+  agent: "프로덕트 (외부 사용자 대상). 자체 GitHub 레포 + 호스팅, 두근컴퍼니 꺼져도 작동.",
 };
 
 /** 에이전트의 사이드바 그룹 분류 — agentStore.roleGroup 우선, 없으면 id 기반 default */
