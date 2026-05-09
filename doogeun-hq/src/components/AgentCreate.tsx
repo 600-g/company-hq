@@ -51,6 +51,10 @@ export default function AgentCreate({ onDone }: Props) {
   const [publicSite, setPublicSite] = useState(false);
   const [subdomain, setSubdomain] = useState("");
   const [repoName, setRepoName] = useState("");
+  const [cfTokenOk, setCfTokenOk] = useState<boolean | null>(null);
+
+  // 외부 사이트 토글 ON 시 CF 토큰 상태 확인 → 가이드 인라인 표시
+  useState(() => null);  // 더미 (no-op, useEffect 같은 효과는 toggle 이벤트에서 처리)
 
   /* 확인 단계 */
   const [confirming, setConfirming] = useState(false);
@@ -388,7 +392,16 @@ export default function AgentCreate({ onDone }: Props) {
                   <input
                     type="checkbox"
                     checked={publicSite}
-                    onChange={(e) => setPublicSite(e.target.checked)}
+                    onChange={async (e) => {
+                      setPublicSite(e.target.checked);
+                      if (e.target.checked && cfTokenOk === null) {
+                        try {
+                          const r = await fetch(`${apiBase()}/api/settings/tokens`);
+                          const d = await r.json();
+                          setCfTokenOk(!!d?.tokens?.CF_TOKEN?.configured);
+                        } catch { setCfTokenOk(false); }
+                      }
+                    }}
                     className="accent-sky-500"
                   />
                   <span className="font-bold border-b border-dotted border-gray-500" title="자체 GitHub 레포 + 도메인 자동 발급. CF_TOKEN 설정 시 즉시 작동.">
@@ -399,6 +412,25 @@ export default function AgentCreate({ onDone }: Props) {
                   자체 GitHub 레포 + 본인 도메인 서브도메인 자동 발급 (예: <code>puzzle.600g.net</code>)
                 </div>
 
+                {publicSite && cfTokenOk === false && (
+                  <div className="mt-2 ml-5 p-3 rounded-md bg-amber-500/10 border border-amber-400/40 text-[11px] text-amber-100 space-y-1.5">
+                    <div className="font-bold flex items-center gap-1.5">
+                      <AlertTriangle className="w-3.5 h-3.5" /> Cloudflare 토큰이 설정 안 됐어요
+                    </div>
+                    <div className="text-amber-200/90">
+                      도메인 자동 발급은 안 됩니다. 레포만 만들어요.
+                      <br />
+                      <a
+                        href="/settings"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="underline text-sky-300 hover:text-sky-200 font-bold"
+                      >
+                        ⚙️ 설정 페이지에서 토큰 등록 (3분) ↗
+                      </a>
+                    </div>
+                  </div>
+                )}
                 {publicSite && (
                   <div className="mt-2 ml-5 space-y-2 p-2.5 rounded-md bg-sky-500/5 border border-sky-400/20">
                     <div>

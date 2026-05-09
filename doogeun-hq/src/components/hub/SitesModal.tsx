@@ -9,9 +9,10 @@
  */
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ExternalLink, MessageSquare, Globe, Loader2, AlertCircle } from "lucide-react";
+import { ExternalLink, MessageSquare, Globe, Loader2, AlertCircle, Sparkles } from "lucide-react";
 import { apiBase } from "@/lib/utils";
 
 interface SiteRow {
@@ -43,11 +44,19 @@ export default function SitesModal({ onSelectAgent }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [resultMsg, setResultMsg] = useState<string | null>(null);
+  const [cfTokenOk, setCfTokenOk] = useState<boolean | null>(null);
 
   const load = async () => {
     setLoading(true);
     setError(null);
     try {
+      // CF 토큰 상태 — 가이드 표시 여부 결정
+      try {
+        const tr = await fetch(`${apiBase()}/api/settings/tokens`);
+        const td = await tr.json();
+        setCfTokenOk(!!td?.tokens?.CF_TOKEN?.configured);
+      } catch { setCfTokenOk(null); }
+
       const r = await fetch(`${apiBase()}/api/teams/info`);
       const data = await r.json();
       if (!Array.isArray(data)) throw new Error("응답 형식 오류");
@@ -134,6 +143,54 @@ export default function SitesModal({ onSelectAgent }: Props) {
 
   return (
     <div className="p-5 space-y-4">
+      {/* CF 토큰 미설정 시: 시작 가이드 (토큰 등록되면 자동 숨김) */}
+      {cfTokenOk === false && (
+        <div className="p-4 rounded-lg bg-gradient-to-br from-amber-500/10 to-sky-500/10 border border-amber-400/30 space-y-3">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-amber-300" />
+            <span className="text-[14px] font-bold text-gray-100">🚀 첫 시작 — 도메인 자동 발급 켜기 (5분)</span>
+          </div>
+          <div className="text-[12px] text-gray-300 leading-relaxed">
+            본인 도메인의 서브도메인 (예: <code className="text-emerald-300">puzzle.600g.net</code>)을
+            자동으로 발급하려면 <strong>Cloudflare 토큰</strong> 1회 등록 필요.
+          </div>
+          <ol className="text-[12px] text-gray-200 space-y-1.5 pl-4 list-decimal">
+            <li>
+              <a
+                href="https://dash.cloudflare.com/profile/api-tokens"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sky-300 hover:underline font-bold"
+              >
+                Cloudflare 토큰 발급 페이지 열기 ↗
+              </a>
+              {" "}→ <span className="text-gray-400">[Create Token] 클릭</span>
+            </li>
+            <li>
+              템플릿 <strong className="text-gray-100">"Edit zone DNS"</strong> → Use template
+            </li>
+            <li>
+              Zone Resources → <strong>Specific zone</strong> → 본인 도메인 선택
+            </li>
+            <li>
+              Continue → Create Token → <strong>토큰 복사</strong> (한 번만 보임!)
+            </li>
+            <li>
+              <Link
+                href="/settings"
+                className="text-sky-300 hover:underline font-bold"
+              >
+                설정 페이지 가서 ↗
+              </Link>
+              {" "}Cloudflare 칸에 붙여넣고 [저장]
+            </li>
+          </ol>
+          <div className="flex items-center gap-2 pt-1 text-[11px] text-amber-200/80">
+            ⓘ 등록 후 이 모달 새로고침 (다시 열기) 하면 가이드 사라지고 [도메인 추가] 버튼 활성화
+          </div>
+        </div>
+      )}
+
       <div className="text-[12px] text-gray-400 leading-relaxed">
         🌐 두근컴퍼니가 만든 외부 사이트 모음. <strong className="text-gray-200">분리된 사이트</strong>는 자체 도메인 + 호스팅으로
         두근컴퍼니가 꺼져도 정상 작동합니다. 미분리 사이트는 <strong className="text-emerald-300">[도메인 추가하기]</strong> 클릭하면
