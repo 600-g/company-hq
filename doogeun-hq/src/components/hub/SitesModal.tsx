@@ -176,7 +176,7 @@ export default function SitesModal({ onSelectAgent }: Props) {
             onClick={() => onSelectAgent?.(s.id)}
             title="이 프로덕트 담당 에이전트와 채팅 — 사이트 패치/개선 요청"
           >
-            <MessageSquare className="w-3 h-3 mr-1" /> 채팅으로 개선
+            <MessageSquare className="w-3 h-3 mr-1" /> 채팅
           </Button>
           {!hasOwnDomain && (
             <Button
