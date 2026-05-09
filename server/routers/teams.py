@@ -237,6 +237,48 @@ async def get_team_evolution(team_id: str):
     return {"ok": True, "team_id": team_id, **team_evo, "lessons_count": lessons_count}
 
 
+@router.post("/api/teams/{team_id}/setup-subdomain")
+async def setup_team_subdomain(team_id: str, body: dict):
+    """기존 팀에 서브도메인 자동 추가 (retroactive).
+
+    body: {"subdomain": "exam"} → exam.600g.net CNAME → 600-g.github.io
+    """
+    import os as _os
+    import main as _main
+    team = next((t for t in _main.TEAMS if t["id"] == team_id), None)
+    if not team:
+        return {"ok": False, "error": "팀을 찾을 수 없음"}
+    sub = (body.get("subdomain") or "").strip().lower()
+    if not sub:
+        return {"ok": False, "error": "subdomain 필요"}
+
+    local_path = _os.path.expanduser(team.get("localPath", ""))
+    if not _os.path.isdir(local_path):
+        return {"ok": False, "error": f"로컬 경로 없음: {local_path}", "stage": "local_path"}
+    if not _os.path.isdir(_os.path.join(local_path, ".git")):
+        return {"ok": False, "error": f"git 레포 아님: {local_path}", "stage": "local_path"}
+
+    try:
+        from cf_dns import add_subdomain, add_cname_file_to_repo
+    except Exception as e:
+        return {"ok": False, "error": f"cf_dns import 실패: {e}", "stage": "import"}
+
+    dns = add_subdomain(sub)
+    if not dns.get("ok"):
+        return {"ok": False, "error": dns.get("error"), "stage": "dns"}
+
+    cname = add_cname_file_to_repo(local_path, dns["full_name"])
+    if not cname.get("ok"):
+        return {"ok": False, "error": cname.get("error"), "stage": "cname_file", "dns": dns}
+
+    return {
+        "ok": True,
+        "url": dns["url"],
+        "full_name": dns["full_name"],
+        "note": "SSL 발급 5분~1시간",
+    }
+
+
 @router.get("/api/teams/{team_id}/activity")
 async def get_team_activity(team_id: str):
     """팀 최근 활동 — 커밋, 작업 상태"""

@@ -14,8 +14,9 @@ import { apiBase } from "@/lib/utils";
 import {
   X, Users, Bug, Cpu, Settings, LogOut, Send,
   MessagesSquare, Plus, Home as HomeIcon, RefreshCw, ChevronRight, ChevronLeft,
-  Grid3x3, Pencil, Terminal as TerminalIcon, Copy, Check, Trash2,
+  Grid3x3, Pencil, Terminal as TerminalIcon, Copy, Check, Trash2, Globe,
 } from "lucide-react";
+import SitesModal from "@/components/hub/SitesModal";
 import DebugPanel, { LogsPane } from "@/components/DebugPanel";
 import VersionBadge from "@/components/VersionBadge";
 import { useVersionStore } from "@/stores/versionStore";
@@ -73,7 +74,7 @@ interface HubMsg {
   images?: string[];  // data URLs (사용자 메시지 첨부)
 }
 
-type ModalKey = null | "agents" | "server" | "bugs" | "settings" | "newAgent" | "staff-stats" | "lab" | "timeline";
+type ModalKey = null | "agents" | "server" | "bugs" | "settings" | "newAgent" | "staff-stats" | "lab" | "timeline" | "sites";
 
 export default function HubPage() {
   const router = useRouter();
@@ -395,6 +396,7 @@ export default function HubPage() {
             onClick={() => setModalKey("agents")}
           />
           <WorkingAgentsStrip collapsed={sideCollapsed} onSelect={(id) => { setSelectedAgentId(id); setChatOpen(true); }} />
+          <SideItem collapsed={sideCollapsed} icon={Globe} label="외부 사이트" onClick={() => setModalKey("sites")} />
           <SideItem collapsed={sideCollapsed} icon={Cpu} label="서버실" onClick={() => setModalKey("server")} />
           <SideItem collapsed={sideCollapsed} icon={Bug} label="연구소" onClick={() => setModalKey("lab")} />
           <SideItem collapsed={sideCollapsed} icon={Settings} label="설정" onClick={() => router.push("/settings")} />
@@ -1141,6 +1143,13 @@ export default function HubPage() {
           onPopoutDebug={() => { setShowDebug(true); }}
           onPopoutTerminal={() => { setShowTerminal(true); }}
         />
+      </Modal>
+      <Modal open={modalKey === "sites"} onClose={() => setModalKey(null)} title="🌐 외부 사이트" subtitle="에이전트가 만든 사이트 모음 + 도메인 자동 발급" widthClass="max-w-4xl">
+        <SitesModal onSelectAgent={(id) => {
+          setSelectedAgentId(id);
+          setChatOpen(true);
+          setModalKey(null);
+        }} />
       </Modal>
       <StaffStatsModal open={modalKey === "staff-stats"} onClose={() => setModalKey(null)} />
       <TimelineModal open={modalKey === "timeline"} onClose={() => setModalKey(null)} />
