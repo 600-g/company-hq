@@ -20,14 +20,34 @@ const TOKEN_KEYS = [
     label: "GitHub",
     help: "레포 생성·푸시 (본인 계정 키 권장)",
     info: "에이전트가 만든 코드를 저장할 곳",
-    detail: "GitHub은 코드 저장소 서비스입니다.\n\n에이전트가 사이트나 게임을 만들면 그 코드를 GitHub에 자동 저장해요. 본인 GitHub 토큰을 넣으면 본인 계정에 저장되고, 비워두면 호스트 토큰을 사용합니다.\n\n토큰 발급: github.com → Settings → Developer settings → Personal access tokens",
+    detail:
+      "GitHub은 코드 저장소 서비스입니다.\n\n" +
+      "에이전트가 사이트나 게임을 만들면 그 코드를 GitHub에 자동 저장해요. 본인 GitHub 토큰을 넣으면 본인 계정에 저장됩니다.\n\n" +
+      "📋 토큰 발급 방법:\n" +
+      "1. github.com 로그인 → 우상단 프로필 → Settings\n" +
+      "2. 좌측 맨 아래 Developer settings\n" +
+      "3. Personal access tokens → Tokens (classic) → Generate new token (classic)\n" +
+      "4. 권한: repo (전체) 체크\n" +
+      "5. 만료: No expiration\n" +
+      "6. 생성된 토큰 복사 (1번만 보임)",
+    link: { href: "https://github.com/settings/tokens/new", label: "GitHub 토큰 발급 페이지 열기" },
   },
   {
     key: "CF_TOKEN",
     label: "Cloudflare",
-    help: "Pages 배포 + DNS 관리 (game.600g.net 같은 서브도메인 자동 생성)",
+    help: "사이트 배포 + 도메인 자동 발급 (game.600g.net 같은 서브도메인)",
     info: "사이트를 인터넷에 띄우는 곳",
-    detail: "Cloudflare는 무료로 사이트를 호스팅하고 도메인을 관리해주는 서비스입니다.\n\n에이전트가 만든 사이트를 자동으로 배포하고, 본인 도메인의 서브도메인 (예: game.본인도메인.net) 도 자동 발급할 수 있어요.\n\n토큰 발급: dash.cloudflare.com → My Profile → API Tokens → Create",
+    detail:
+      "Cloudflare는 무료로 사이트를 호스팅하고 도메인을 관리해주는 서비스입니다.\n\n" +
+      "이 토큰을 넣으면 두근컴퍼니가 새 에이전트 만들 때 자동으로 본인 도메인의 서브도메인을 발급합니다 (예: puzzle.600g.net).\n\n" +
+      "📋 토큰 발급 방법 (3분):\n" +
+      "1. dash.cloudflare.com 로그인\n" +
+      "2. 우상단 프로필 → My Profile\n" +
+      "3. 좌측 메뉴 → API Tokens → Create Token\n" +
+      "4. 'Edit zone DNS' 템플릿 → Use template\n" +
+      "5. Zone Resources → Specific zone → 본인 도메인 선택\n" +
+      "6. Continue → Create Token → 토큰 복사",
+    link: { href: "https://dash.cloudflare.com/profile/api-tokens", label: "Cloudflare 토큰 발급 페이지 열기" },
   },
 ] as const;
 
@@ -206,7 +226,9 @@ export default function SettingsPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
-            {TOKEN_KEYS.map(({ key, label, help, info, detail }) => {
+            {TOKEN_KEYS.map((tk) => {
+              const { key, label, help, info, detail } = tk;
+              const link = ("link" in tk ? tk.link : undefined) as { href: string; label: string } | undefined;
               const entry = tokens[key];
               const server = serverTokens[key];
               const serverOk = server?.configured;
@@ -214,7 +236,7 @@ export default function SettingsPage() {
                 <div key={key} className="flex items-center gap-2">
                   <div className="w-28 text-[13px] text-gray-300 font-bold shrink-0 flex items-center gap-1">
                     {label}
-                    <InfoBadge text={info} detail={detail} />
+                    <InfoBadge text={info} detail={detail} link={link} />
                   </div>
                   {serverOk && !entry.configured && (
                     <>

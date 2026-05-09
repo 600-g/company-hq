@@ -3,21 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 import { type Agent } from "@/stores/agentStore";
 import { useChatStore } from "@/stores/chatStore";
-import InfoBadge from "@/components/InfoBadge";
 
-const GROUP_INFO: Record<"system" | "dev" | "agent", { text: string; detail: string }> = {
-  system: {
-    text: "두근컴퍼니 운영 자체",
-    detail: "회사 운영을 담당하는 핵심 에이전트들. CPO·관리자·스태프·서버실·MD메이커.\n\n다른 에이전트가 일하다가 문제가 생기면 여기서 자동 진단·복구합니다. 외부 사이트 X.",
-  },
-  dev: {
-    text: "내부 협업 도구",
-    detail: "프론트엔드·백엔드·디자인·QA·콘텐츠랩 — 다른 product 에이전트의 작업을 돕는 도구입니다.\n\n자기 사이트는 없지만 자기 GitHub 레포는 있어요. 다른 에이전트가 호출해서 사용.",
-  },
-  agent: {
-    text: "외부 사용자 대상 사이트/제품",
-    detail: "데이트지도·시험사이트 같이 외부에 공개되는 자체 사이트를 가진 에이전트들.\n\n각자 자체 GitHub 레포 + 자체 호스팅 (GH Pages 등). 두근컴퍼니가 꺼져도 사이트는 정상 작동합니다.",
-  },
+// 그룹 라벨에 마우스 hover 시 한 줄 설명 (native title — z-index 무관, 가벼움)
+const GROUP_HOVER: Record<"system" | "dev" | "agent", string> = {
+  system: "두근컴퍼니 운영 자체 (CPO·관리자·스태프·서버실·MD메이커). 외부 사이트 없음.",
+  dev: "내부 협업 도구 (프론트·백엔드·디자인·QA·콘텐츠랩). 다른 에이전트가 호출해 사용.",
+  agent: "외부 사용자 대상 제품/사이트. 자체 GitHub 레포 + 호스팅, 두근컴퍼니 꺼져도 작동.",
 };
 
 /** 에이전트의 사이드바 그룹 분류 — agentStore.roleGroup 우선, 없으면 id 기반 default */
@@ -241,20 +232,15 @@ export default function AgentSelector({
           if (list.length === 0) return null;
           return (
             <div key={g}>
-              <div className="flex items-center">
-                <button
-                  onClick={() => toggleGroup(g)}
-                  className={`flex-1 flex items-center gap-1.5 px-2.5 py-1 text-[10.5px] font-bold uppercase tracking-wider text-gray-500 hover:text-gray-200 hover:bg-gray-900/40 transition-colors ${meta.bg}`}
-                  title={isCollapsed ? "펼치기" : "접기"}
-                >
-                  <span className={`text-[9px] transition-transform ${isCollapsed ? "" : "rotate-90"}`}>▶</span>
-                  <span>{meta.emoji} {meta.label}</span>
-                  <span className="text-[9px] font-mono text-gray-600 ml-auto">{list.length}</span>
-                </button>
-                <span className="px-1.5">
-                  <InfoBadge text={GROUP_INFO[g].text} detail={GROUP_INFO[g].detail} />
-                </span>
-              </div>
+              <button
+                onClick={() => toggleGroup(g)}
+                title={GROUP_HOVER[g]}
+                className={`w-full flex items-center gap-1.5 px-2.5 py-1 text-[10.5px] font-bold uppercase tracking-wider text-gray-500 hover:text-gray-200 hover:bg-gray-900/40 transition-colors ${meta.bg}`}
+              >
+                <span className={`text-[9px] transition-transform ${isCollapsed ? "" : "rotate-90"}`}>▶</span>
+                <span>{meta.emoji} {meta.label}</span>
+                <span className="text-[9px] font-mono text-gray-600 ml-auto">{list.length}</span>
+              </button>
               {!isCollapsed && list.map(renderRow)}
             </div>
           );

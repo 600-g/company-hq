@@ -47,6 +47,10 @@ export default function AgentCreate({ onDone }: Props) {
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [workingDirectory, setWorkingDirectory] = useState("");
   const [githubRepo, setGithubRepo] = useState("");
+  /* 외부 사이트 (Cloudflare DNS 자동 발급) */
+  const [publicSite, setPublicSite] = useState(false);
+  const [subdomain, setSubdomain] = useState("");
+  const [repoName, setRepoName] = useState("");
 
   /* 확인 단계 */
   const [confirming, setConfirming] = useState(false);
@@ -126,18 +130,35 @@ export default function AgentCreate({ onDone }: Props) {
       const finalDesc = mode === "light" ? (draft?.description ?? quickDesc.trim()) : description.trim();
       const finalSysPrompt = mode === "light" ? (draft?.systemPromptMd ?? "") : systemPromptMd;
 
-      // 서버에 light 팀 등록 (id 자동 생성)
-      const r = await fetch(`${apiBase()}/api/teams/light`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: name.trim(),
-          emoji: emoji.trim() || "🤖",
-          description: finalDesc,
-          system_prompt: finalSysPrompt,
-          collaborative: true,
-        }),
-      });
+      // 외부 사이트 토글이면 풀 /api/teams (GitHub 레포 + 자동 도메인), 아니면 light (sandbox)
+      const useFullTeam = mode === "project" && publicSite && subdomain.trim();
+      const finalRepo = (repoName.trim() || subdomain.trim() || "").toLowerCase();
+
+      const r = useFullTeam
+        ? await fetch(`${apiBase()}/api/teams`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name: name.trim(),
+              repo: finalRepo,
+              emoji: emoji.trim() || "🤖",
+              description: finalDesc,
+              project_type: "general",
+              category: "product",
+              subdomain: subdomain.trim().toLowerCase(),
+            }),
+          })
+        : await fetch(`${apiBase()}/api/teams/light`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name: name.trim(),
+              emoji: emoji.trim() || "🤖",
+              description: finalDesc,
+              system_prompt: finalSysPrompt,
+              collaborative: true,
+            }),
+          });
       const data = await r.json().catch(() => ({}));
       if (!r.ok || !data?.ok) {
         throw new Error(data?.error || `서버 등록 실패 (HTTP ${r.status})`);
@@ -349,14 +370,73 @@ export default function AgentCreate({ onDone }: Props) {
           {advancedOpen && (
             <div className="space-y-3 pl-2 border-l-2 border-gray-800">
               <div>
-                <label className="text-[12px] text-gray-400 mb-1 block">작업 디렉토리</label>
+                <label className="text-[12px] text-gray-400 mb-1 block" title="에이전트가 파일 수정 시 기준이 되는 절대/상대 경로">
+                  <span className="font-bold border-b border-dotted border-gray-500">작업 디렉토리</span>
+                </label>
                 <input value={workingDirectory} onChange={(e) => setWorkingDirectory(e.target.value)} placeholder="예: ~/Projects/my-app" className="w-full h-9 rounded-md border border-gray-700 bg-gray-900/60 px-3 text-sm text-gray-100 placeholder:text-gray-500 font-mono" />
-                <div className="text-[11px] text-gray-500 mt-1">에이전트가 파일 수정 시 기준이 되는 절대/상대 경로</div>
               </div>
               <div>
-                <label className="text-[12px] text-gray-400 mb-1 block">GitHub 레포</label>
+                <label className="text-[12px] text-gray-400 mb-1 block" title="배포/푸시할 GitHub 레포지토리. 비워두면 로컬 폴더만 사용">
+                  <span className="font-bold border-b border-dotted border-gray-500">GitHub 레포</span>
+                </label>
                 <input value={githubRepo} onChange={(e) => setGithubRepo(e.target.value)} placeholder="owner/repo-name" className="w-full h-9 rounded-md border border-gray-700 bg-gray-900/60 px-3 text-sm text-gray-100 placeholder:text-gray-500 font-mono" />
-                <div className="text-[11px] text-gray-500 mt-1">배포/푸시할 GitHub 레포지토리 (비워두면 로컬만)</div>
+              </div>
+
+              {/* 외부 공개 사이트 — 자체 GitHub 레포 + 600g.net 서브도메인 자동 발급 */}
+              <div className="pt-2 border-t border-gray-800/50">
+                <label className="flex items-center gap-2 cursor-pointer text-[12px] text-gray-300">
+                  <input
+                    type="checkbox"
+                    checked={publicSite}
+                    onChange={(e) => setPublicSite(e.target.checked)}
+                    className="accent-sky-500"
+                  />
+                  <span className="font-bold border-b border-dotted border-gray-500" title="자체 GitHub 레포 + 도메인 자동 발급. CF_TOKEN 설정 시 즉시 작동.">
+                    🌐 외부 공개 사이트로 만들기
+                  </span>
+                </label>
+                <div className="text-[11px] text-gray-500 mt-1 ml-5">
+                  자체 GitHub 레포 + 본인 도메인 서브도메인 자동 발급 (예: <code>puzzle.600g.net</code>)
+                </div>
+
+                {publicSite && (
+                  <div className="mt-2 ml-5 space-y-2 p-2.5 rounded-md bg-sky-500/5 border border-sky-400/20">
+                    <div>
+                      <label className="text-[11px] text-gray-400 mb-1 block" title="GitHub 레포 이름. 영문 소문자/숫자/하이픈만">
+                        <span className="font-bold border-b border-dotted border-gray-500">레포 이름</span>
+                      </label>
+                      <input
+                        value={repoName}
+                        onChange={(e) => setRepoName(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-"))}
+                        placeholder="예: puzzle-game"
+                        className="w-full h-8 rounded border border-gray-700 bg-gray-900/60 px-2.5 text-[12px] text-gray-100 placeholder:text-gray-500 font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] text-gray-400 mb-1 block" title="600g.net 앞에 붙을 서브도메인 이름 (영문 소문자/숫자만 추천)">
+                        <span className="font-bold border-b border-dotted border-gray-500">서브도메인</span>
+                      </label>
+                      <div className="flex items-center gap-1">
+                        <input
+                          value={subdomain}
+                          onChange={(e) => setSubdomain(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))}
+                          placeholder="puzzle"
+                          className="flex-1 h-8 rounded border border-gray-700 bg-gray-900/60 px-2.5 text-[12px] text-gray-100 placeholder:text-gray-500 font-mono"
+                        />
+                        <span className="text-[12px] text-gray-400 font-mono">.600g.net</span>
+                      </div>
+                      {subdomain && (
+                        <div className="text-[10px] text-emerald-300 mt-1">
+                          → 만들어질 주소: <code className="text-emerald-200">https://{subdomain}.600g.net</code>
+                        </div>
+                      )}
+                    </div>
+                    <div className="text-[10px] text-amber-300/80 leading-relaxed">
+                      ⚠️ 작동 조건: <code>설정</code> 페이지에서 <strong>Cloudflare 토큰</strong> 입력됨 + GitHub 토큰 정상.
+                      미설정 시 레포만 만들고 도메인은 수동 작업 안내.
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}
