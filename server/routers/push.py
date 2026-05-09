@@ -83,7 +83,12 @@ async def push_119(req: dict):
 
 @router.post("/api/push/trading")
 async def push_trading(req: dict):
-    """📈 코인봇/주식봇 매수·매도·긴급 알림 — trader.py에서 호출"""
+    """📈 코인봇/주식봇 알림.
+    분리 정책 (2026-05-10):
+      - 단순 매매 (side=buy/sell, severity=info) → 인앱 기록만, 푸시 X
+      - 서버 오류 / 긴급 / 경고 (side=system, severity=danger/warn) → 푸시 발송
+    """
+    from push_notifications import add_trading_notif
     bot = req.get("bot", "trading")
     side = req.get("side", "")
     severity = req.get("severity", "info")
@@ -91,6 +96,16 @@ async def push_trading(req: dict):
     body = req.get("body", "")
     icon_map = {"buy": "🟢", "sell": "🔴", "danger": "🚨", "warn": "⚠️", "info": "💹"}
     icon = icon_map.get(side, icon_map.get(severity, "💹"))
+
+    # 단순 매매(buy/sell) + info 면 푸시 안 보내고 인앱만 기록 (사용자 요구)
+    silent = side in ("buy", "sell") and severity == "info"
+    if silent:
+        try:
+            add_trading_notif(f"{icon} {title}", body, severity=severity)
+        except Exception: pass
+        return {"ok": True, "sent": 0, "silent": True, "side": side, "logged": True}
+
+    # 그 외 (system/danger/warn) — 푸시 발송 + 인앱
     count = send_push(
         title=f"{icon} {title}",
         body=body[:200],

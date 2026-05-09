@@ -95,7 +95,7 @@ async def odsay_transit(
                 "SX": sx, "SY": sy, "EX": ex, "EY": ey,
                 "apiKey": _api_key(),
                 "OPT": opt,
-                "lang": 1,
+                "lang": 0,  # 0=한국어 (default), 1=영어
                 "output": "json",
             },
             headers={"Referer": "https://datemap.600g.net"},
