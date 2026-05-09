@@ -31,13 +31,11 @@ interface Props {
   onSelectAgent?: (id: string) => void;
 }
 
-// 도메인 자동 추론 — 알려진 매핑 (사용자가 setup-subdomain 호출 시 주입됨)
-// 향후: 백엔드가 CNAME 파일 검증 후 publicUrl 응답하도록 확장
-// http:// 사용 — GitHub Pages SSL 발급 대기 중인 도메인도 비공개 경고 없이 즉시 접속 가능.
-// SSL 발급 완료되면 GH Pages 가 자동 https 로 redirect (Enforce HTTPS 설정 시).
+// 도메인 자동 추론 — CF Proxy 가 자체 SSL 제공 (Universal SSL).
+// Geolocation API 등 Secure Context 가 필요한 기능은 https 필수.
 const KNOWN_DOMAINS: Record<string, string> = {
-  "ai900": "http://exam.600g.net",
-  "date-map": "http://datemap.600g.net",
+  "ai900": "https://exam.600g.net",
+  "date-map": "https://datemap.600g.net",
 };
 
 export default function SitesModal({ onSelectAgent }: Props) {
