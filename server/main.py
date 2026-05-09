@@ -261,6 +261,9 @@ app.include_router(dispatch_router)
 app.include_router(doogeun_state_router)
 app.include_router(dashboard_router)
 
+from routers.naver_proxy import router as naver_proxy_router  # noqa: E402
+app.include_router(naver_proxy_router)
+
 
 # ── 에이전트 워치독 (자동 복구, 토큰 0) ───────────────
 _watchdog_task = None
