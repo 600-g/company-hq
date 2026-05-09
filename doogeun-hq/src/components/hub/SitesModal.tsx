@@ -33,9 +33,11 @@ interface Props {
 
 // 도메인 자동 추론 — 알려진 매핑 (사용자가 setup-subdomain 호출 시 주입됨)
 // 향후: 백엔드가 CNAME 파일 검증 후 publicUrl 응답하도록 확장
+// http:// 사용 — GitHub Pages SSL 발급 대기 중인 도메인도 비공개 경고 없이 즉시 접속 가능.
+// SSL 발급 완료되면 GH Pages 가 자동 https 로 redirect (Enforce HTTPS 설정 시).
 const KNOWN_DOMAINS: Record<string, string> = {
-  "ai900": "https://exam.600g.net",  // exam-hub redirect
-  "date-map": "https://datemap.600g.net",
+  "ai900": "http://exam.600g.net",
+  "date-map": "http://datemap.600g.net",
 };
 
 export default function SitesModal({ onSelectAgent }: Props) {
@@ -167,21 +169,14 @@ export default function SitesModal({ onSelectAgent }: Props) {
           >
             <ExternalLink className="w-3 h-3" /> 열기
           </a>
-          <a
-            href={`https://github.com/600-g/${s.repo}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] bg-gray-800/60 text-gray-300 hover:bg-gray-700 transition-colors"
-          >
-            <span className="text-[12px]">⌥</span> 코드
-          </a>
           <Button
             variant="ghost"
             size="sm"
             className="h-6 text-[11px] px-2"
             onClick={() => onSelectAgent?.(s.id)}
+            title="이 프로덕트 담당 에이전트와 채팅 — 사이트 패치/개선 요청"
           >
-            <MessageSquare className="w-3 h-3 mr-1" /> 채팅
+            <MessageSquare className="w-3 h-3 mr-1" /> 채팅으로 개선
           </Button>
           {!hasOwnDomain && (
             <Button

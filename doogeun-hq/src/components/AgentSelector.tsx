@@ -230,6 +230,9 @@ export default function AgentSelector({
           const list = groups[g];
           const isCollapsed = collapsed[g];
           if (list.length === 0) return null;
+          // 프로덕트(agent 그룹)는 검색 중에만 사이드바 표시 — 평소엔 [📁 프로덕트] 모달로 접근
+          // 단, 현재 선택된 에이전트가 그 그룹이면 화면에 표시 (선택 추적용)
+          if (g === "agent" && !q && !list.some((a) => a.id === selectedId)) return null;
           return (
             <div key={g}>
               <button
