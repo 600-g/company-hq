@@ -93,7 +93,8 @@ export default function AgentSelector({
     });
   };
 
-  const filtered = agents.filter((a) => a.id !== "staff" && a.id !== "hq-ops");
+  // hidden=true (외부 호스팅 운영 프로덕트) 는 사이드바에서도 숨김. 검색해도 안 보임.
+  const filtered = agents.filter((a) => a.id !== "staff" && a.id !== "hq-ops" && !a.hidden);
   const staffAgent = agents.find((a) => a.id === "staff");
   const hqOpsAgent = agents.find((a) => a.id === "hq-ops");
   const virtualStaff = staffAgent ?? ({ id: "staff", name: "스태프", emoji: "🧑‍💼", role: "special", roleGroup: "system", status: "idle", floor: 1, description: "", systemPromptMd: "", createdAt: 0, updatedAt: 0, activity: [] } as Agent);

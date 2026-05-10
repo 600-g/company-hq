@@ -67,9 +67,10 @@ export default function SitesModal({ onSelectAgent }: Props) {
       const teams = await r2.json();
       const fullList = Array.isArray(teams) ? teams : [];
       const sites: SiteRow[] = fullList
-        .filter((t: { id: string; category?: string; lightweight?: boolean; repo?: string }) =>
+        .filter((t: { id: string; category?: string; lightweight?: boolean; hidden?: boolean; repo?: string }) =>
           t.category !== "system" &&
           !t.lightweight &&
+          !t.hidden &&  // 외부 호스팅 운영 프로덕트는 SitesModal 에서도 숨김 (자체 운영)
           (t.repo && t.repo !== "company-hq" && t.repo !== "-"),
         )
         .map((t: { id: string; name: string; emoji: string; category: string; repo: string; localPath?: string }) => ({

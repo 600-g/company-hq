@@ -17,6 +17,9 @@ export interface Agent {
   role: string;
   /** 사이드바 그룹 분류 — 토글 가능한 3개 섹션. 미지정 시 "dev" default */
   roleGroup?: "system" | "dev" | "agent";
+  /** true = 두근컴퍼니에서 완전 분리 (씬·사이드바·SitesModal 모두 숨김).
+   *  외부 호스팅 운영 중 프로덕트 (date-map, ai900 등)에 사용 */
+  hidden?: boolean;
   description: string;
   /** MD 기반 시스템 프롬프트 (사용자가 직접 붙여넣기 가능) */
   systemPromptMd: string;

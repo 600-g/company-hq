@@ -651,7 +651,9 @@ export default function HubOffice({ floor, agentCount }: Props) {
 
           // 에이전트는 자기 층에만 노출. CPO 는 floor 값 무시하고 현재층 1F 일 때 무조건 표시
           // 프로덕트(roleGroup="agent")는 씬에서 숨김 — 사이드바/SitesModal 로만 접근. 데이터는 보존.
+          // hidden=true 는 외부 호스팅 운영 프로덕트 — 두근컴퍼니에서 완전 분리
           const floorAgents = this.agents.filter((a) => {
+            if (a.hidden) return false;
             if (a.roleGroup === "agent") return false;
             if (isManagerAgent(a)) return this.floorRef === 1; // CPO 는 무조건 1F
             return (a.floor ?? 1) === this.floorRef;
