@@ -75,8 +75,39 @@ def _parse_path(p: dict) -> dict:
         "total_walk_m": info.get("totalWalk", 0),
         "transfer_count": info.get("subwayTransitCount", 0) + info.get("busTransitCount", 0),
         "fare": info.get("payment", 0),
+        "map_obj": info.get("mapObj"),  # loadLane 호출용
         "subpath": subs,
     }
+
+
+@router.get("/api/odsay/lane")
+async def odsay_lane(map_obj: str = Query(..., alias="mapObj")):
+    """ODSAY 노선 그래픽 좌표 (정확한 polyline용).
+    mapObj 는 searchPubTransPathT 응답의 path[].info.mapObj.
+    """
+    full = f"0:0@{map_obj}"
+    try:
+        r = requests.get(
+            f"{ODSAY_BASE}/loadLane",
+            params={"mapObject": full, "apiKey": _api_key(), "output": "json"},
+            headers={"Referer": "https://datemap.600g.net"},
+            timeout=8,
+        )
+    except requests.RequestException as e:
+        raise HTTPException(502, f"ODSAY loadLane 실패: {e}")
+    if r.status_code != 200:
+        raise HTTPException(r.status_code, r.text[:200])
+    data = r.json()
+    if data.get("error"):
+        return {"ok": False, "error": str(data["error"])[:200]}
+    lanes = data.get("result", {}).get("lane", [])
+    paths = []
+    for ln in lanes:
+        for sec in ln.get("section", []):
+            pts = [[p.get("x"), p.get("y")] for p in sec.get("graphPos", []) if p.get("x") and p.get("y")]
+            if len(pts) >= 2:
+                paths.append({"type": ln.get("type"), "points": pts})
+    return {"ok": True, "paths": paths, "count": sum(len(p["points"]) for p in paths)}
 
 
 @router.get("/api/odsay/transit")
