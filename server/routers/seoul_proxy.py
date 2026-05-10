@@ -49,6 +49,13 @@ def _key_realtime() -> str:
     return os.getenv("SEOUL_SUBWAY_KEY_REALTIME", "").strip() or _key()
 
 
+def _bus_key() -> str:
+    k = os.getenv("DATA_GO_KR_KEY", "").strip()
+    if not k:
+        raise HTTPException(503, "DATA_GO_KR_KEY 미설정")
+    return k
+
+
 # 단순 메모리 캐시: {station: (ts, data)}
 _cache: dict[str, tuple[float, dict]] = {}
 _CACHE_TTL = 60  # 60초 (열차는 ~1분 단위로 변동)
@@ -133,4 +140,99 @@ async def subway_position(line: str = Query(..., description="노선명 (예: 2�
     } for it in items]
     result = {"ok": True, "line": line, "trains": trains, "count": len(trains), "fetched_at": int(now)}
     _pos_cache[line] = (now, result)
+    return result
+
+
+# ── 서울 버스 (ws.bus.go.kr) ──
+import xml.etree.ElementTree as ET
+
+_bus_cache: dict[str, tuple[float, dict]] = {}
+BUS_API = "http://ws.bus.go.kr/api/rest"
+
+
+def _xml_to_items(xml_text: str) -> list[dict]:
+    """ws.bus.go.kr XML 응답 → list[dict]"""
+    try:
+        root = ET.fromstring(xml_text)
+        body = root.find("msgBody")
+        items = body.findall("itemList") if body is not None else []
+        result = []
+        for it in items:
+            d = {child.tag: (child.text or "").strip() for child in it}
+            result.append(d)
+        return result
+    except Exception as e:
+        logger.warning("[bus] XML parse 실패: %s", e)
+        return []
+
+
+@router.get("/api/seoul/bus/station_by_pos")
+async def bus_station_by_pos(
+    lat: float = Query(...),
+    lng: float = Query(...),
+    radius: int = Query(300, description="검색 반경 m"),
+):
+    """좌표 근처 버스 정류소 (서울 wsbus). 활용신청 후 작동."""
+    cache_key = f"sbp:{lat:.4f},{lng:.4f},{radius}"
+    now = time.time()
+    cached = _bus_cache.get(cache_key)
+    if cached and now - cached[0] < 600:  # 10분 캐시 (정류소 위치는 변동 적음)
+        return cached[1]
+    try:
+        r = requests.get(
+            f"{BUS_API}/stationinfo/getStationByPos",
+            params={"serviceKey": _bus_key(), "tmX": lng, "tmY": lat, "radius": radius},
+            timeout=6,
+        )
+    except requests.RequestException as e:
+        raise HTTPException(502, f"호출 실패: {e}")
+    if r.status_code != 200:
+        raise HTTPException(r.status_code, r.text[:200])
+    if "SERVICE KEY IS NOT REGISTERED" in r.text:
+        return {"ok": False, "error": "서울 버스 API 활용신청 필요 (data.go.kr)"}
+    items = _xml_to_items(r.text)
+    stations = [{
+        "ars_id": it.get("arsId"),
+        "station_id": it.get("stationId"),
+        "name": it.get("stationNm"),
+        "lat": float(it.get("gpsY", 0) or 0),
+        "lng": float(it.get("gpsX", 0) or 0),
+        "dist_m": int(it.get("dist", 0) or 0),
+    } for it in items]
+    result = {"ok": True, "stations": stations[:10]}
+    _bus_cache[cache_key] = (now, result)
+    return result
+
+
+@router.get("/api/seoul/bus/arrival")
+async def bus_arrival(ars_id: str = Query(..., description="정류소 고유번호 (5자리 ARS ID)")):
+    """정류소 도착정보 — 곧 도착하는 버스 N대."""
+    cache_key = f"ba:{ars_id}"
+    now = time.time()
+    cached = _bus_cache.get(cache_key)
+    if cached and now - cached[0] < 30:  # 30초 캐시
+        return cached[1]
+    try:
+        r = requests.get(
+            f"{BUS_API}/stationinfo/getStationByUid",
+            params={"serviceKey": _bus_key(), "arsId": ars_id},
+            timeout=6,
+        )
+    except requests.RequestException as e:
+        raise HTTPException(502, f"호출 실패: {e}")
+    if "SERVICE KEY IS NOT REGISTERED" in r.text:
+        return {"ok": False, "error": "서울 버스 API 활용신청 필요"}
+    items = _xml_to_items(r.text)
+    arrivals = [{
+        "bus_no": it.get("rtNm"),
+        "route_id": it.get("busRouteId"),
+        "bus_type": it.get("routeType"),  # 1=공항 3=마을 4=대형 5=학생 6=공항 7=대형 11=일반시내
+        "msg1": it.get("arrmsg1"),       # 첫 번째 도착 자연어
+        "msg2": it.get("arrmsg2"),       # 두 번째 도착
+        "first_eta_sec": int(it.get("traTime1", 0) or 0),
+        "next_eta_sec": int(it.get("traTime2", 0) or 0),
+        "first_stops_away": int(it.get("staOrd", 0) or 0),
+    } for it in items[:10]]
+    result = {"ok": True, "ars_id": ars_id, "arrivals": arrivals}
+    _bus_cache[cache_key] = (now, result)
     return result
