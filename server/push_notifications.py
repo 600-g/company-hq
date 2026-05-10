@@ -151,12 +151,12 @@ def get_vapid_public_key() -> str:
     return _get_vapid()["public"]
 
 def add_subscription(sub_info: dict, topics: list[str] | None = None) -> bool:
-    """sub_info 에 topics 필드 추가. 기본 ['hq','trading'] 둘 다 받음."""
+    """sub_info 에 topics 필드 추가. 기본 ['hq'] 만 (두근컴퍼니 PWA). trading 알림은 subscribe-trading 으로 명시 등록."""
     endpoint = sub_info.get("endpoint", "")
     if not endpoint:
         return False
     if topics is None:
-        topics = sub_info.get("topics") or ["hq", "trading"]
+        topics = sub_info.get("topics") or ["hq"]
     sub_info["topics"] = topics
     for i, s in enumerate(_subscriptions):
         if s.get("endpoint") == endpoint:
@@ -266,7 +266,8 @@ def send_push(title: str, body: str, tag: str = "default", url: str = "/", team_
 
     for sub in _subscriptions:
         # topic 매칭 — 구독자가 해당 topic 구독 중이어야 발송
-        sub_topics = sub.get("topics") or ["hq", "trading"]  # 기본: 둘 다
+        # 명시 안된 legacy 구독은 'hq' 만 (두근컴퍼니로 간주). trading 은 명시 등록 필요.
+        sub_topics = sub.get("topics") or ["hq"]
         if topic not in sub_topics:
             continue
         try:
