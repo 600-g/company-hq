@@ -58,11 +58,28 @@ export function initDiag() {
 
   window.addEventListener("error", (e) => {
     push("error", [`[window.onerror] ${e.message}`, e.filename, e.lineno, e.colno]);
+    maybeChunkReload(e.message, e.filename);
   });
   window.addEventListener("unhandledrejection", (e) => {
     const reason = (e as PromiseRejectionEvent).reason;
-    push("error", [`[unhandledrejection] ${reason?.message || reason || "?"}`]);
+    const msg = reason?.message || String(reason || "");
+    push("error", [`[unhandledrejection] ${msg || "?"}`]);
+    maybeChunkReload(msg);
   });
+}
+
+// 배포 직후 옛 chunk 해시가 404 되어 "페이지 못 불러옴" 발생 시 자동 새로고침.
+// 무한 루프 방지: sessionStorage 1회 가드 (새 탭/시크릿 = 리셋)
+function maybeChunkReload(msg?: string, filename?: string) {
+  if (typeof window === "undefined") return;
+  const text = `${msg || ""} ${filename || ""}`;
+  const isChunkErr = /Loading chunk|ChunkLoadError|Failed to fetch dynamically imported module|Importing a module script failed/i.test(text);
+  if (!isChunkErr) return;
+  try {
+    if (sessionStorage.getItem("chunk-reload-once")) return;
+    sessionStorage.setItem("chunk-reload-once", "1");
+  } catch {}
+  setTimeout(() => location.reload(), 100);
 }
 
 /** 현재 링 버퍼 스냅샷 (버그 리포트 전송 시 호출) */
