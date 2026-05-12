@@ -70,7 +70,7 @@ export default function SitesModal({ onSelectAgent }: Props) {
         .filter((t: { id: string; category?: string; lightweight?: boolean; hidden?: boolean; repo?: string }) =>
           t.category !== "system" &&
           !t.lightweight &&
-          !t.hidden &&  // 외부 호스팅 운영 프로덕트는 SitesModal 에서도 숨김 (자체 운영)
+          // hidden 팀은 채팅/씬에서는 숨기지만 프로덕트 모달엔 노출 — 출시 완료 외부 호스팅 사이트는 여기서만 접근
           (t.repo && t.repo !== "company-hq" && t.repo !== "-"),
         )
         .map((t: { id: string; name: string; emoji: string; category: string; repo: string; localPath?: string }) => ({
