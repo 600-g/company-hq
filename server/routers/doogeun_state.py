@@ -123,12 +123,21 @@ async def get_doogeun_state() -> dict:
             "createdAt": now_ts,
             "updatedAt": now_ts,
             "activity": [],
+            "hidden": bool(t.get("hidden")),
         }
         state.setdefault("agents", []).append(new_agent)
         added.append(tid)
     if added:
         _save_doogeun_state(state)
         logger.info("[doogeun_state] 자동 보충: %s", added)
+
+    # teams.json 의 hidden 플래그를 응답에 항상 merge — teams.json 이 source of truth.
+    # state 에는 영속하지 않음 (응답 시점에만 enrich). 채팅 목록·씬 필터의 정합성 보장.
+    teams_by_id = {t.get("id"): t for t in _main.TEAMS if t.get("id")}
+    for a in state.get("agents", []):
+        t = teams_by_id.get(a.get("id"))
+        if t is not None:
+            a["hidden"] = bool(t.get("hidden"))
     return {"ok": True, "state": state}
 
 
