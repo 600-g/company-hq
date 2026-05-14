@@ -1402,6 +1402,10 @@ async def rename_session_api(team_id: str, session_id: str, body: dict):
             val = body[key]
             if sessions_store.set_session_meta(team_id, session_id, key, val):
                 changed = True
+    # 세션 숨김 토글 — 데이터 보존, UI 에서만 가림
+    if "hidden" in body:
+        if sessions_store.set_session_hidden(team_id, session_id, bool(body["hidden"])):
+            changed = True
     if not changed:
         return {"ok": False, "error": "변경할 필드 없음"}
     try:

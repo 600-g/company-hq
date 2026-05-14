@@ -180,10 +180,12 @@
   }
 
   // --- 모달
+  // 모달 열 때 매번 로그인 화면을 먼저 보여줌 (사용자 의도 — 인증 단계 visible).
+  // 쿠키가 살아있어 API 호출은 통과되지만 UI 게이트는 명시적.
   async function openModal() {
     if (modalOpen) return;
     modalOpen = true;
-    await checkAuth();
+    authed = false;
     renderModal();
   }
 

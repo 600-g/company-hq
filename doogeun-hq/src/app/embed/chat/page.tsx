@@ -5,12 +5,13 @@
  *
  * URL: /embed/chat/?team={team_id}
  *
- * 세션(스레드) 분기:
- *  - 상단 [세션 라벨 ▼] 드롭다운 → 다른 세션으로 전환
- *  - [+ 새 채팅] 버튼 → 신규 세션 생성 + 자동 전환
- *  - WS 재연결 시 ?session_id=… 로 구독, history_sync 로 이전 메시지 복원
+ * 기능:
+ *  - 세션(스레드) 분기: 드롭다운 + 새 채팅 + 🗑 숨김 (데이터 보존, UI 만 가림)
+ *  - 답변 중 상태: 🔄 spinner + 경과 시간(Ns)
+ *  - history_sync 로 이전 메시지 복원
+ *  - IME(한글) Enter 두번 가드
  *
- * 본진 useChatWs.ts 와 동일 프로토콜 (prompt/images 송신, ai_start/chunk/end 수신).
+ * 본진 useChatWs.ts 와 동일 프로토콜.
  */
 
 import { useEffect, useRef, useState, useCallback } from "react";
@@ -50,20 +51,31 @@ export default function EmbedChatPage() {
   const [input, setInput] = useState("");
   const [connected, setConnected] = useState(false);
   const [sending, setSending] = useState(false);
+  const [elapsedSec, setElapsedSec] = useState(0);
   const [sessions, setSessions] = useState<SessionMeta[]>([]);
   const [currentSession, setCurrentSession] = useState<string>("");
   const [sessionMenuOpen, setSessionMenuOpen] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const currentAgentIdRef = useRef<string | null>(null);
+  const sendingStartRef = useRef<number>(0);
 
-  // URL ?team=X 파싱
+  // URL ?team=X
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     setTeamId(params.get("team") || "");
   }, []);
 
-  // 세션 목록 + active 조회
+  // 경과 시간 카운터 (sending 동안만)
+  useEffect(() => {
+    if (!sending) { setElapsedSec(0); return; }
+    sendingStartRef.current = Date.now();
+    const id = setInterval(() => {
+      setElapsedSec(Math.floor((Date.now() - sendingStartRef.current) / 1000));
+    }, 200);
+    return () => clearInterval(id);
+  }, [sending]);
+
   const refreshSessions = useCallback(async () => {
     if (!teamId) return;
     try {
@@ -78,13 +90,13 @@ export default function EmbedChatPage() {
 
   useEffect(() => { void refreshSessions(); }, [refreshSessions]);
 
-  // WS 연결 (session 바뀌면 재연결)
+  // WS 연결 — session 바뀌면 재연결
   useEffect(() => {
     if (!teamId || !currentSession) return;
     const url = `${wsBase()}/ws/chat/${encodeURIComponent(teamId)}?session_id=${encodeURIComponent(currentSession)}`;
     const ws = new WebSocket(url);
     wsRef.current = ws;
-    setMessages([]); // history_sync 가 채워줌
+    setMessages([]);
     currentAgentIdRef.current = null;
 
     ws.onopen = () => setConnected(true);
@@ -118,7 +130,6 @@ export default function EmbedChatPage() {
       } else if (kind === "ai_end") {
         currentAgentIdRef.current = null;
         setSending(false);
-        // 메시지 흐름 끝났을 때 세션 목록 갱신 (messageCount 반영)
         void refreshSessions();
       } else if (kind === "error") {
         const msg = (data.content as string) || (data.preview as string) || "오류";
@@ -133,11 +144,10 @@ export default function EmbedChatPage() {
     };
   }, [teamId, currentSession, refreshSessions]);
 
-  // 메시지 자동 스크롤
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [messages]);
+  }, [messages, elapsedSec]);
 
   async function newChat() {
     if (!teamId) return;
@@ -160,6 +170,31 @@ export default function EmbedChatPage() {
     setSessionMenuOpen(false);
     if (sid === currentSession) return;
     setCurrentSession(sid);
+  }
+
+  // 세션 숨김 — 데이터 그대로, UI 에서만 가림
+  async function hideSession(sid: string) {
+    if (!teamId) return;
+    try {
+      const r = await fetch(`${apiBase()}/api/sessions/${encodeURIComponent(teamId)}/${encodeURIComponent(sid)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ hidden: true }),
+      });
+      const d = await r.json();
+      if (d.ok) {
+        // 숨긴 게 현재 세션이면 가장 최근 일반 세션으로 fallback
+        const next = (d.sessions || []).find((s: SessionMeta) => s.id !== sid)?.id || "";
+        setSessions(d.sessions || []);
+        if (sid === currentSession) {
+          if (next) setCurrentSession(next);
+          else {
+            // 남은 세션 없으면 새로 생성
+            void newChat();
+          }
+        }
+      }
+    } catch {}
   }
 
   function send() {
@@ -191,7 +226,7 @@ export default function EmbedChatPage() {
 
   if (!teamId) {
     return (
-      <div className="h-screen w-screen flex items-center justify-center bg-[#06060e] text-gray-400 text-sm">
+      <div className="h-screen w-screen flex items-center justify-center bg-[#06060e] text-gray-300 text-sm">
         ?team= 파라미터 필요
       </div>
     );
@@ -201,48 +236,57 @@ export default function EmbedChatPage() {
 
   return (
     <div className="h-screen w-screen flex flex-col bg-[#06060e] text-gray-100" style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" }}>
-      <header className="shrink-0 h-10 px-3 flex items-center gap-2 border-b border-gray-800/70 text-[11px] relative">
+      <header className="shrink-0 h-10 px-3 flex items-center gap-2 border-b border-gray-700 text-[11px] relative">
         <button
           onClick={() => setSessionMenuOpen((v) => !v)}
-          className="flex items-center gap-1 px-2 py-1 rounded hover:bg-gray-800/60 max-w-[60%]"
+          className="flex items-center gap-1 px-2 py-1 rounded hover:bg-gray-700/70 max-w-[55%]"
           title="세션 전환"
         >
-          <span className="text-gray-200 truncate">{currentTitle}</span>
-          <span className="text-gray-500 text-[10px]">▼</span>
-          <span className="text-gray-500 ml-1">({sessions.length})</span>
+          <span className="text-gray-50 font-semibold truncate">{currentTitle}</span>
+          <span className="text-gray-300 text-[10px]">▼</span>
+          <span className="text-gray-300 ml-1">({sessions.length})</span>
         </button>
         <button
           onClick={newChat}
-          className="px-2 py-1 rounded bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-100 text-[11px]"
+          className="px-2 py-1 rounded bg-indigo-500 hover:bg-indigo-400 text-white text-[11px] font-semibold"
           title="새 채팅 시작"
         >
           + 새 채팅
         </button>
-        <span className={`ml-auto ${connected ? "text-emerald-400" : "text-gray-500"}`}>
+        <span className={`ml-auto font-semibold ${connected ? "text-emerald-300" : "text-gray-400"}`}>
           {connected ? "● 연결됨" : "○ 연결 중..."}
         </span>
 
         {sessionMenuOpen && (
           <>
-            <div
-              className="fixed inset-0 z-10"
-              onClick={() => setSessionMenuOpen(false)}
-            />
-            <div className="absolute left-3 top-9 z-20 w-64 max-h-64 overflow-y-auto bg-[#0b0b14] border border-gray-700 rounded-lg shadow-xl py-1">
+            <div className="fixed inset-0 z-10" onClick={() => setSessionMenuOpen(false)} />
+            <div className="absolute left-3 top-9 z-20 w-72 max-h-72 overflow-y-auto bg-[#0b0b14] border border-gray-600 rounded-lg shadow-xl py-1">
               {sessions.length === 0 && (
-                <div className="px-3 py-2 text-gray-500 text-[11px]">세션 없음</div>
+                <div className="px-3 py-2 text-gray-300 text-[11px]">세션 없음</div>
               )}
               {sessions.map((s) => (
-                <button
+                <div
                   key={s.id}
-                  onClick={() => switchSession(s.id)}
-                  className={`w-full text-left px-3 py-2 hover:bg-gray-800/60 ${
-                    s.id === currentSession ? "bg-indigo-600/20 text-indigo-100" : "text-gray-200"
+                  className={`group flex items-center px-3 py-2 hover:bg-gray-700/60 ${
+                    s.id === currentSession ? "bg-indigo-500/25" : ""
                   }`}
                 >
-                  <div className="truncate text-[12px]">{s.title || "(제목 없음)"}</div>
-                  <div className="text-[10px] text-gray-500">{s.messageCount}건 · {new Date(s.updatedAt).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</div>
-                </button>
+                  <button onClick={() => switchSession(s.id)} className="flex-1 text-left min-w-0">
+                    <div className={`truncate text-[12px] ${s.id === currentSession ? "text-indigo-100 font-semibold" : "text-gray-100"}`}>
+                      {s.title || "(제목 없음)"}
+                    </div>
+                    <div className="text-[10px] text-gray-300">
+                      {s.messageCount}건 · {new Date(s.updatedAt).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                    </div>
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); if (confirm("이 채팅을 숨길까요? (데이터는 보존됩니다)")) void hideSession(s.id); }}
+                    className="ml-2 px-2 py-1 text-gray-400 hover:text-rose-300 opacity-0 group-hover:opacity-100 transition-opacity"
+                    title="이 채팅 숨김 (데이터는 보존)"
+                  >
+                    🗑
+                  </button>
+                </div>
               ))}
             </div>
           </>
@@ -251,28 +295,39 @@ export default function EmbedChatPage() {
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-2">
         {messages.length === 0 && (
-          <div className="text-gray-500 text-xs text-center pt-12">
+          <div className="text-gray-300 text-xs text-center pt-12">
             메시지를 입력해서 시작하세요.
           </div>
         )}
-        {messages.map((m) => (
-          <div key={m.id} className={`max-w-[85%] ${m.role === "user" ? "ml-auto" : ""}`}>
-            <div
-              className={`text-[12px] leading-relaxed rounded-lg px-3 py-2 whitespace-pre-wrap break-words ${
-                m.role === "user"
-                  ? "bg-indigo-600/30 text-indigo-100"
-                  : m.role === "system"
-                  ? "bg-amber-600/20 text-amber-200"
-                  : "bg-gray-800/60 text-gray-100"
-              }`}
-            >
-              {m.text || (m.role === "agent" && sending ? "..." : "")}
+        {messages.map((m, idx) => {
+          const isLast = idx === messages.length - 1;
+          const isStreaming = m.role === "agent" && sending && isLast && !m.text;
+          return (
+            <div key={m.id} className={`max-w-[85%] ${m.role === "user" ? "ml-auto" : ""}`}>
+              <div
+                className={`text-[12.5px] leading-relaxed rounded-lg px-3 py-2 whitespace-pre-wrap break-words ${
+                  m.role === "user"
+                    ? "bg-indigo-500 text-white"
+                    : m.role === "system"
+                    ? "bg-amber-500/30 text-amber-100 border border-amber-500/40"
+                    : "bg-gray-700/80 text-gray-50"
+                }`}
+              >
+                {isStreaming ? (
+                  <span className="inline-flex items-center gap-2 text-gray-200">
+                    <span className="inline-block w-3 h-3 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+                    답변 작성 중… ({elapsedSec}초)
+                  </span>
+                ) : (
+                  m.text || (m.role === "agent" && sending ? "..." : "")
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
-      <footer className="shrink-0 border-t border-gray-800/70 p-2 flex gap-2 items-end">
+      <footer className="shrink-0 border-t border-gray-700 p-2 flex gap-2 items-end">
         <textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}
@@ -280,14 +335,14 @@ export default function EmbedChatPage() {
           placeholder={connected ? "메시지를 입력하고 Enter…" : "연결 중..."}
           disabled={!connected || sending}
           rows={2}
-          className="flex-1 bg-[#0b0b14] border border-gray-800 rounded-lg px-3 py-2 text-[12px] text-gray-100 resize-none focus:outline-none focus:border-indigo-500/60"
+          className="flex-1 bg-[#0b0b14] border border-gray-600 rounded-lg px-3 py-2 text-[12.5px] text-gray-50 placeholder:text-gray-400 resize-none focus:outline-none focus:border-indigo-400"
         />
         <button
           onClick={send}
           disabled={!connected || sending || !input.trim()}
-          className="shrink-0 h-9 px-4 bg-indigo-600 hover:bg-indigo-500 disabled:bg-gray-700 disabled:text-gray-500 rounded-lg text-[12px] font-semibold"
+          className="shrink-0 h-9 px-4 bg-indigo-500 hover:bg-indigo-400 disabled:bg-gray-600 disabled:text-gray-400 rounded-lg text-[12px] font-semibold text-white"
         >
-          {sending ? "..." : "전송"}
+          {sending ? `${elapsedSec}s` : "전송"}
         </button>
       </footer>
     </div>

@@ -166,19 +166,39 @@ def _ensure_default_session(team_id: str) -> str:
 
 # ── 공개 API ───────────────────────────────────────
 
-def list_sessions(team_id: str, *, include_resume_state: bool = True) -> list[dict]:
+def list_sessions(team_id: str, *, include_resume_state: bool = True, include_hidden: bool = False) -> list[dict]:
     """팀의 세션 목록 (최신 순). 없으면 default 1개 자동 생성.
 
     include_resume_state=True면 각 세션에 `resumable`(bool) 필드 추가 —
     claudeSessionId의 .jsonl 파일이 실제로 남아있어 --resume 가능한지 여부.
+
+    include_hidden=False (기본) 면 hidden=True 세션 제외. 데이터는 디스크에 보존,
+    UI 에서만 가려짐. include_hidden=True 로 백업/관리용 전체 조회 가능.
     """
     _ensure_default_session(team_id)
     meta = _load_meta(team_id)
+    if not include_hidden:
+        meta = [s for s in meta if not s.get("hidden")]
     ordered = sorted(meta, key=lambda s: s.get("updatedAt", 0), reverse=True)
     if include_resume_state:
         for s in ordered:
             s["resumable"] = _is_resumable(s.get("claudeSessionId"))
     return ordered
+
+
+def set_session_hidden(team_id: str, session_id: str, hidden: bool) -> bool:
+    """세션 hidden 플래그 토글. 데이터는 디스크에 그대로 — UI 만 가림."""
+    meta = _load_meta(team_id)
+    found = False
+    for s in meta:
+        if s.get("id") == session_id:
+            s["hidden"] = bool(hidden)
+            s["updatedAt"] = int(time.time() * 1000)
+            found = True
+            break
+    if found:
+        _save_meta(team_id, meta)
+    return found
 
 
 def _is_resumable(claude_sid: str | None) -> bool:

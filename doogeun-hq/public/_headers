@@ -25,3 +25,7 @@
 # 버전 파일 — 캐시 안 함 (실시간 감지)
 /version.json
   Cache-Control: no-store
+
+# 임베드 위젯 — 매번 revalidate (배포 즉시 외부 사이트에 반영)
+/embed/*
+  Cache-Control: public, max-age=0, must-revalidate
