@@ -221,12 +221,12 @@ except Exception:
 
 app = FastAPI(title="AI Company HQ", version="1.0.0")
 
-# CORS: allow_origins="*" + allow_credentials=True 는 Chrome에서 reject됨 (스펙 위반).
-# 우리는 쿠키 인증 안 쓰므로 credentials=False 로 유지하고 와일드카드 허용.
+# CORS: 임베드 위젯이 쿠키 인증 필요 → allow_credentials=True + origin regex.
+# *.600g.net 서브도메인 전부 + 로컬 개발 포트 허용. 그 외는 자동 차단 (스펙 준수).
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1|192\.168\.[0-9]+\.[0-9]+)(:\d+)?$|^https://([a-z0-9-]+\.)?600g\.net$",
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )

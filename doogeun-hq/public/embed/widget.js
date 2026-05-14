@@ -26,6 +26,9 @@
   const TEAM_ID = SCRIPT?.getAttribute("data-team-id") || "";
   const API_BASE = SCRIPT?.getAttribute("data-api") || "https://api.600g.net";
   const HUB_BASE = SCRIPT?.getAttribute("data-hub") || "https://600g.net";
+  // data-no-fab: 호스트 사이트에 자체 설정 메뉴가 있을 때 — FAB 안 띄우고 API 만 노출.
+  //              호스트가 window.doogeunEmbed.open() 으로 트리거.
+  const NO_FAB = SCRIPT?.hasAttribute("data-no-fab");
 
   if (!TEAM_ID) {
     console.warn("[doogeun-embed] data-team-id 누락 — 위젯 비활성화");
@@ -306,10 +309,18 @@
     }
   }
 
+  // --- 공개 API (호스트 사이트가 자체 메뉴에서 호출)
+  window.doogeunEmbed = Object.freeze({
+    open: openModal,
+    close: closeModal,
+    isAuthed: () => authed,
+    teamId: TEAM_ID,
+  });
+
   // --- 부트
   function boot() {
     injectStyle();
-    mountFab();
+    if (!NO_FAB) mountFab();
   }
 
   if (document.readyState === "loading") {
