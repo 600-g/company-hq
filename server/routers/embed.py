@@ -100,6 +100,82 @@ async def embed_me(request: Request) -> dict:
     return {"authed": _is_authed(request)}
 
 
+_DEFAULT_TITLES = {"새 채팅", "기본 세션", "Untitled", "", "default"}
+
+
+@router.post("/api/embed/session-auto-title")
+async def embed_session_auto_title(body: dict) -> dict:
+    """첫 응답 끝나면 자동 제목 부여 — Gemini smart_call('summarize', ...).
+
+    조건:
+      - session.title 이 기본값 ({_DEFAULT_TITLES}) 일 때만 (사용자 명명 시 보존)
+      - messageCount >= 2 (최소 user+agent 한 쌍)
+      - 같은 세션 재호출은 skip (이미 사용자/LLM 이 명명)
+
+    실패해도 사용자 흐름엔 영향 없음 (fire-and-forget).
+    """
+    team_id = (body or {}).get("team_id") or ""
+    session_id = (body or {}).get("session_id") or ""
+    if not team_id or not session_id:
+        raise HTTPException(400, "team_id, session_id 필수")
+
+    import sessions_store
+
+    sessions = sessions_store.list_sessions(team_id, include_resume_state=False, include_hidden=True)
+    s = next((x for x in sessions if x.get("id") == session_id), None)
+    if not s:
+        return {"ok": False, "skipped": "no_session"}
+
+    title = (s.get("title") or "").strip()
+    if title not in _DEFAULT_TITLES:
+        return {"ok": True, "skipped": "user_named", "title": title}
+
+    if s.get("messageCount", 0) < 2:
+        return {"ok": True, "skipped": "too_few_messages"}
+
+    history = sessions_store.get_messages(team_id, session_id) or []
+    # 첫 user/ai 한 쌍만 — 최소 컨텍스트로 빠르게
+    snippet_lines: list[str] = []
+    for m in history[:4]:
+        t = m.get("type", "")
+        c = (m.get("content") or "").replace("\n", " ").strip()
+        if not c:
+            continue
+        role = "사용자" if t == "user" else "응답"
+        snippet_lines.append(f"{role}: {c[:300]}")
+        if len(snippet_lines) >= 4:
+            break
+    if not snippet_lines:
+        return {"ok": True, "skipped": "empty_history"}
+
+    snippet = "\n".join(snippet_lines)
+    prompt = (
+        "다음 대화의 주제를 한국어로 짧게 요약해 제목을 1개만 출력해.\n"
+        "규칙: 5~14자, 따옴표·접두사·이모지 없이 본문만. 명령형/의문형 금지, 명사구.\n\n"
+        f"{snippet}\n\n제목:"
+    )
+
+    try:
+        import free_llm
+        text, _used = await free_llm.smart_call("summarize", prompt, max_out=40)
+    except Exception as e:
+        logger.warning("[embed/auto-title] smart_call 실패 %s: %s", session_id, e)
+        return {"ok": False, "error": "llm_failed"}
+
+    new_title = (text or "").strip().strip('"').strip("'").split("\n")[0].strip()
+    # 흔한 LLM 부산물 제거
+    for prefix in ("제목:", "Title:", "주제:"):
+        if new_title.startswith(prefix):
+            new_title = new_title[len(prefix):].strip()
+    new_title = new_title[:30]
+    if not new_title or new_title in _DEFAULT_TITLES:
+        return {"ok": True, "skipped": "empty_llm_output"}
+
+    if not sessions_store.rename_session(team_id, session_id, new_title):
+        return {"ok": False, "error": "rename_failed"}
+    return {"ok": True, "title": new_title}
+
+
 @router.get("/api/embed/patch-log")
 async def embed_patch_log(team_id: str, request: Request, limit: int = 20) -> dict:
     """해당 팀 repo 의 git log — 패치 히스토리 표시용."""

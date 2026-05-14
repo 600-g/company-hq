@@ -130,7 +130,15 @@ export default function EmbedChatPage() {
       } else if (kind === "ai_end") {
         currentAgentIdRef.current = null;
         setSending(false);
-        void refreshSessions();
+        // 자동 제목화 — 백엔드가 기본 title + msgCount≥2 조건 검사. fire-and-forget.
+        void fetch(`${apiBase()}/api/embed/session-auto-title`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ team_id: teamId, session_id: currentSession }),
+        }).catch(() => {});
+        // 제목 갱신 반영 + 메시지 카운터 — 1.5초 후 refresh (LLM 응답 대기)
+        setTimeout(() => { void refreshSessions(); }, 1500);
       } else if (kind === "error") {
         const msg = (data.content as string) || (data.preview as string) || "오류";
         setMessages((m) => [...m, { id: `e-${Date.now()}`, role: "system", text: `⚠️ ${msg}`, ts: Date.now() }]);
