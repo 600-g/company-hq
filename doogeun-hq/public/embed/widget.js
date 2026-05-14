@@ -261,7 +261,6 @@
     const tabs = el("div", { id: ID_PREFIX + "-tabs" });
     const defs = [
       { id: "chat", label: "💬 채팅" },
-      { id: "terminal", label: "💻 터미널" },
       { id: "patches", label: "📜 패치노트" },
     ];
     for (const d of defs) {
@@ -281,12 +280,6 @@
         src: `${HUB_BASE}/embed/chat/?team=${encodeURIComponent(TEAM_ID)}`,
         sandbox: "allow-scripts allow-same-origin allow-forms allow-popups allow-modals",
       }));
-    } else if (activeTab === "terminal") {
-      // 풀 터미널 임베드는 phase 2. 우선 hub 의 터미널 페이지로 외부 링크.
-      body.appendChild(el("div", { id: ID_PREFIX + "-empty" },
-        "웹터미널은 두근컴퍼니 본진에서 열어요. ",
-        el("a", { href: `${HUB_BASE}/server`, target: "_blank", rel: "noopener", style: { color: "#93c5fd" } }, "서버실 열기 →"),
-      ));
     } else if (activeTab === "patches") {
       const wrap = el("div", { id: ID_PREFIX + "-patches" });
       // 사이트 강제 새로고침 (SW + Cache Storage 클리어 + 리로드)

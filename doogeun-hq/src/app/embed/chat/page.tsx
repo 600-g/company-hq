@@ -54,11 +54,21 @@ export default function EmbedChatPage() {
     ws.onerror = () => setConnected(false);
 
     ws.onmessage = (ev) => {
-      let data: { type?: string; content?: string; preview?: string } & Record<string, unknown> = {};
+      let data: { type?: string; content?: string; preview?: string; messages?: { type: string; content: string }[] } & Record<string, unknown> = {};
       try { data = JSON.parse(ev.data); } catch { return; }
       const kind = data.type;
 
-      if (kind === "ai_start") {
+      if (kind === "history_sync") {
+        // 서버 보존 메시지 복원 — 모달 닫고 다시 열어도 대화 이어짐
+        const msgs = data.messages || [];
+        const restored: ChatMsg[] = msgs.map((m, i) => ({
+          id: `h-${i}`,
+          role: m.type === "user" ? "user" : m.type === "ai" ? "agent" : "system",
+          text: m.content || "",
+          ts: Date.now() - (msgs.length - i) * 1000,
+        }));
+        setMessages(restored);
+      } else if (kind === "ai_start") {
         const id = `a-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
         currentAgentIdRef.current = id;
         setMessages((m) => [...m, { id, role: "agent", text: "", ts: Date.now() }]);
@@ -110,6 +120,9 @@ export default function EmbedChatPage() {
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    // IME(한글 등) composition 중에는 Enter 가 변환 확정용 — 전송 트리거 X (두번 발동 방지)
+    const native = e.nativeEvent as KeyboardEvent & { isComposing?: boolean };
+    if (native.isComposing || e.keyCode === 229) return;
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       send();
