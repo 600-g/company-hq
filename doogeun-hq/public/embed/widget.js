@@ -143,6 +143,18 @@
       #${ID_PREFIX}-patches {
         flex: 1; overflow-y: auto; padding: 12px;
       }
+      #${ID_PREFIX}-update-bar {
+        display: flex; align-items: center; justify-content: space-between;
+        gap: 10px; padding: 10px 12px; margin-bottom: 8px;
+        background: rgba(99,102,241,.12); border: 1px solid rgba(99,102,241,.35);
+        border-radius: 8px; font-size: 12px;
+      }
+      #${ID_PREFIX}-update-bar .lbl { color: #c7d2fe; }
+      #${ID_PREFIX}-update-bar button {
+        padding: 6px 14px; background: #6366f1; color: white;
+        border: 0; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600;
+      }
+      #${ID_PREFIX}-update-bar button:disabled { background: #475569; cursor: progress; }
       #${ID_PREFIX}-patches .commit {
         padding: 10px 12px; border-bottom: 1px solid #1f1f2e;
         display: flex; gap: 10px; align-items: baseline;
@@ -192,7 +204,7 @@
     const modal = el("div", { id: ID_PREFIX + "-modal" });
 
     const header = el("header", {},
-      el("span", { class: "title" }, `⚙️ ${TEAM_ID} · 두근컴퍼니`),
+      el("span", { class: "title" }, `⚙️ ${TEAM_ID} 개발자 모드`),
       el("button", { class: "close", "aria-label": "닫기", onclick: closeModal }, "×"),
     );
     modal.appendChild(header);
@@ -237,8 +249,8 @@
     setTimeout(() => input.focus(), 50);
 
     return el("div", { id: ID_PREFIX + "-login" },
-      el("h3", {}, "개발자모드"),
-      el("p", {}, "두근컴퍼니가 만든 사이트는 비밀번호로 채팅·터미널·패치 히스토리에 접근할 수 있어요."),
+      el("h3", {}, "개발자 모드"),
+      el("p", {}, "비밀번호로 채팅·터미널·패치 히스토리에 접근할 수 있어요."),
       input,
       submitBtn,
       err,
@@ -277,11 +289,44 @@
       ));
     } else if (activeTab === "patches") {
       const wrap = el("div", { id: ID_PREFIX + "-patches" });
-      wrap.appendChild(el("div", { id: ID_PREFIX + "-empty" }, "로딩 중..."));
+      // 사이트 강제 새로고침 (SW + Cache Storage 클리어 + 리로드)
+      const updBtn = el("button", { onclick: forceRefresh }, "🔄 지금 업데이트");
+      const updBar = el("div", { id: ID_PREFIX + "-update-bar" },
+        el("span", { class: "lbl" }, "캐시 비우고 최신 버전 받기"),
+        updBtn,
+      );
+      wrap.appendChild(updBar);
+      const list = el("div");
+      list.appendChild(el("div", { id: ID_PREFIX + "-empty" }, "로딩 중..."));
+      wrap.appendChild(list);
       body.appendChild(wrap);
-      loadPatches(wrap);
+      loadPatches(list);
     }
     return body;
+  }
+
+  // 호스트 사이트 강제 새로고침 — SW unregister + Cache Storage 클리어 + 캐시버스터 리로드.
+  // 두근컴퍼니 본진 CacheBust 와 동일 패턴 (로컬스토리지는 유지).
+  async function forceRefresh() {
+    const btn = document.querySelector(`#${ID_PREFIX}-update-bar button`);
+    if (btn) { btn.disabled = true; btn.textContent = "처리 중..."; }
+    try {
+      if ("caches" in window) {
+        const ks = await caches.keys();
+        await Promise.all(ks.map((k) => caches.delete(k)));
+      }
+    } catch {}
+    try {
+      if ("serviceWorker" in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map((r) => r.unregister()));
+      }
+    } catch {}
+    setTimeout(() => {
+      const u = new URL(window.location.href);
+      u.searchParams.set("_cb", String(Date.now()));
+      window.location.replace(u.toString());
+    }, 200);
   }
 
   async function loadPatches(wrap) {
