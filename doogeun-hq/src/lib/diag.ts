@@ -69,17 +69,45 @@ export function initDiag() {
 }
 
 // 배포 직후 옛 chunk 해시가 404 되어 "페이지 못 불러옴" 발생 시 자동 새로고침.
+// 단순 reload 는 옛 HTML 캐시를 또 받아 무한 에러 → 캐시버스터 + SW unreg 로 강제 새 빌드.
 // 무한 루프 방지: sessionStorage 1회 가드 (새 탭/시크릿 = 리셋)
 function maybeChunkReload(msg?: string, filename?: string) {
   if (typeof window === "undefined") return;
   const text = `${msg || ""} ${filename || ""}`;
-  const isChunkErr = /Loading chunk|ChunkLoadError|Failed to fetch dynamically imported module|Importing a module script failed/i.test(text);
+  // 엄격한 패턴 — 일반 fetch 실패는 매칭 안 함
+  const isChunkErr =
+    /ChunkLoadError\b/.test(text) ||
+    /Loading chunk [^\s]+ failed/i.test(text) ||
+    /Failed to fetch dynamically imported module/i.test(text) ||
+    /error loading dynamically imported module/i.test(text) ||
+    /Importing a module script failed/i.test(text) ||
+    (filename != null && /_next\/static\/chunks\//.test(filename));
   if (!isChunkErr) return;
   try {
     if (sessionStorage.getItem("chunk-reload-once")) return;
     sessionStorage.setItem("chunk-reload-once", "1");
   } catch {}
-  setTimeout(() => location.reload(), 100);
+  void hardCacheBustReload();
+}
+
+async function hardCacheBustReload() {
+  try {
+    if ("caches" in window) {
+      const ks = await caches.keys();
+      await Promise.all(ks.map((k) => caches.delete(k)));
+    }
+  } catch {}
+  try {
+    if ("serviceWorker" in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map((r) => r.unregister()));
+    }
+  } catch {}
+  setTimeout(() => {
+    const u = new URL(window.location.href);
+    u.searchParams.set("_cb", String(Date.now()));
+    window.location.replace(u.toString());
+  }, 150);
 }
 
 /** 현재 링 버퍼 스냅샷 (버그 리포트 전송 시 호출) */

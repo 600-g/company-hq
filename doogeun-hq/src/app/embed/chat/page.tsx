@@ -102,7 +102,8 @@ export default function EmbedChatPage() {
     setMessages((m) => [...m, userMsg]);
     setInput("");
     try {
-      wsRef.current.send(JSON.stringify({ content: text }));
+      // 본진 useChatWs.ts 와 동일 프로토콜 — prompt 필드 (content 아님!)
+      wsRef.current.send(JSON.stringify({ prompt: text, images: [] }));
     } catch {
       setMessages((m) => [...m, { id: `e-${Date.now()}`, role: "system", text: "⚠️ 전송 실패", ts: Date.now() }]);
     }
