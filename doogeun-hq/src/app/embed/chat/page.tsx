@@ -55,10 +55,23 @@ export default function EmbedChatPage() {
   const [sessions, setSessions] = useState<SessionMeta[]>([]);
   const [currentSession, setCurrentSession] = useState<string>("");
   const [sessionMenuOpen, setSessionMenuOpen] = useState(false);
+  const [toolStatus, setToolStatus] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const currentAgentIdRef = useRef<string | null>(null);
   const sendingStartRef = useRef<number>(0);
+
+  // 본진 도구 라벨 — 한글 + 이모지 (사용자가 작업 진행을 명확히 보게)
+  const toolLabel = (tool: string, summary?: string) => {
+    const map: Record<string, string> = {
+      Edit: "📝 편집", Write: "📝 작성", Read: "📖 읽음",
+      Bash: "🔧 실행", Glob: "🔍 탐색", Grep: "🔍 검색",
+      WebFetch: "🌐 페치", WebSearch: "🌐 검색",
+      TodoWrite: "📋 작업목록",
+    };
+    const base = map[tool] || `🛠 ${tool}`;
+    return summary ? `${base} · ${summary.slice(0, 40)}` : base;
+  };
 
   // URL ?team=X
   useEffect(() => {
@@ -127,9 +140,19 @@ export default function EmbedChatPage() {
         const chunk = (data.content as string) || "";
         if (!id) return;
         setMessages((m) => m.map((x) => x.id === id ? { ...x, text: x.text + chunk } : x));
+      } else if (kind === "tool_use") {
+        const tool = (data as Record<string, unknown>).tool as string || "?";
+        const summary = (data as Record<string, unknown>).summary as string || "";
+        setToolStatus(toolLabel(tool, summary));
+      } else if (kind === "tool_result") {
+        setToolStatus(null);
+      } else if (kind === "status") {
+        const content = (data.content as string) || "";
+        setToolStatus(content || null);
       } else if (kind === "ai_end") {
         currentAgentIdRef.current = null;
         setSending(false);
+        setToolStatus(null);
         // 자동 제목화 — 백엔드가 기본 title + msgCount≥2 조건 검사. fire-and-forget.
         void fetch(`${apiBase()}/api/embed/session-auto-title`, {
           method: "POST",
@@ -244,24 +267,24 @@ export default function EmbedChatPage() {
 
   return (
     <div className="h-screen w-screen flex flex-col bg-[#06060e] text-gray-100" style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" }}>
-      <header className="shrink-0 h-10 px-3 flex items-center gap-2 border-b border-gray-700 text-[11px] relative">
+      <header className="shrink-0 h-11 px-3 flex items-center gap-2 border-b border-gray-700 bg-[#0b0b14] text-[11px] relative">
         <button
           onClick={() => setSessionMenuOpen((v) => !v)}
-          className="flex items-center gap-1 px-2 py-1 rounded hover:bg-gray-700/70 max-w-[55%]"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-gray-700 hover:bg-gray-600 border border-gray-500 max-w-[55%] shadow-sm"
           title="세션 전환"
         >
-          <span className="text-gray-50 font-semibold truncate">{currentTitle}</span>
-          <span className="text-gray-300 text-[10px]">▼</span>
-          <span className="text-gray-300 ml-1">({sessions.length})</span>
+          <span className="text-white font-semibold truncate text-[12px]">{currentTitle}</span>
+          <span className="text-gray-200 text-[10px]">▼</span>
+          <span className="text-gray-200 ml-1 text-[11px]">({sessions.length})</span>
         </button>
         <button
           onClick={newChat}
-          className="px-2 py-1 rounded bg-indigo-500 hover:bg-indigo-400 text-white text-[11px] font-semibold"
+          className="px-3 py-1.5 rounded-md bg-indigo-500 hover:bg-indigo-400 text-white text-[11px] font-bold border border-indigo-400 shadow-sm"
           title="새 채팅 시작"
         >
           + 새 채팅
         </button>
-        <span className={`ml-auto font-semibold ${connected ? "text-emerald-300" : "text-gray-400"}`}>
+        <span className={`ml-auto px-2 py-1 rounded font-semibold text-[10.5px] ${connected ? "bg-emerald-500/20 text-emerald-200 border border-emerald-500/40" : "bg-gray-700/60 text-gray-300 border border-gray-600"}`}>
           {connected ? "● 연결됨" : "○ 연결 중..."}
         </span>
 
@@ -322,9 +345,9 @@ export default function EmbedChatPage() {
                 }`}
               >
                 {isStreaming ? (
-                  <span className="inline-flex items-center gap-2 text-gray-200">
-                    <span className="inline-block w-3 h-3 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
-                    답변 작성 중… ({elapsedSec}초)
+                  <span className="inline-flex items-center gap-2 text-gray-100">
+                    <span className="inline-block w-3 h-3 border-2 border-indigo-300 border-t-transparent rounded-full animate-spin" />
+                    {toolStatus ? `${toolStatus} (${elapsedSec}초)` : `답변 작성 중… (${elapsedSec}초)`}
                   </span>
                 ) : (
                   m.text || (m.role === "agent" && sending ? "..." : "")
@@ -335,6 +358,13 @@ export default function EmbedChatPage() {
         })}
       </div>
 
+      {sending && (
+        <div className="px-3 py-1.5 bg-indigo-500/15 border-t border-indigo-500/30 text-[11px] text-indigo-100 flex items-center gap-2 shrink-0">
+          <span className="inline-block w-2 h-2 bg-indigo-300 rounded-full animate-pulse" />
+          <span className="font-semibold truncate">{toolStatus || "응답 생성 중"}</span>
+          <span className="ml-auto text-indigo-200 font-mono">{elapsedSec}초</span>
+        </div>
+      )}
       <footer className="shrink-0 border-t border-gray-700 p-2 flex gap-2 items-end">
         <textarea
           value={input}
