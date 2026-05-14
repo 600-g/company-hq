@@ -907,8 +907,16 @@ async def run_claude(
         cwd=cwd,
         env=env,
         start_new_session=True,  # 프로세스 그룹 생성 → 종료 시 서브에이전트도 함께 정리
+        limit=10 * 1024 * 1024,  # StreamReader buffer 10MB (한 stream-json 라인이 64KB 초과해도 안전)
     )
     AGENT_PIDS[team_id] = proc.pid
+
+    # buffer limit 재확인 (asyncio 내부 구현 의존 — limit 인자 미지원 환경 대비 안전망)
+    try:
+        if hasattr(proc.stdout, "_limit") and proc.stdout._limit < 10 * 1024 * 1024:
+            proc.stdout._limit = 10 * 1024 * 1024
+    except Exception:
+        pass
 
     # ── stdout stream-json 라인 파싱 ──
     # 각 라인이 JSON 이벤트: system/assistant/user/rate_limit_event/result
@@ -921,6 +929,21 @@ async def run_claude(
     while True:
         try:
             raw_line = await asyncio.wait_for(proc.stdout.readline(), timeout=_IDLE_TIMEOUT_SEC)
+        except asyncio.LimitOverrunError as e:
+            # 한 라인이 buffer limit (10MB) 초과 — 거대 출력. 버퍼 비우고 계속.
+            logger.warning("[%s] stream-json 라인 limit 초과 (%d bytes) — 스킵 후 계속", team_id, getattr(e, "consumed", 0))
+            try:
+                # consumed 만큼 강제로 비우고 separator 까지 추가 폐기
+                await proc.stdout.read(getattr(e, "consumed", 64 * 1024))
+                # 다음 개행까지 폐기 (실패해도 무시)
+                try:
+                    await asyncio.wait_for(proc.stdout.readuntil(b"\n"), timeout=2.0)
+                except (asyncio.TimeoutError, asyncio.LimitOverrunError, asyncio.IncompleteReadError):
+                    pass
+            except Exception:
+                pass
+            yield {"kind": "text", "content": "\n⚠️ 응답 중 매우 큰 라인 1개 스킵됨 (10MB 초과)\n"}
+            continue
         except asyncio.TimeoutError:
             logger.error("[%s] idle timeout %ds — 강제 종료", team_id, _IDLE_TIMEOUT_SEC)
             try:
