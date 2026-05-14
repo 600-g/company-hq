@@ -118,10 +118,15 @@ export default function VersionBanner() {
       } catch { /* ignore */ }
 
       // git HEAD — 미반영 commit 감지 (release-notes 와 공유 — 중복 fetch 제거)
+      // prod commit 동봉 → 백엔드가 embed-only 누락분만 남았는지 직접 판정 (up_to_date)
       let gitCommitNow = "";
       let nextVerNow: string | undefined = undefined;
+      const prodShort = (prodBuildNow || "").split("-")[0];
+      const ghUrl = prodShort
+        ? `${apiBase()}/api/admin/git-head?prod=${encodeURIComponent(prodShort)}`
+        : `${apiBase()}/api/admin/git-head`;
       try {
-        const r = await fetch(`${apiBase()}/api/admin/git-head`, { cache: "no-store" });
+        const r = await fetch(ghUrl, { cache: "no-store" });
         if (r.ok) {
           const d = await r.json();
           if (mounted) { setGitHead(d); setServerDown(false); }
@@ -198,7 +203,9 @@ export default function VersionBanner() {
     } catch { return false; }
   })();
 
-  const hasPending = !userAppliedAlready && !cooldownActive &&
+  // up_to_date: production 이 chosen(임베드 제외) 의 자손 → 표시할 의미있는 업데이트 없음
+  const upToDate = !!(gitHead && (gitHead as GitHead & { up_to_date?: boolean }).up_to_date);
+  const hasPending = !userAppliedAlready && !cooldownActive && !upToDate &&
     !!(productionCommit && gitCommit && productionCommit !== gitCommit);
 
   const startDeploy = async () => {

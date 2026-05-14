@@ -40,21 +40,58 @@ _DEPLOY_STATE: dict = {
 _DEPLOY_LOCK = asyncio.Lock()
 
 
-def _git_head_info() -> dict:
-    """현재 main 브랜치 HEAD commit + subject + 적용 시 부여될 version 숫자."""
+# 임베드 위젯·임베드 채팅·embed 라우터만 건드린 commit 은 두근컴퍼니 [업데이트] 모달에서 제외.
+# 각 프로덕트(date-map, ai900 등) 가 자체 버전으로 관리하는 영역 — 두근컴퍼니 본진 버전과 분리.
+_EMBED_ONLY_PATHS = (
+    "doogeun-hq/public/embed/",
+    "doogeun-hq/src/app/embed/",
+    "server/routers/embed.py",
+)
+
+
+def _is_embed_only_commit(sha: str) -> bool:
     try:
-        sha = subprocess.run(
-            ["git", "log", "-1", "--format=%h"],
+        out = subprocess.run(
+            ["git", "show", "--name-only", "--format=", sha],
             cwd=_HQ_ROOT, capture_output=True, text=True, timeout=3,
         ).stdout.strip()
-        subject = subprocess.run(
-            ["git", "log", "-1", "--format=%s"],
-            cwd=_HQ_ROOT, capture_output=True, text=True, timeout=3,
+        files = [f for f in out.split("\n") if f]
+        if not files:
+            return False
+        return all(any(f.startswith(p) for p in _EMBED_ONLY_PATHS) for f in files)
+    except Exception:
+        return False
+
+
+def _git_head_info() -> dict:
+    """main HEAD 기준 — 임베드 전용 commit 은 스킵하고 첫 의미있는 commit 을 반환.
+    임베드 commit 은 embed_pending 카운트로 별도 노출 (조용히 누적, 다음 일반 배포 때 함께 반영)."""
+    try:
+        log = subprocess.run(
+            ["git", "log", "-50", "--format=%H%x1f%h%x1f%s%x1f%ct"],
+            cwd=_HQ_ROOT, capture_output=True, text=True, timeout=5,
         ).stdout.strip()
-        ts = subprocess.run(
-            ["git", "log", "-1", "--format=%ct"],
-            cwd=_HQ_ROOT, capture_output=True, text=True, timeout=3,
-        ).stdout.strip()
+        embed_pending = 0
+        chosen = None
+        for line in log.split("\n"):
+            if not line:
+                continue
+            parts = line.split("\x1f")
+            if len(parts) != 4:
+                continue
+            full_sha, short_sha, subject, ts = parts
+            if _is_embed_only_commit(full_sha):
+                embed_pending += 1
+                continue
+            chosen = {"sha": short_sha, "subject": subject, "ts": ts}
+            break
+        # fallback — 50건 안에 의미있는 commit 없으면 진짜 HEAD
+        if chosen is None:
+            parts = log.split("\n", 1)[0].split("\x1f")
+            chosen = {"sha": parts[1], "subject": parts[2], "ts": parts[3]} if len(parts) == 4 else None
+        if chosen is None:
+            return {"ok": False, "error": "no commits"}
+
         count_raw = subprocess.run(
             ["git", "rev-list", "--count", "HEAD"],
             cwd=_HQ_ROOT, capture_output=True, text=True, timeout=3,
@@ -63,20 +100,50 @@ def _git_head_info() -> dict:
         next_version = f"4.{total // 10}.{total % 10}"
         return {
             "ok": True,
-            "commit": sha,
-            "subject": subject[:200],
-            "commit_ts": int(ts) if ts.isdigit() else 0,
+            "commit": chosen["sha"],
+            "subject": chosen["subject"][:200],
+            "commit_ts": int(chosen["ts"]) if chosen["ts"].isdigit() else 0,
             "next_version": next_version,
             "total_commits": total,
+            "embed_pending": embed_pending,
         }
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
 
 @router.get("/git-head")
-async def admin_git_head():
-    """현재 git HEAD — VersionBanner 가 production build 와 비교해 미반영 변경 감지."""
-    return _git_head_info()
+async def admin_git_head(prod: str = ""):
+    """VersionBanner 가 production build 와 비교해 미반영 변경 감지.
+
+    Args:
+        prod: 현재 production 에 배포된 commit short sha (version.json build 의 앞부분).
+              제공되면 'production 이 chosen 의 자손이면 up_to_date=True' 로 직접 판정.
+    """
+    info = _git_head_info()
+    if not info.get("ok") or not prod:
+        return info
+    prod_l = prod.strip().lower()
+    chosen_short = info.get("commit", "")
+    info["up_to_date"] = False
+    try:
+        chosen_full = subprocess.run(
+            ["git", "rev-parse", chosen_short],
+            cwd=_HQ_ROOT, capture_output=True, text=True, timeout=3,
+        ).stdout.strip()
+        prod_full = subprocess.run(
+            ["git", "rev-parse", prod_l],
+            cwd=_HQ_ROOT, capture_output=True, text=True, timeout=3,
+        ).stdout.strip()
+        if chosen_full and prod_full:
+            # chosen 이 production 의 ancestor 또는 동일 → production 은 chosen 을 포함 → 업데이트 불필요
+            rc = subprocess.run(
+                ["git", "merge-base", "--is-ancestor", chosen_full, prod_full],
+                cwd=_HQ_ROOT, capture_output=True, text=True, timeout=3,
+            ).returncode
+            info["up_to_date"] = rc == 0
+    except Exception:
+        pass
+    return info
 
 
 # ── 무중단 배포 ────────────────────────────────────────────────────
