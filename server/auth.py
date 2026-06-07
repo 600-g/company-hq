@@ -134,7 +134,7 @@ def set_user_capabilities(target_user_id: str, capabilities: list[str]) -> dict:
 
 
 def get_user_with_capabilities(user_id: str) -> dict | None:
-    """관리 UI 용 — 사용자 정보 + 최종 capabilities + 역할 기본 + override 상세."""
+    """관리 UI 용 — 사용자 정보 + 최종 capabilities + 역할 기본 + override 상세 + 사용한 초대코드."""
     users = _load_json(_USERS_FILE)
     if not isinstance(users, dict) or user_id not in users:
         return None
@@ -153,6 +153,7 @@ def get_user_with_capabilities(user_id: str) -> dict | None:
         "capabilities": sorted(final),
         "created_at": u.get("created_at", ""),
         "last_active": u.get("last_active", ""),
+        "invite_code": u.get("invite_code", ""),  # 발급 추적용 — manage_users 만 보임
     }
 
 

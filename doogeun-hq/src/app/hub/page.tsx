@@ -14,7 +14,7 @@ import { useCapabilities } from "@/lib/useCapabilities";
 import { apiBase } from "@/lib/utils";
 import { authFetch } from "@/lib/api";
 import {
-  X, Users, Bug, Cpu, Settings, LogOut, Send,
+  X, Users, Bug, Cpu, Settings, LogOut, Send, Shield,
   MessagesSquare, Plus, Home as HomeIcon, RefreshCw, ChevronRight, ChevronLeft,
   Grid3x3, Pencil, Terminal as TerminalIcon, Copy, Check, Trash2, Globe,
 } from "lucide-react";
@@ -407,6 +407,10 @@ export default function HubPage() {
           {/* 연구소 — manage_users 보유자만 (시스템 관리 도구) */}
           {caps.has("manage_users") && (
             <SideItem collapsed={sideCollapsed} icon={Bug} label="연구소" onClick={() => setModalKey("lab")} />
+          )}
+          {/* 권한 관리 — invite_users 또는 manage_users 보유 시 (페이지 전환) */}
+          {caps.hasAny("invite_users", "manage_users") && (
+            <SideItem collapsed={sideCollapsed} icon={Shield} label="권한 관리" onClick={() => router.push("/permissions")} />
           )}
           <SideItem collapsed={sideCollapsed} icon={Settings} label="설정" onClick={() => router.push("/settings")} />
           <div className="h-px bg-gray-800/60 my-2" />

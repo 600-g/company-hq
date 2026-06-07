@@ -13,7 +13,6 @@ import { useThemeStore } from "@/stores/themeStore";
 import { apiBase } from "@/lib/utils";
 import { authFetch } from "@/lib/api";
 import MyAccountGuide from "@/components/settings/MyAccountGuide";
-import PermissionManager from "@/components/settings/PermissionManager";
 
 // 외부 서비스 토큰 — 본인 계정 키를 입력해 사이트/레포를 자기 계정에 만들 때 사용
 // (안 쓰면 빈 값 유지 — 호스트 .env 토큰으로 fallback)
@@ -105,9 +104,6 @@ export default function SettingsPage() {
       <main className="flex-1 p-6 max-w-3xl w-full mx-auto space-y-4">
         {/* 내 계정 + API 키 가이드 (모든 사용자) */}
         <MyAccountGuide />
-
-        {/* 권한 관리 — 사용자별 체크박스 + 초대코드 발급 통합 */}
-        <PermissionManager />
 
         {/* 테마 */}
         <Card>

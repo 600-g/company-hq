@@ -26,6 +26,7 @@ interface UserRow {
   capabilities: string[];
   created_at: string;
   last_active: string;
+  invite_code?: string;
 }
 interface InviteCode {
   code: string;
@@ -169,6 +170,15 @@ function UsersPanel({ users, caps, onChanged }: { users: UserRow[]; caps: CapsRe
   const [expanded, setExpanded] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Record<string, Set<string>>>({});
+  const [copiedCode, setCopiedCode] = useState<string | null>(null);
+
+  const copyCode = async (code: string) => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopiedCode(code);
+      setTimeout(() => setCopiedCode(null), 1500);
+    } catch { /* ignore */ }
+  };
 
   const startEdit = (u: UserRow) => {
     setExpanded(u.user_id);
@@ -223,16 +233,37 @@ function UsersPanel({ users, caps, onChanged }: { users: UserRow[]; caps: CapsRe
         const current = draft[u.user_id] || new Set(u.capabilities);
         return (
           <div key={u.user_id} className="rounded border border-gray-800 bg-gray-900/40">
-            <button
-              type="button"
-              onClick={() => isExp ? setExpanded(null) : startEdit(u)}
-              className="w-full p-2.5 flex items-center gap-2 text-left hover:bg-gray-900/60 transition-colors"
-            >
-              <span className="font-bold text-[13px] text-gray-200">{u.nickname}</span>
+            <div className="w-full p-2.5 flex items-center gap-2 hover:bg-gray-900/60 transition-colors">
+              <button
+                type="button"
+                onClick={() => isExp ? setExpanded(null) : startEdit(u)}
+                className="font-bold text-[13px] text-gray-200 hover:text-sky-300 text-left"
+              >
+                {u.nickname}
+              </button>
               <span className="px-1.5 py-0.5 rounded bg-gray-800 text-[10px] text-gray-400">{u.role_label}</span>
+              {u.invite_code && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); copyCode(u.invite_code!); }}
+                  className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-sky-500/10 hover:bg-sky-500/20 border border-sky-400/30 text-[10px] font-mono text-sky-300 transition-colors"
+                  title="초대코드 복사"
+                >
+                  🔑 {u.invite_code}
+                  <span className="text-[9px] text-sky-200">
+                    {copiedCode === u.invite_code ? "✓" : "복사"}
+                  </span>
+                </button>
+              )}
               <span className="text-[10px] text-gray-500">{u.capabilities.length} / {Object.keys(caps.capabilities).length} 권한</span>
-              <span className="ml-auto text-[11px] text-gray-500">{isExp ? "접기 ▲" : "수정 ▼"}</span>
-            </button>
+              <button
+                type="button"
+                onClick={() => isExp ? setExpanded(null) : startEdit(u)}
+                className="ml-auto text-[11px] text-gray-500 hover:text-gray-300"
+              >
+                {isExp ? "접기 ▲" : "수정 ▼"}
+              </button>
+            </div>
             {isExp && (
               <div className="p-3 pt-0 space-y-2">
                 <div className="text-[11px] text-gray-400">체크하면 부여, 풀면 박탈. 저장 누를 때만 반영.</div>
