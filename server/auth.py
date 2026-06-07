@@ -103,7 +103,7 @@ def register_user(nickname: str, code: str) -> dict | None:
     users[user_id] = {
         "nickname": nickname,
         "role": code_info["role"],
-        "token": hashlib.sha256(token.encode()).hexdigest(),
+        "tokens": [hashlib.sha256(token.encode()).hexdigest()],
         "created_at": datetime.now().isoformat(),
         "last_active": datetime.now().isoformat(),
         "invite_code": code.upper(),
@@ -121,7 +121,11 @@ def register_user(nickname: str, code: str) -> dict | None:
 
 
 def verify_token(token: str) -> dict | None:
-    """토큰으로 사용자 인증."""
+    """토큰으로 사용자 인증.
+
+    user.token (legacy 단일) 또는 user.tokens (배열, 최대 5개 멀티세션) 어느 쪽이든 매칭.
+    멀티 디바이스/탭 로그인 가능 — 이전 세션 안 끊김.
+    """
     if not token:
         return None
 
@@ -131,7 +135,9 @@ def verify_token(token: str) -> dict | None:
 
     token_hash = hashlib.sha256(token.encode()).hexdigest()
     for user_id, user in users.items():
-        if user.get("token") == token_hash:
+        legacy_match = user.get("token") == token_hash
+        array_match = token_hash in (user.get("tokens") or [])
+        if legacy_match or array_match:
             user["last_active"] = datetime.now().isoformat()
             _save_json(_USERS_FILE, users)
             return {
@@ -307,11 +313,20 @@ def owner_login(password: str) -> dict | None:
     if not isinstance(users, dict):
         users = {}
 
-    # 기존 오너 계정 찾기
+    # 기존 오너 계정 찾기 — 새 토큰을 배열에 append 만 함 (이전 세션 유지!)
     for uid, u in users.items():
         if u.get("role") == "owner":
             token = uuid.uuid4().hex
-            u["token"] = hashlib.sha256(token.encode()).hexdigest()
+            new_hash = hashlib.sha256(token.encode()).hexdigest()
+            # legacy 단일 token 도 첫 호출 시 배열로 이주
+            tokens_list = list(u.get("tokens") or [])
+            legacy = u.get("token")
+            if legacy and legacy not in tokens_list:
+                tokens_list.append(legacy)
+            tokens_list.append(new_hash)
+            # 최대 5개 (멀티 디바이스) 유지, 오래된 것부터 폐기
+            u["tokens"] = tokens_list[-5:]
+            u.pop("token", None)  # legacy 필드 제거 — 배열로 통일
             u["last_active"] = datetime.now().isoformat()
             _save_json(_USERS_FILE, users)
             return {
@@ -328,7 +343,7 @@ def owner_login(password: str) -> dict | None:
     users[user_id] = {
         "nickname": "두근",
         "role": "owner",
-        "token": hashlib.sha256(token.encode()).hexdigest(),
+        "tokens": [hashlib.sha256(token.encode()).hexdigest()],
         "created_at": datetime.now().isoformat(),
         "last_active": datetime.now().isoformat(),
         "invite_code": "OWNER",

@@ -21,10 +21,30 @@ import signal
 import time
 from pathlib import Path
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, Request
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/agents", tags=["agents"])
+
+
+def _require_agent_owner_or_admin(request: Request, body: dict | None, team: dict) -> dict:
+    """본인 소유 에이전트만, owner/admin 은 예외."""
+    from auth import (
+        extract_token_from_request, require_user, AuthError, is_owner_of, ROLES,
+    )
+    token = extract_token_from_request(
+        dict(request.headers), dict(request.query_params), (body or {}).get("token", "")
+    )
+    try:
+        user = require_user(token, min_level=1)
+    except AuthError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.detail)
+    if not is_owner_of(team, user) and ROLES.get(user["role"], {}).get("level", 0) < 4:
+        raise HTTPException(
+            status_code=403,
+            detail=f"이 에이전트의 소유자가 아니에요 (만든 사람: {team.get('owner_nickname','?')}).",
+        )
+    return user
 
 VALID_MODELS = {
     "haiku", "sonnet", "opus",
@@ -34,8 +54,24 @@ VALID_MODELS = {
 
 
 @router.post("/{team_id}/model")
-async def set_agent_model(team_id: str, body: dict):
-    """팀 AI 모델 변경. Claude: haiku|sonnet|opus / 무료: gemini_flash|gemma_main|gemma_e4b"""
+async def set_agent_model(team_id: str, body: dict, request: Request):
+    """팀 AI 모델 변경. Claude: haiku|sonnet|opus / 무료: gemini_flash|gemma_main|gemma_e4b.
+
+    🔐 권한: 본인 소유 에이전트만 + owner/admin 예외. 친구가 두근/매매봇 모델을 함부로
+    Opus 로 바꿔서 토큰 폭탄 못 함.
+    """
+    # 인증 먼저 (team 존재 여부 누설 방지)
+    from auth import extract_token_from_request, require_user, AuthError
+    token = extract_token_from_request(dict(request.headers), dict(request.query_params), body.get("token", ""))
+    try:
+        require_user(token, min_level=1)
+    except AuthError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.detail)
+    import main as _main
+    team = next((t for t in _main.TEAMS if t["id"] == team_id), None)
+    if not team:
+        return {"ok": False, "error": "팀을 찾을 수 없음"}
+    _require_agent_owner_or_admin(request, body, team)
     from claude_runner import TEAM_MODELS
     from ws_handler import _log_activity
     model = body.get("model", "")
@@ -165,8 +201,16 @@ async def test_agent(team_id: str):
 
 
 @router.post("/{team_id}/restart")
-async def restart_agent(team_id: str):
-    """에이전트 세션 초기화 (재부팅)"""
+async def restart_agent(team_id: str, request: Request):
+    """에이전트 세션 초기화 (재부팅)
+
+    🔐 권한: 본인 소유 에이전트만 + owner/admin 예외.
+    """
+    import main as _main
+    team = next((t for t in _main.TEAMS if t["id"] == team_id), None)
+    if not team:
+        return {"ok": False, "error": "팀을 찾을 수 없음"}
+    _require_agent_owner_or_admin(request, None, team)
     from claude_runner import AGENT_PIDS, TEAM_SESSIONS, _save_sessions
     from ws_handler import AGENT_STATUS, _log_activity
 

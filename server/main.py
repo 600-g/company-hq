@@ -1130,8 +1130,12 @@ async def settings_tokens():
 # ── WebSocket ─────────────────────────────────────────
 
 @app.post("/api/terminal/run")
-async def terminal_run(body: dict):
-    """TM TerminalPanel용 — 쉘 명령 실행 + SSE stdout/stderr 스트림"""
+async def terminal_run(body: dict, request: Request):
+    """TM TerminalPanel용 — 쉘 명령 실행 + SSE stdout/stderr 스트림.
+
+    🔐 권한: owner/admin 만 (쉘 명령 임의 실행 = 호스트 머신 통제).
+    """
+    _auth_user(request, body, min_level=4)
     from fastapi.responses import StreamingResponse
     cmd = (body.get("command") or "").strip()
     cwd = body.get("cwd") or os.path.expanduser("~/Developer/my-company/company-hq")
@@ -1198,8 +1202,12 @@ async def deploy_status():
 
 
 @app.post("/api/deploy/trigger")
-async def deploy_trigger():
-    """배포 스크립트 실행 — SSE 스트림으로 진행상황 보고"""
+async def deploy_trigger(request: Request):
+    """배포 스크립트 실행 — SSE 스트림으로 진행상황 보고.
+
+    🔐 권한: owner/admin 만 (프로덕션 배포 트리거).
+    """
+    _auth_user(request, None, min_level=4)
     from fastapi.responses import StreamingResponse
     import subprocess
     import os as _os
@@ -1241,7 +1249,15 @@ async def deploy_project_github(team_id: str, req: Request):
     """Phase 5: 팀 프로젝트를 GitHub에 push (레포 없으면 생성).
     팀메이커 /api/deploy/github 등가물. SSE 스트림으로 진행 보고.
     Body: {"message": "commit msg"}
+
+    🔐 권한: 본인 소유 에이전트만 + owner/admin 예외.
     """
+    team = next((t for t in TEAMS if t["id"] == team_id), None)
+    if not team:
+        return {"ok": False, "error": "팀을 찾을 수 없음"}
+    user = _auth_user(req, None, min_level=1)
+    if not is_owner_of(team, user) and ROLES.get(user["role"], {}).get("level", 0) < 4:
+        return {"ok": False, "error": f"이 에이전트의 소유자가 아니에요 (만든 사람: {team.get('owner_nickname','?')})."}
     from fastapi.responses import StreamingResponse
     import subprocess
     import os as _os
@@ -1645,15 +1661,20 @@ async def debounce_status():
 # ── 웹터미널 (ttyd) ──────────────────────────────────
 
 @app.post("/api/terminal/{team_id}/start")
-async def start_terminal(team_id: str):
-    """팀별 웹터미널 세션 시작"""
+async def start_terminal(team_id: str, request: Request):
+    """팀별 웹터미널 세션 시작.
+
+    🔐 권한: owner/admin 만.
+    """
+    _auth_user(request, None, min_level=4)
     result = start_team_terminal(team_id)
     return result
 
 
 @app.delete("/api/terminal/{team_id}/stop")
-async def stop_terminal(team_id: str):
-    """팀별 웹터미널 세션 종료"""
+async def stop_terminal(team_id: str, request: Request):
+    """팀별 웹터미널 세션 종료. 🔐 owner/admin 만."""
+    _auth_user(request, None, min_level=4)
     stop_team_terminal(team_id)
     return {"status": "stopped"}
 
@@ -1726,8 +1747,9 @@ async def run_qa():
 
 
 @app.post("/api/qa/restart-server")
-async def qa_restart_server():
-    """서버 재시작 (QA용)"""
+async def qa_restart_server(request: Request):
+    """서버 재시작 (QA용). 🔐 owner/admin 만."""
+    _auth_user(request, None, min_level=4)
     import subprocess
     script = os.path.join(os.path.dirname(__file__), "..", "scripts", "restart_server.sh")
     try:

@@ -26,3 +26,41 @@
 
 /embed/*
   Cache-Control: public, max-age=0, must-revalidate
+
+# HTML 라우트는 항상 새로 받아오게 — 배포 후 캐시 잔존으로 매번 캐시삭제 강요받는 문제 회피.
+# 위의 immutable /_next/static/* 가 더 구체적이라 정적 hash 파일은 그대로 1년 캐시.
+/
+  Cache-Control: public, max-age=0, must-revalidate
+
+/*.html
+  Cache-Control: public, max-age=0, must-revalidate
+
+/hub
+  Cache-Control: public, max-age=0, must-revalidate
+
+/auth
+  Cache-Control: public, max-age=0, must-revalidate
+
+/settings
+  Cache-Control: public, max-age=0, must-revalidate
+
+/agents
+  Cache-Control: public, max-age=0, must-revalidate
+
+/chat
+  Cache-Control: public, max-age=0, must-revalidate
+
+/office
+  Cache-Control: public, max-age=0, must-revalidate
+
+/server
+  Cache-Control: public, max-age=0, must-revalidate
+
+/bugs
+  Cache-Control: public, max-age=0, must-revalidate
+
+/timeline
+  Cache-Control: public, max-age=0, must-revalidate
+
+/setup
+  Cache-Control: public, max-age=0, must-revalidate

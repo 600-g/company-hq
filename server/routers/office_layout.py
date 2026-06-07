@@ -16,7 +16,7 @@ import logging
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/layout", tags=["layout"])
@@ -49,11 +49,19 @@ async def get_office_layout() -> dict:
 
 
 @router.put("/office")
-async def update_office_layout(body: dict) -> dict:
-    """사무실 가구 배치 저장 — 에디터에서 placement 변경 시 호출
+async def update_office_layout(body: dict, request: Request) -> dict:
+    """사무실 가구 배치 저장 — 에디터에서 placement 변경 시 호출.
 
+    🔐 권한: owner/admin 만. 씬 가구 배치는 전 사용자 공통이라 친구가 마음대로 못 만짐.
     body: {"layout": {"version": 2, "items": [...], "removed": [...]}}
     """
+    from fastapi import HTTPException
+    from auth import extract_token_from_request, require_user, AuthError
+    token = extract_token_from_request(dict(request.headers), dict(request.query_params), body.get("token", ""))
+    try:
+        require_user(token, min_level=4)
+    except AuthError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.detail)
     layout = body.get("layout") or {}
     items = layout.get("items")
     if not isinstance(items, list):

@@ -17,7 +17,7 @@ import os
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/furniture", tags=["furniture"])
@@ -52,12 +52,20 @@ async def get_furniture_overrides() -> dict:
 
 
 @router.put("/overrides")
-async def update_furniture_overrides(body: dict) -> dict:
+async def update_furniture_overrides(body: dict, request: Request) -> dict:
     """관리자 전용 — 가구 카탈로그 오버라이드 전체 덮어쓰기.
 
+    🔐 권한: owner/admin 만. 친구가 가구 라벨/카테고리 바꾸면 모든 기기에 즉시 전파됨.
     🛡 안전장치: 기존 override가 있고 새 payload가 `confirm_replace` 없이
     기존보다 50% 이상 적으면 거부 (실수 덮어쓰기 방지).
     """
+    from fastapi import HTTPException
+    from auth import extract_token_from_request, require_user, AuthError
+    token = extract_token_from_request(dict(request.headers), dict(request.query_params), body.get("token", ""))
+    try:
+        require_user(token, min_level=4)
+    except AuthError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.detail)
     overrides = body.get("overrides") or {}
     if not isinstance(overrides, dict):
         return {"ok": False, "error": "overrides 객체 필요"}

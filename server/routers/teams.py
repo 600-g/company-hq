@@ -22,10 +22,42 @@ from __future__ import annotations
 import logging
 import os
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, Request
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["teams"])
+
+
+def _require(request: Request, body: dict | None = None, min_level: int = 4) -> dict:
+    """씬/레이아웃 mutating 라우터 공용 권한 체크. 기본 owner/admin (level≥4)."""
+    from auth import extract_token_from_request, require_user, AuthError
+    token = extract_token_from_request(
+        dict(request.headers), dict(request.query_params), (body or {}).get("token", "")
+    )
+    try:
+        return require_user(token, min_level=min_level)
+    except AuthError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.detail)
+
+
+def _require_team_owner_or_admin(request: Request, body: dict | None, team: dict) -> dict:
+    """팀 소유자 본인 또는 owner/admin (멀티유저 베타용)."""
+    from auth import (
+        extract_token_from_request, require_user, AuthError, is_owner_of, ROLES,
+    )
+    token = extract_token_from_request(
+        dict(request.headers), dict(request.query_params), (body or {}).get("token", "")
+    )
+    try:
+        user = require_user(token, min_level=1)
+    except AuthError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.detail)
+    if not is_owner_of(team, user) and ROLES.get(user["role"], {}).get("level", 0) < 4:
+        raise HTTPException(
+            status_code=403,
+            detail=f"이 에이전트의 소유자가 아니에요 (만든 사람: {team.get('owner_nickname','?')}). owner/admin 만 예외.",
+        )
+    return user
 
 
 @router.get("/api/teams")
@@ -69,8 +101,13 @@ async def get_project_types():
 
 
 @router.put("/api/teams/{team_id}/order")
-async def update_team_order(team_id: str, body: dict):
-    """단일 팀의 order(순서)와 layer(층) 변경. pinned 팀은 변경 불가."""
+async def update_team_order(team_id: str, body: dict, request: Request):
+    """단일 팀의 order(순서)와 layer(층) 변경. pinned 팀은 변경 불가.
+
+    🔐 권한: owner/admin 만 (전체 사이드바 순서에 영향). 친구가 본인 에이전트 위치는
+    layoutStore 의 핀(즐겨찾기) 으로 조정 가능.
+    """
+    _require(request, body, min_level=4)
     import main as _main
     from ws_handler import _log_activity
     team = next((t for t in _main.TEAMS if t["id"] == team_id), None)
@@ -96,8 +133,12 @@ async def update_team_order(team_id: str, body: dict):
 
 
 @router.put("/api/teams/reorder")
-async def reorder_teams(body: dict):
-    """다수 팀 순서 일괄 변경 (드래그 앤 드롭 후 저장). pinned 팀은 무시."""
+async def reorder_teams(body: dict, request: Request):
+    """다수 팀 순서 일괄 변경 (드래그 앤 드롭 후 저장). pinned 팀은 무시.
+
+    🔐 권한: owner/admin 만.
+    """
+    _require(request, body, min_level=4)
     import main as _main
     orders: list[dict] = body.get("orders", [])
     if not orders:
@@ -154,8 +195,12 @@ async def get_team_positions():
 
 
 @router.put("/api/layout/positions")
-async def update_team_positions(body: dict):
-    """팀 위치 저장 — 프론트 드래그 후 호출."""
+async def update_team_positions(body: dict, request: Request):
+    """팀 위치 저장 — 프론트 드래그 후 호출.
+
+    🔐 권한: owner/admin 만. 캐릭터 위치는 전체 씬에 영향이라 친구는 변경 불가.
+    """
+    _require(request, body, min_level=4)
     import main as _main
     incoming = body.get("positions") or {}
     current = _main._load_positions()
@@ -199,13 +244,24 @@ async def get_team_guide(team_id: str):
 
 
 @router.put("/api/teams/{team_id}/guide")
-async def update_team_guide(team_id: str, body: dict):
-    """팀 CLAUDE.md 수정 — 실제 파일에 저장"""
+async def update_team_guide(team_id: str, body: dict, request: Request):
+    """팀 CLAUDE.md 수정 — 실제 파일에 저장.
+
+    🔐 권한: 본인 소유 에이전트만, owner/admin 은 예외.
+    """
+    # 인증 먼저 (team 존재 누설 방지)
+    from auth import extract_token_from_request, require_user, AuthError
+    token = extract_token_from_request(dict(request.headers), dict(request.query_params), body.get("token", ""))
+    try:
+        require_user(token, min_level=1)
+    except AuthError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.detail)
     import main as _main
     from ws_handler import _log_activity
     team = next((t for t in _main.TEAMS if t["id"] == team_id), None)
     if not team:
         return {"ok": False, "error": "팀을 찾을 수 없습니다."}
+    _require_team_owner_or_admin(request, body, team)
 
     local_path = os.path.expanduser(team.get("localPath", ""))
     if not local_path or not os.path.isdir(local_path):
@@ -238,9 +294,10 @@ async def get_team_evolution(team_id: str):
 
 
 @router.post("/api/teams/{team_id}/setup-subdomain")
-async def setup_team_subdomain(team_id: str, body: dict):
+async def setup_team_subdomain(team_id: str, body: dict, request: Request):
     """기존 팀에 서브도메인 자동 추가 (retroactive).
 
+    🔐 권한: 본인 소유 에이전트만, owner/admin 은 예외.
     body: {"subdomain": "exam"} → exam.600g.net CNAME → 600-g.github.io
     """
     import os as _os
@@ -248,6 +305,7 @@ async def setup_team_subdomain(team_id: str, body: dict):
     team = next((t for t in _main.TEAMS if t["id"] == team_id), None)
     if not team:
         return {"ok": False, "error": "팀을 찾을 수 없음"}
+    _require_team_owner_or_admin(request, body, team)
     sub = (body.get("subdomain") or "").strip().lower()
     if not sub:
         return {"ok": False, "error": "subdomain 필요"}
@@ -315,8 +373,12 @@ async def get_team_activity(team_id: str):
 
 
 @router.put("/api/layout/floors")
-async def update_floor_layout(body: dict):
-    """층 배치 업데이트 — 프론트에서 팀 드래그 후 저장 시 호출."""
+async def update_floor_layout(body: dict, request: Request):
+    """층 배치 업데이트 — 프론트에서 팀 드래그 후 저장 시 호출.
+
+    🔐 권한: owner/admin 만. 층 배치는 모든 사용자 공유 → 친구는 변경 불가.
+    """
+    _require(request, body, min_level=4)
     import main as _main
     new_layout: dict[str, list[str]] = body.get("layout", {})
     if not new_layout:

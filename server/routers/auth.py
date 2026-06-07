@@ -260,13 +260,25 @@ async def auth_me_keys_put(body: dict, request: Request):
 
 @router.post("/logout")
 async def auth_logout(body: dict, request: Request):
-    """로그아웃 — 현재 토큰 무효화 (해시 제거)."""
+    """로그아웃 — 현재 토큰만 무효화 (다른 기기 세션은 유지)."""
+    import hashlib as _h
+    from auth import extract_token_from_request
     user = _auth(request, body, min_level=1)
+    raw_token = extract_token_from_request(dict(request.headers), dict(request.query_params), body.get("token", ""))
     try:
         from auth import _load_json, _save_json, _USERS_FILE
         users = _load_json(_USERS_FILE)
         if isinstance(users, dict) and user["user_id"] in users:
-            users[user["user_id"]].pop("token", None)
+            u = users[user["user_id"]]
+            target_hash = _h.sha256(raw_token.encode()).hexdigest() if raw_token else ""
+            # 단일 토큰 legacy
+            if u.get("token") == target_hash:
+                u.pop("token", None)
+            # 배열 토큰 — 현재 거만 제거
+            tokens_list = list(u.get("tokens") or [])
+            if target_hash in tokens_list:
+                tokens_list.remove(target_hash)
+                u["tokens"] = tokens_list
             _save_json(_USERS_FILE, users)
         return {"ok": True}
     except Exception as e:

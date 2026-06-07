@@ -270,14 +270,32 @@ export default function VersionBanner() {
                 if (v.build === targetBuild) {
                   setProgressPct(100);
                   setProgressStage("완료 — 새로고침 중...");
-                  setTimeout(() => location.reload(), 800);
+                  setTimeout(() => {
+                  // 강제 캐시 우회 reload — URL 에 build hash 쿼리 붙여 새 HTML 받게
+                  try {
+                    const u = new URL(window.location.href);
+                    u.searchParams.set("_v", targetBuild);
+                    window.location.replace(u.toString());
+                  } catch {
+                    location.reload();
+                  }
+                }, 800);
                   return;
                 }
               }
             } catch { /* ignore */ }
             if (elapsed > 30_000) {
               setProgressStage("CF edge 지연 — 그대로 새로고침 (적용은 정상)");
-              setTimeout(() => location.reload(), 800);
+              setTimeout(() => {
+                  // 강제 캐시 우회 reload — URL 에 build hash 쿼리 붙여 새 HTML 받게
+                  try {
+                    const u = new URL(window.location.href);
+                    u.searchParams.set("_v", targetBuild);
+                    window.location.replace(u.toString());
+                  } catch {
+                    location.reload();
+                  }
+                }, 800);
               return;
             }
             setTimeout(verifyAndReload, 2000);

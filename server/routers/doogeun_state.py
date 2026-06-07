@@ -143,13 +143,64 @@ async def get_doogeun_state() -> dict:
 
 @router.put("/api/doogeun/state")
 async def update_doogeun_state(body: dict, request: Request) -> dict:
-    """전체 상태 덮어쓰기 + 연결된 모든 WS 클라이언트에 브로드캐스트."""
+    """전체 상태 덮어쓰기 + WS 브로드캐스트.
+
+    🔐 권한 구조:
+    - admin/owner: 전체 상태 (씬·층 배치·캐릭터 sprite·가구) 자유롭게 변경 가능.
+    - member/guest: 본인 소유 에이전트의 ephemeral 필드만 PUT 가능 (남의 에이전트·층 배치·sprite 변경 거부).
+      → 친구가 본인 채팅창 정리는 가능, 이두근 두근/매매봇 위치는 절대 못 만짐.
+    """
+    from fastapi import HTTPException
+    from auth import (
+        extract_token_from_request, require_user, AuthError, ROLES, is_owner_of,
+    )
+    import main as _main_mod  # TEAMS 룩업 — owner_id 매칭용
+
+    token = extract_token_from_request(
+        dict(request.headers), dict(request.query_params), body.get("token", "")
+    )
+    try:
+        user = require_user(token, min_level=1)
+    except AuthError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.detail)
+
+    is_admin_level = ROLES.get(user["role"], {}).get("level", 0) >= 4
     agents = body.get("agents")
     layout = body.get("layout")
     client_id = body.get("client_id") or ""
     if agents is None and layout is None:
         return {"ok": False, "error": "agents 또는 layout 필요"}
     prev = _load_doogeun_state()
+
+    if not is_admin_level:
+        # 비관리자: layout 변경 차단 + agents 는 본인 소유분만 머지
+        if layout is not None:
+            logger.info("[doogeun_state] %s (level<4) layout 변경 시도 차단", user["nickname"])
+            layout = None
+        if agents is not None:
+            teams_by_id = {t["id"]: t for t in _main_mod.TEAMS}
+            prev_by_id = {a["id"]: a for a in prev.get("agents", []) if a.get("id")}
+            # 사용자가 보낸 agents 중 본인 소유만 수용, 나머지는 prev 그대로 유지.
+            merged: list[dict] = []
+            kept_ids = set()
+            for a in agents:
+                aid = a.get("id")
+                if not aid:
+                    continue
+                team = teams_by_id.get(aid)
+                # 본인 소유면 통과, 아니면 prev 그대로
+                if team and is_owner_of(team, user):
+                    merged.append(a)
+                else:
+                    if aid in prev_by_id:
+                        merged.append(prev_by_id[aid])
+                kept_ids.add(aid)
+            # 사용자가 누락한 prev agent 도 보존 (남의 에이전트가 사라지면 안 됨)
+            for prev_a in prev.get("agents", []):
+                if prev_a.get("id") not in kept_ids:
+                    merged.append(prev_a)
+            agents = merged
+
     new_state = {
         "agents": agents if agents is not None else prev.get("agents", []),
         "layout": layout if layout is not None else prev.get("layout", {"floors": {}}),

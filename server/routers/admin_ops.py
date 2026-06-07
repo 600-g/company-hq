@@ -22,7 +22,7 @@ import re as _re
 import subprocess
 import time
 
-from fastapi import APIRouter, BackgroundTasks
+from fastapi import APIRouter, BackgroundTasks, Request
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -202,8 +202,19 @@ async def _run_deploy_bg() -> None:
 
 
 @router.post("/deploy")
-async def admin_deploy_trigger(background_tasks: BackgroundTasks):
-    """사용자 [적용] 클릭 — 백그라운드로 deploy.sh 실행. 즉시 반환, 진행은 status 폴링."""
+async def admin_deploy_trigger(background_tasks: BackgroundTasks, request: Request):
+    """사용자 [적용] 클릭 — 백그라운드로 deploy.sh 실행. 즉시 반환, 진행은 status 폴링.
+
+    🔐 권한: owner/admin 만 (프로덕션 배포는 친구한테 못 줌).
+    """
+    from fastapi import HTTPException
+    from auth import extract_token_from_request, require_user, AuthError
+    token = extract_token_from_request(dict(request.headers), dict(request.query_params), "")
+    try:
+        require_user(token, min_level=4)
+    except AuthError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.detail)
+
     if _DEPLOY_LOCK.locked() or _DEPLOY_STATE["running"]:
         return {"ok": False, "error": "이미 배포 진행 중", "running": True}
 
