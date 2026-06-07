@@ -235,9 +235,15 @@ def register_user(nickname: str, code: str) -> dict | None:
     # 초대코드에 extra_caps 가 있으면 가입 시 grant
     extra_caps = code_info.get("extra_caps") or []
     extra_caps = [c for c in extra_caps if c in CAPABILITIES]
+    # 🔒 오너 유일성 안전망 — 코드가 어떤 이유로든 role=owner 면 admin 으로 강제 강등
+    safe_role = code_info["role"]
+    if safe_role == "owner":
+        existing_owners = any(u.get("role") == "owner" for u in users.values())
+        if existing_owners:
+            safe_role = "admin"  # 이미 오너 있으면 admin 으로 강등
     users[user_id] = {
         "nickname": nickname,
-        "role": code_info["role"],
+        "role": safe_role,
         "tokens": [hashlib.sha256(token.encode()).hexdigest()],
         "created_at": datetime.now().isoformat(),
         "last_active": datetime.now().isoformat(),

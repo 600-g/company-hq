@@ -85,6 +85,9 @@ async def auth_create_code(body: dict, request: Request):
     role = body.get("role", "member")
     if role not in ROLES:
         return {"ok": False, "error": f"존재하지 않는 역할: {role}"}
+    # 🔒 오너 역할은 시스템 부트스트랩 외 절대 발급 불가 — 오너 유일성 보장
+    if role == "owner":
+        return {"ok": False, "error": "오너 역할은 초대코드로 발급할 수 없어요 (오너는 유일)."}
     extra_caps = [c for c in (body.get("capabilities") or []) if c in CAPABILITIES]
     # 1 코드 = 1 계정. 사용 후 자동 소진. 추후 계정 단위 권한 재발급으로 운영.
     code = create_invite_code(role=role, created_by=user["nickname"], max_uses=1)
@@ -205,8 +208,17 @@ async def auth_delete_user(user_id: str, request: Request):
     target = get_user_with_capabilities(user_id)
     if not target:
         return {"ok": False, "error": "사용자를 찾을 수 없음"}
+    # 오너 삭제 규칙: 마지막 오너는 보호 (lockout 방지). 중복 오너는 정리 허용.
     if target["role"] == "owner":
-        raise HTTPException(status_code=400, detail="오너 계정은 삭제할 수 없어요.")
+        from auth import _load_json, _USERS_FILE
+        users_all = _load_json(_USERS_FILE) or {}
+        owner_count = sum(1 for u in users_all.values() if u.get("role") == "owner")
+        if owner_count <= 1:
+            raise HTTPException(
+                status_code=400,
+                detail="유일한 오너 계정은 삭제할 수 없어요 (시스템 lockout 방지).",
+            )
+        # else: 중복 오너 → 정리 허용
     try:
         from auth import _load_json, _save_json, _USERS_FILE
         users = _load_json(_USERS_FILE)
