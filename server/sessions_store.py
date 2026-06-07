@@ -46,7 +46,14 @@ def _meta_path(team_id: str) -> Path:
     return _team_dir(team_id) / "_meta.json"
 
 
-def _active_path(team_id: str) -> Path:
+def _active_path(team_id: str, user_id: str | None = None) -> Path:
+    """user_id 가 주어지면 사용자별 active 파일.
+
+    하위호환: 기존 _active.json 도 fallback 으로 읽음 (마이그레이션).
+    """
+    if user_id:
+        safe = "".join(c for c in user_id if c.isalnum())
+        return _team_dir(team_id) / f"_active_{safe}.json"
     return _team_dir(team_id) / "_active.json"
 
 

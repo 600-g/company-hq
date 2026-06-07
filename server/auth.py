@@ -40,7 +40,7 @@ CAPABILITIES: dict[str, dict] = {
     "edit_scene": {"label": "씬·층·캐릭터 위치 편집", "info": "사무실 배치, 층 이동, 캐릭터 드래그. 전 사용자에게 보이는 화면."},
     "edit_furniture": {"label": "사무실 가구 편집", "info": "가구 라벨/카테고리/배치."},
     # 사용자 관리
-    "invite_users": {"label": "친구 초대코드 발급", "info": "8자리 비밀번호 만들어 친구한테 전달."},
+    "invite_users": {"label": "사용자 초대코드 발급", "info": "8자리 비밀번호 만들어 사용자한테 전달."},
     "manage_users": {"label": "다른 사용자 권한 변경", "info": "다른 사용자의 capability 체크박스 토글. owner 만 권장."},
     # 시스템 위험 동작
     "deploy": {"label": "프로덕션 배포", "info": "[업데이트] 버튼 — 새 빌드 배포 트리거."},
@@ -308,12 +308,16 @@ def deactivate_code(code: str) -> bool:
 
 
 def get_all_users() -> dict:
-    """모든 사용자 목록 (관리용)."""
+    """모든 사용자 목록 (관리용). 토큰·세션·초대코드는 응답에서 항상 제거 — 누출 방어."""
     users = _load_json(_USERS_FILE)
     if not isinstance(users, dict):
         return {}
-    # 토큰 해시는 제거
-    return {uid: {k: v for k, v in u.items() if k != "token"} for uid, u in users.items()}
+    # 민감 필드 차단: token(legacy), tokens(배열), invite_code, granted/revoked_caps 도 raw 노출 X
+    SENSITIVE = {"token", "tokens", "invite_code"}
+    return {
+        uid: {k: v for k, v in u.items() if k not in SENSITIVE}
+        for uid, u in users.items()
+    }
 
 
 # ── 초기 오너 설정 ────────────────────────────────────

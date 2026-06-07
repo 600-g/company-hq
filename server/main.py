@@ -420,7 +420,7 @@ async def _shutdown_cleanup():
 async def add_team(body: dict, request: Request):
     """신규 팀 추가: GitHub 레포 생성 + 로컬 클론 + CLAUDE.md + 시스템프롬프트 자동 등록.
 
-    🔐 권한: admin 이상 (level≥4). 친구 게스트가 GitHub 레포를 함부로 만들면 안 됨.
+    🔐 권한: admin 이상 (level≥4). 사용자 게스트가 GitHub 레포를 함부로 만들면 안 됨.
     GitHub 토큰은 .env 의 OWNER GITHUB_TOKEN 사용 → guest/member 차단.
 
     [안정화 2026-05-08] 4단계 트랜잭션화:
@@ -1558,7 +1558,7 @@ async def ws_chat(ws: WebSocket, team_id: str, session_id: str | None = None, to
     🔐 토큰 인증: ?token=xxx 으로 토큰 전달. 유효하지 않으면 즉시 close.
     레거시 호환: token 미전달 시에도 일단 accept 후 첫 메시지로 토큰 받기 가능.
     """
-    # 토큰 검증 (쿼리 우선) — 친구 베타 단계 보안 게이트
+    # 토큰 검증 (쿼리 우선) — 사용자 베타 단계 보안 게이트
     auth_user = verify_token(token) if token else None
     if not auth_user:
         await ws.accept()

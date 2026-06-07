@@ -81,13 +81,13 @@ async def auth_create_code(body: dict, request: Request):
     """
     user = _auth(request, body, min_level=1)
     if not has_capability(user, "invite_users"):
-        return {"ok": False, "error": "친구 초대 권한이 없어요 (invite_users 체크 필요)."}
+        return {"ok": False, "error": "사용자 초대 권한이 없어요 (invite_users 체크 필요)."}
     role = body.get("role", "member")
-    max_uses = body.get("max_uses", 1)
     if role not in ROLES:
         return {"ok": False, "error": f"존재하지 않는 역할: {role}"}
     extra_caps = [c for c in (body.get("capabilities") or []) if c in CAPABILITIES]
-    code = create_invite_code(role=role, created_by=user["nickname"], max_uses=max_uses)
+    # 1 코드 = 1 계정. 사용 후 자동 소진. 추후 계정 단위 권한 재발급으로 운영.
+    code = create_invite_code(role=role, created_by=user["nickname"], max_uses=1)
     # 코드에 capabilities 추가 (register_user 에서 적용)
     if extra_caps:
         try:
@@ -100,7 +100,7 @@ async def auth_create_code(body: dict, request: Request):
             _save_json(_CODES_FILE, codes)
         except Exception:
             pass
-    return {"ok": True, "code": code, "role": role, "max_uses": max_uses, "extra_caps": extra_caps}
+    return {"ok": True, "code": code, "role": role, "extra_caps": extra_caps}
 
 
 @router.get("/codes")
@@ -200,6 +200,7 @@ async def auth_me_setup(request: Request):
     user = _auth(request, body=None, min_level=1)
     status = get_user_keys_status(user["user_id"])
     role_label = ROLES.get(user["role"], {}).get("label", user["role"])
+    user_caps = user.get("capabilities") or []
 
     guides = [
         {
@@ -210,7 +211,7 @@ async def auth_me_setup(request: Request):
             "required": False,
             "why": (
                 "Google 의 무료 LLM. 두근컴퍼니가 이미 공용 키로 무료 LLM(분류·요약·대화) 제공 중이라 "
-                "친구는 안 넣어도 일단 작동해요. 본인 할당량 따로 쓰고 싶거나, 트래픽 많을 때 권장."
+                "사용자는 안 넣어도 일단 작동해요. 본인 할당량 따로 쓰고 싶거나, 트래픽 많을 때 권장."
             ),
             "where": "https://aistudio.google.com/app/apikey",
             "signup_steps": [
@@ -307,12 +308,13 @@ async def auth_me_setup(request: Request):
             "role_label": role_label,
         },
         "permissions": user.get("permissions") or ROLES.get(user["role"], {}),
+        "capabilities": user_caps,
         "keys_status": status,
         "guides": guides,
         "next_steps": [
             "왼쪽 사이드바 [+ 에이전트] 를 눌러 본인 첫 에이전트를 만들어보세요. '⚡빠르게 만들기' 모드는 API 키 0개로도 됩니다.",
             "에이전트 만든 후 우클릭 → ⚙ 설정 에서 AI 모델 (Gemini 무료 ↔ Claude 유료) 바꿀 수 있어요.",
-            "다른 사람의 에이전트(이두근의 두근/CPO 등)는 대화는 가능, 설정 변경·삭제는 불가능.",
+            "다른 사용자의 에이전트는 대화는 가능, 설정 변경·삭제는 불가능.",
         ],
     }
 

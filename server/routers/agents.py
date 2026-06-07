@@ -57,7 +57,7 @@ VALID_MODELS = {
 async def set_agent_model(team_id: str, body: dict, request: Request):
     """팀 AI 모델 변경. Claude: haiku|sonnet|opus / 무료: gemini_flash|gemma_main|gemma_e4b.
 
-    🔐 권한: 본인 소유 에이전트만 + owner/admin 예외. 친구가 두근/매매봇 모델을 함부로
+    🔐 권한: 본인 소유 에이전트만 + owner/admin 예외. 사용자가 두근/매매봇 모델을 함부로
     Opus 로 바꿔서 토큰 폭탄 못 함.
     """
     # 인증 먼저 (team 존재 여부 누설 방지)

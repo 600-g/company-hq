@@ -120,7 +120,7 @@ async def get_project_types():
 async def update_team_order(team_id: str, body: dict, request: Request):
     """단일 팀의 order(순서)와 layer(층) 변경. pinned 팀은 변경 불가.
 
-    🔐 권한: owner/admin 만 (전체 사이드바 순서에 영향). 친구가 본인 에이전트 위치는
+    🔐 권한: owner/admin 만 (전체 사이드바 순서에 영향). 사용자가 본인 에이전트 위치는
     layoutStore 의 핀(즐겨찾기) 으로 조정 가능.
     """
     _require_cap(request, body, "edit_scene")
@@ -214,7 +214,7 @@ async def get_team_positions():
 async def update_team_positions(body: dict, request: Request):
     """팀 위치 저장 — 프론트 드래그 후 호출.
 
-    🔐 권한: owner/admin 만. 캐릭터 위치는 전체 씬에 영향이라 친구는 변경 불가.
+    🔐 권한: owner/admin 만. 캐릭터 위치는 전체 씬에 영향이라 사용자는 변경 불가.
     """
     _require_cap(request, body, "edit_scene")
     import main as _main
@@ -392,7 +392,7 @@ async def get_team_activity(team_id: str):
 async def update_floor_layout(body: dict, request: Request):
     """층 배치 업데이트 — 프론트에서 팀 드래그 후 저장 시 호출.
 
-    🔐 권한: owner/admin 만. 층 배치는 모든 사용자 공유 → 친구는 변경 불가.
+    🔐 권한: owner/admin 만. 층 배치는 모든 사용자 공유 → 사용자는 변경 불가.
     """
     _require_cap(request, body, "edit_scene")
     import main as _main

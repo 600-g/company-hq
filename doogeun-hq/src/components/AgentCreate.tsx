@@ -386,15 +386,23 @@ export default function AgentCreate({ onDone }: Props) {
   return (
     <div className="p-5 space-y-4">
       {/* 능력 안내 배너 — 비개발자가 무엇을 추가하면 무엇이 풀리는지 한눈에 */}
-      <div className="rounded-lg border border-sky-400/30 bg-sky-500/5 p-3 text-[11px] text-gray-300 space-y-1.5">
-        <div className="font-bold text-sky-300 flex items-center gap-1">
+      <div className="rounded-lg border border-sky-400/40 bg-sky-500/10 p-3 text-[12px] space-y-2">
+        <div className="font-bold text-sky-200 flex items-center gap-1.5 text-[13px]">
           🔓 내 권한 / 연동 현황
         </div>
         <div className="flex flex-wrap gap-2 items-center">
-          <span className={`px-1.5 py-0.5 rounded text-[10px] ${canCreateFull ? "bg-emerald-500/15 text-emerald-300" : "bg-gray-700/40 text-gray-400"}`}>
+          <span className={`px-2 py-1 rounded font-bold text-[11px] border ${
+            canCreateFull
+              ? "bg-emerald-500/25 text-emerald-100 border-emerald-400/60"
+              : "bg-gray-800 text-gray-300 border-gray-600"
+          }`}>
             {canCreateFull ? "✅" : "🔒"} GitHub 자동 레포
           </span>
-          <span className={`px-1.5 py-0.5 rounded text-[10px] ${canAutoDomain ? "bg-emerald-500/15 text-emerald-300" : "bg-gray-700/40 text-gray-400"}`}>
+          <span className={`px-2 py-1 rounded font-bold text-[11px] border ${
+            canAutoDomain
+              ? "bg-emerald-500/25 text-emerald-100 border-emerald-400/60"
+              : "bg-gray-800 text-gray-300 border-gray-600"
+          }`}>
             {canAutoDomain ? "✅" : "🔒"} 도메인 자동 발급
           </span>
           <InfoTip
@@ -405,10 +413,10 @@ export default function AgentCreate({ onDone }: Props) {
                 "GitHub 토큰 → 본인 GitHub 계정에 레포 자동 생성. " +
                 "Cloudflare 토큰+도메인 → 본인 도메인에 서브도메인 자동 발급.",
             }}
-            size={12}
+            size={14}
           />
           {!canCreateFull && (
-            <a href="/settings" className="ml-auto text-sky-400 hover:text-sky-300 underline">
+            <a href="/settings" className="ml-auto text-sky-300 hover:text-sky-200 underline font-bold">
               → 키 추가하러 가기
             </a>
           )}

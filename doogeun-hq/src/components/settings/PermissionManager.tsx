@@ -41,7 +41,7 @@ interface InviteCode {
 const ROLE_PRESETS = [
   { value: "guest", label: "게스트 (구경)" },
   { value: "member", label: "사원 (본인 에이전트)" },
-  { value: "manager", label: "매니저 + 친구초대" },
+  { value: "manager", label: "매니저 + 사용자초대" },
   { value: "admin", label: "관리자 (거의 전부)" },
 ];
 
@@ -68,23 +68,14 @@ export default function PermissionManager() {
       }
       if (meR.ok) {
         const me = await meR.json();
-        const myList = (me?.permissions && me?.user?.role && me?.guides) || null;
-        // me/setup 응답 중 user.role 와 permissions 로 권한 추측
-        const myRole = me?.user?.role || "guest";
-        const myCapsList: string[] = me?.user_capabilities || [];
-        // me/setup 이 capabilities 안 줄 수도 있어서, /capabilities + role_defaults 로 추론
+        if (me?.ok) {
+          const myCapList: string[] = me.capabilities || [];
+          setCanManage(myCapList.includes("manage_users"));
+          setCanInvite(myCapList.includes("invite_users"));
+        }
       }
-      // 본인 capability 별도 호출
-      const myR = await authFetch("/api/auth/verify", {
-        method: "POST",
-        json: { token: localStorage.getItem("doogeun-hq-auth") ? JSON.parse(localStorage.getItem("doogeun-hq-auth") || "{}")?.state?.token : "" },
-      });
-      if (myR.ok) {
-        const my = await myR.json();
-        const myCapList: string[] = my.capabilities || [];
-        setCanManage(myCapList.includes("manage_users"));
-        setCanInvite(myCapList.includes("invite_users"));
-      }
+    } catch {
+      /* ignore — finally 가 로딩 끝냄 */
     } finally {
       setLoading(false);
     }
@@ -127,7 +118,7 @@ export default function PermissionManager() {
           권한 관리 <InfoTip inline={{ title: "권한 관리", body: "사용자별 권한 체크박스 토글 + 초대코드 발급. manage_users 또는 invite_users 권한 보유자만 보임." }} />
         </CardTitle>
         <CardDescription>
-          역할 기본 위에 체크박스로 개별 권한을 켜고 끌 수 있어요. 친구 초대도 여기서.
+          역할 기본 위에 체크박스로 개별 권한을 켜고 끌 수 있어요. 사용자 초대도 여기서.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -268,7 +259,6 @@ function UsersPanel({ users, caps, onChanged }: { users: UserRow[]; caps: CapsRe
 function InvitePanel({ codes, caps, onChanged }: { codes: InviteCode[]; caps: CapsResponse; onChanged: () => void }) {
   const [role, setRole] = useState<string>("member");
   const [extraCaps, setExtraCaps] = useState<Set<string>>(new Set());
-  const [maxUses, setMaxUses] = useState(1);
   const [creating, setCreating] = useState(false);
   const [justCreated, setJustCreated] = useState<{ code: string; role: string; extras: string[] } | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
@@ -283,7 +273,7 @@ function InvitePanel({ codes, caps, onChanged }: { codes: InviteCode[]; caps: Ca
     try {
       const res = await authFetch("/api/auth/create-code", {
         method: "POST",
-        json: { role, max_uses: maxUses, capabilities: Array.from(extraCaps) },
+        json: { role, capabilities: Array.from(extraCaps) },
       });
       const d = await res.json();
       if (!res.ok || !d.ok) {
@@ -346,7 +336,7 @@ function InvitePanel({ codes, caps, onChanged }: { codes: InviteCode[]; caps: Ca
           <div>
             <div className="text-[12px] text-gray-400 mb-1.5 flex items-center gap-1">
               추가로 줄 권한 (선택)
-              <InfoTip inline={{ title: "추가 권한", body: "이 역할 기본에는 없지만 이 친구에겐 따로 부여하고 싶은 권한." }} />
+              <InfoTip inline={{ title: "추가 권한", body: "이 역할 기본에는 없지만 이 사용자에겐 따로 부여하고 싶은 권한." }} />
             </div>
             <div className="grid grid-cols-1 gap-1">
               {extraAvailable.map(([key, info]) => {
@@ -375,13 +365,8 @@ function InvitePanel({ codes, caps, onChanged }: { codes: InviteCode[]; caps: Ca
           </div>
         )}
 
-        <div className="flex items-center gap-2">
-          <span className="text-[12px] text-gray-400">사용 횟수:</span>
-          {[1, 3, 5, 10].map((n) => (
-            <button key={n} onClick={() => setMaxUses(n)} className={`px-2 py-0.5 rounded text-[11px] border ${maxUses === n ? "border-sky-400/60 bg-sky-400/10 text-sky-300" : "border-gray-800 text-gray-400"}`}>
-              {n}회
-            </button>
-          ))}
+        <div className="text-[11px] text-gray-500">
+          ⓘ 1코드 = 1계정. 사용 후 자동 만료. 더 주려면 코드 재발급.
         </div>
 
         <Button onClick={create} disabled={creating} className="w-full">
@@ -390,7 +375,7 @@ function InvitePanel({ codes, caps, onChanged }: { codes: InviteCode[]; caps: Ca
 
         {justCreated && (
           <div className="rounded-md border border-emerald-400/40 bg-emerald-500/10 p-3 space-y-2">
-            <div className="text-[11px] text-emerald-300">✅ 생성 완료 — 친구한테 이것만 전달:</div>
+            <div className="text-[11px] text-emerald-300">✅ 생성 완료 — 사용자한테 이것만 전달:</div>
             <div className="font-mono text-[18px] tracking-widest text-emerald-200 select-all">{justCreated.code}</div>
             <div className="flex flex-wrap gap-1.5">
               <button onClick={() => copyCode(justCreated.code)} className="text-[11px] px-2 py-1 rounded bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200">

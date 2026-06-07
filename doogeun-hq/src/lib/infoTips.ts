@@ -1,6 +1,6 @@
 /** 어려운 용어 해설 사전.
  *
- * 비개발자(친구)가 처음 들어와서 막혀하는 용어 + 매번 설명 반복하기 싫은 용어 모음.
+ * 비개발자(사용자)가 처음 들어와서 막혀하는 용어 + 매번 설명 반복하기 싫은 용어 모음.
  * <InfoTip term="..." /> 컴포넌트가 이 사전에서 자동 조회.
  */
 
@@ -16,7 +16,7 @@ export const INFO_TIPS: Record<string, InfoTipEntry> = {
     title: "초대코드",
     body:
       "8자리 비밀번호. 1번만 쓸 수 있고 다 쓰면 자동 비활성. " +
-      "오너/관리자가 만들어서 친구한테 전달 → 친구는 닉네임 + 이 코드로 가입. " +
+      "오너/관리자가 만들어서 사용자한테 전달 → 사용자는 닉네임 + 이 코드로 가입. " +
       "역할(권한)이 코드별로 정해져 있어서, 게스트용 코드는 게스트로만 들어옴.",
   },
   role: {
@@ -24,7 +24,7 @@ export const INFO_TIPS: Record<string, InfoTipEntry> = {
     body:
       "오너 > 관리자 > 매니저 > 사원 > 게스트 5단계. " +
       "위로 갈수록 할 수 있는 게 많아져요. " +
-      "예) 친구 초대코드 만들기 = 관리자 이상, GitHub 자동 레포 생성 = 관리자 이상, " +
+      "예) 사용자 초대코드 만들기 = 관리자 이상, GitHub 자동 레포 생성 = 관리자 이상, " +
       "본인 에이전트 만들기 = 사원 이상, 채팅만 = 게스트.",
   },
   agent: {
@@ -39,7 +39,7 @@ export const INFO_TIPS: Record<string, InfoTipEntry> = {
     body:
       "GitHub 레포 없이 시스템 프롬프트만 가지는 빠른 에이전트. " +
       "코딩 자동화는 안 되지만, 채팅·글쓰기·아이디어·번역 같은 일은 다 잘 함. " +
-      "친구가 첫 에이전트 만들 때 추천 — API 키 0개로도 만들 수 있어요.",
+      "사용자가 첫 에이전트 만들 때 추천 — API 키 0개로도 만들 수 있어요.",
   },
   full_agent: {
     title: "풀 에이전트 (GitHub 자동화)",
@@ -86,7 +86,7 @@ export const INFO_TIPS: Record<string, InfoTipEntry> = {
     title: "Gemini (Google AI)",
     body:
       "구글이 만든 무료 LLM. 분15회·일1500회 무료. 두근컴퍼니가 이미 공용 키를 갖고 있어서 " +
-      "친구는 안 넣어도 일단 자동 사용 가능. 본인 할당량 따로 쓰고 싶으면 추가.",
+      "사용자는 안 넣어도 일단 자동 사용 가능. 본인 할당량 따로 쓰고 싶으면 추가.",
     link: { url: "https://aistudio.google.com/app/apikey", label: "Gemini 키 받기 (무료)" },
   },
   gemma: {
@@ -99,7 +99,7 @@ export const INFO_TIPS: Record<string, InfoTipEntry> = {
     title: "Anthropic / Claude",
     body:
       "Claude(채팅 잘하는 똑똑한 AI) 만든 회사. 유료지만 코딩·복잡한 추론 최고. " +
-      "두근컴퍼니는 이두근의 Max 플랜으로 친구들도 공유 사용 — 친구는 안 넣어도 됨. " +
+      "두근컴퍼니는 이두근의 Max 플랜으로 사용자들도 공유 사용 — 사용자는 안 넣어도 됨. " +
       "본인 키 따로 쓰고 싶을 때만 추가.",
     link: { url: "https://console.anthropic.com/settings/keys", label: "Anthropic 키 (유료)" },
   },
@@ -130,7 +130,7 @@ export const INFO_TIPS: Record<string, InfoTipEntry> = {
   max_uses: {
     title: "사용 횟수",
     body:
-      "이 초대코드를 몇 명까지 쓸 수 있는지. 1 = 친구 한 명만, 5 = 다섯 명. " +
+      "이 초대코드를 몇 명까지 쓸 수 있는지. 1 = 사용자 한 명만, 5 = 다섯 명. " +
       "다 쓰면 자동 비활성. 같은 코드를 단톡방에 뿌리고 싶으면 횟수 늘리면 됨.",
   },
 };

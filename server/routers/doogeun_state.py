@@ -148,7 +148,7 @@ async def update_doogeun_state(body: dict, request: Request) -> dict:
     🔐 권한 구조:
     - admin/owner: 전체 상태 (씬·층 배치·캐릭터 sprite·가구) 자유롭게 변경 가능.
     - member/guest: 본인 소유 에이전트의 ephemeral 필드만 PUT 가능 (남의 에이전트·층 배치·sprite 변경 거부).
-      → 친구가 본인 채팅창 정리는 가능, 이두근 두근/매매봇 위치는 절대 못 만짐.
+      → 사용자가 본인 채팅창 정리는 가능, 이두근 두근/매매봇 위치는 절대 못 만짐.
     """
     from fastapi import HTTPException
     from auth import (

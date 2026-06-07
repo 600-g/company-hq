@@ -52,7 +52,7 @@ async def get_office_layout() -> dict:
 async def update_office_layout(body: dict, request: Request) -> dict:
     """사무실 가구 배치 저장 — 에디터에서 placement 변경 시 호출.
 
-    🔐 권한: edit_furniture capability (기본 owner/admin, 친구한테 따로 부여 가능).
+    🔐 권한: edit_furniture capability (기본 owner/admin, 사용자한테 따로 부여 가능).
     body: {"layout": {"version": 2, "items": [...], "removed": [...]}}
     """
     from fastapi import HTTPException

@@ -40,15 +40,26 @@ export default function MyAccountGuide() {
   const [savedFlash, setSavedFlash] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
+  const [loadError, setLoadError] = useState<string | null>(null);
+
   const refresh = useCallback(async () => {
     try {
       const res = await authFetch("/api/auth/me/setup");
       if (res.ok) {
         const d = await res.json();
-        if (d.ok) setData(d);
+        if (d.ok) {
+          setData(d);
+          setLoadError(null);
+          return;
+        }
+        setLoadError(d.detail || d.error || "응답 형식 오류");
+      } else if (res.status === 401) {
+        setLoadError("로그인이 만료됐어요. 다시 로그인해주세요.");
+      } else {
+        setLoadError(`불러오기 실패 (HTTP ${res.status})`);
       }
-    } catch {
-      /* ignore */
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : "네트워크 오류");
     }
   }, []);
 
@@ -74,8 +85,22 @@ export default function MyAccountGuide() {
   if (!data) {
     return (
       <Card>
-        <CardContent className="py-6 text-center text-[12px] text-gray-500">
-          내 정보 불러오는 중...
+        <CardContent className="py-6 text-center text-[12px] text-gray-500 space-y-2">
+          {loadError ? (
+            <>
+              <div className="text-red-400">⚠️ {loadError}</div>
+              <button onClick={refresh} className="text-sky-400 hover:text-sky-300 underline">
+                다시 시도
+              </button>
+              {loadError.includes("로그인") && (
+                <a href="/auth" className="block text-sky-400 hover:text-sky-300 underline">
+                  로그인 페이지로 →
+                </a>
+              )}
+            </>
+          ) : (
+            "내 정보 불러오는 중..."
+          )}
         </CardContent>
       </Card>
     );
@@ -96,7 +121,7 @@ export default function MyAccountGuide() {
         <div className="rounded-lg border border-sky-400/30 bg-sky-500/5 p-3 text-[12px] text-gray-300">
           <div className="font-bold text-sky-300 mb-1.5">💡 가입 안 해도 일단 됩니다</div>
           <div>
-            두근컴퍼니가 이미 공용 <InfoTip term="gemini" label="Gemini" /> 키를 갖고 있어서, 친구는 아무것도 안 넣어도
+            두근컴퍼니가 이미 공용 <InfoTip term="gemini" label="Gemini" /> 키를 갖고 있어서, 사용자는 아무것도 안 넣어도
             자동으로 무료 LLM 사용 가능. 아래 키들은 <strong>본인 할당량을 따로 쓰고 싶을 때만</strong> 추가하면 됩니다.
           </div>
         </div>
