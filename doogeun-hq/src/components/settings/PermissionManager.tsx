@@ -134,12 +134,12 @@ export default function PermissionManager() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
-        {/* 탭 */}
+        {/* 탭 — font-bold 항상 적용 (폰트 굵기 변화로 인한 너비 시프트 방지) */}
         <div className="flex gap-1 p-1 bg-gray-900/60 rounded border border-gray-800">
           {canManage && (
             <button
               onClick={() => setTab("users")}
-              className={`flex-1 text-[12px] py-1.5 rounded transition-colors ${tab === "users" ? "bg-sky-400/15 text-sky-300 font-bold" : "text-gray-400 hover:text-gray-200"}`}
+              className={`flex-1 text-[12px] py-1.5 rounded font-bold transition-colors ${tab === "users" ? "bg-sky-400/15 text-sky-300" : "text-gray-400 hover:text-gray-200"}`}
             >
               👥 사용자 권한
             </button>
@@ -147,19 +147,22 @@ export default function PermissionManager() {
           {canInvite && (
             <button
               onClick={() => setTab("invite")}
-              className={`flex-1 text-[12px] py-1.5 rounded transition-colors ${tab === "invite" ? "bg-sky-400/15 text-sky-300 font-bold" : "text-gray-400 hover:text-gray-200"}`}
+              className={`flex-1 text-[12px] py-1.5 rounded font-bold transition-colors ${tab === "invite" ? "bg-sky-400/15 text-sky-300" : "text-gray-400 hover:text-gray-200"}`}
             >
               🔑 초대 코드
             </button>
           )}
         </div>
 
-        {tab === "users" && canManage && (
-          <UsersPanel users={users} caps={caps} onChanged={() => reloadLists()} />
-        )}
-        {tab === "invite" && canInvite && (
-          <InvitePanel codes={codes} caps={caps} onChanged={() => reloadLists()} />
-        )}
+        {/* 탭 컨텐츠 영역 — min-height 로 콘텐츠 길이 차이로 인한 페이지 시프트 방지 */}
+        <div className="min-h-[420px]" style={{ scrollbarGutter: "stable" }}>
+          {tab === "users" && canManage && (
+            <UsersPanel users={users} caps={caps} onChanged={() => reloadLists()} />
+          )}
+          {tab === "invite" && canInvite && (
+            <InvitePanel codes={codes} caps={caps} onChanged={() => reloadLists()} />
+          )}
+        </div>
       </CardContent>
     </Card>
   );
@@ -210,6 +213,18 @@ function UsersPanel({ users, caps, onChanged }: { users: UserRow[]; caps: CapsRe
     } finally {
       setSavingId(null);
     }
+  };
+
+  const deleteUser = async (u: UserRow) => {
+    if (!confirm(`정말 "${u.nickname}" 계정을 완전 삭제할까요?\n\n· 해당 사용자가 만든 에이전트는 자동 삭제되지 않습니다\n· 본인이 발급받았던 초대코드도 함께 만료\n· 복구 불가`)) return;
+    const res = await authFetch(`/api/auth/users/${u.user_id}`, { method: "DELETE" });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok || !d.ok) {
+      alert(d.detail || d.error || "삭제 실패");
+      return;
+    }
+    setExpanded(null);
+    onChanged();
   };
 
   if (users.length === 0) {
@@ -267,24 +282,30 @@ function UsersPanel({ users, caps, onChanged }: { users: UserRow[]; caps: CapsRe
             {isExp && (
               <div className="p-3 pt-0 space-y-2">
                 <div className="text-[11px] text-gray-400">체크하면 부여, 풀면 박탈. 저장 누를 때만 반영.</div>
-                <div className="grid grid-cols-1 gap-1.5">
+                <div className="text-[11px] text-gray-400 mb-1.5">
+                  🔒 잠금된 건 역할 기본 권한 (변경 불가). 잠금 해제된 건 추가/박탈 가능.
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                   {Object.entries(caps.capabilities).map(([key, info]) => {
-                    const checked = current.has(key);
                     const inDefault = u.role_defaults.includes(key);
+                    const checked = inDefault || current.has(key);
                     return (
-                      <label key={key} className={`flex items-start gap-2 p-2 rounded border cursor-pointer transition-colors ${
-                        checked ? "border-emerald-400/30 bg-emerald-500/5" : "border-gray-800 hover:border-gray-700"
+                      <label key={key} className={`flex items-start gap-2 p-2 rounded border transition-colors ${
+                        inDefault ? "border-sky-400/30 bg-sky-500/5 cursor-default" :
+                        checked ? "border-emerald-400/30 bg-emerald-500/5 cursor-pointer" :
+                        "border-gray-800 cursor-pointer hover:border-gray-700"
                       }`}>
                         <input
                           type="checkbox"
                           checked={checked}
-                          onChange={() => toggle(u.user_id, key)}
+                          disabled={inDefault}
+                          onChange={() => { if (!inDefault) toggle(u.user_id, key); }}
                           className="mt-0.5"
                         />
                         <div className="flex-1 min-w-0">
                           <div className="text-[12px] font-bold text-gray-200 flex items-center gap-1.5">
                             {info.label}
-                            {inDefault && <span className="px-1 py-0 rounded bg-sky-500/15 text-[9px] text-sky-300">기본</span>}
+                            {inDefault && <span className="text-[9px] text-sky-300">🔒 기본</span>}
                           </div>
                           <div className="text-[11px] text-gray-500">{info.info}</div>
                         </div>
@@ -297,6 +318,14 @@ function UsersPanel({ users, caps, onChanged }: { users: UserRow[]; caps: CapsRe
                     {savingId === u.user_id ? "저장 중..." : "💾 저장"}
                   </Button>
                   <Button size="sm" variant="ghost" onClick={() => setExpanded(null)}>취소</Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => deleteUser(u)}
+                    className="ml-auto text-red-300 hover:text-red-200 hover:bg-red-500/10"
+                  >
+                    🗑️ 계정 삭제
+                  </Button>
                 </div>
               </div>
             )}
@@ -383,39 +412,53 @@ function InvitePanel({ codes, caps, onChanged }: { codes: InviteCode[]; caps: Ca
           </div>
         </div>
 
-        {/* 역할 기본 위에 추가 권한 체크 */}
-        {extraAvailable.length > 0 && (
-          <div>
-            <div className="text-[12px] text-gray-400 mb-1.5 flex items-center gap-1">
-              추가로 줄 권한 (선택)
-              <InfoTip inline={{ title: "추가 권한", body: "이 역할 기본에는 없지만 이 사용자에겐 따로 부여하고 싶은 권한." }} />
-            </div>
-            <div className="grid grid-cols-1 gap-1">
-              {extraAvailable.map(([key, info]) => {
-                const checked = extraCaps.has(key);
-                return (
-                  <label key={key} className={`flex items-start gap-2 p-2 rounded border cursor-pointer text-[11px] transition-colors ${checked ? "border-emerald-400/30 bg-emerald-500/5" : "border-gray-800"}`}>
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={() => {
-                        const s = new Set(extraCaps);
-                        if (s.has(key)) s.delete(key);
-                        else s.add(key);
-                        setExtraCaps(s);
-                      }}
-                      className="mt-0.5"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="font-bold text-gray-200">{info.label}</div>
-                      <div className="text-gray-500 text-[10px]">{info.info}</div>
-                    </div>
-                  </label>
-                );
-              })}
-            </div>
+        {/* 권한 목록 — 전체 노출, 기본은 잠금 (체크된 채로 토글 불가), 추가는 자유 */}
+        <div>
+          <div className="text-[12px] text-gray-400 mb-1.5 flex items-center gap-1">
+            권한 목록 (체크된 건 자동 부여)
+            <InfoTip inline={{
+              title: "권한 부여",
+              body: "🔒 잠금된 체크는 역할 기본 — 이 역할에는 항상 포함. 잠금 해제된 건 추가로 줄 권한 — 체크하면 함께 부여."
+            }} />
           </div>
-        )}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
+            {Object.entries(caps.capabilities).map(([key, info]) => {
+              const isDefault = roleDefaults.has(key);
+              const checked = isDefault || extraCaps.has(key);
+              return (
+                <label
+                  key={key}
+                  className={`flex items-start gap-2 p-2 rounded border text-[11px] transition-colors ${
+                    isDefault ? "border-sky-400/30 bg-sky-500/5 cursor-default" :
+                    checked ? "border-emerald-400/30 bg-emerald-500/5 cursor-pointer" :
+                    "border-gray-800 cursor-pointer hover:border-gray-700"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    disabled={isDefault}
+                    onChange={() => {
+                      if (isDefault) return;
+                      const s = new Set(extraCaps);
+                      if (s.has(key)) s.delete(key);
+                      else s.add(key);
+                      setExtraCaps(s);
+                    }}
+                    className="mt-0.5"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="font-bold text-gray-200 flex items-center gap-1">
+                      {info.label}
+                      {isDefault && <span className="text-[9px] text-sky-300">🔒 기본</span>}
+                    </div>
+                    <div className="text-gray-500 text-[10px]">{info.info}</div>
+                  </div>
+                </label>
+              );
+            })}
+          </div>
+        </div>
 
         <div className="text-[11px] text-gray-500">
           ⓘ 1코드 = 1계정. 사용 후 자동 만료. 더 주려면 코드 재발급.

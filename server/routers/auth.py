@@ -162,6 +162,41 @@ async def auth_users_full(request: Request):
     return {"ok": True, "users": result, "all_capabilities": CAPABILITIES}
 
 
+@router.delete("/users/{user_id}")
+async def auth_delete_user(user_id: str, request: Request):
+    """사용자 계정 완전 삭제.
+
+    🔐 manage_users 필요. 오너 본인 + 자기 자신 셀프 삭제 차단.
+    """
+    user = _auth(request, body=None, min_level=1)
+    if not has_capability(user, "manage_users"):
+        raise HTTPException(status_code=403, detail="권한 변경 권한이 없어요 (manage_users 필요).")
+    if user["user_id"] == user_id:
+        raise HTTPException(status_code=400, detail="본인 계정은 삭제할 수 없어요.")
+    target = get_user_with_capabilities(user_id)
+    if not target:
+        return {"ok": False, "error": "사용자를 찾을 수 없음"}
+    if target["role"] == "owner":
+        raise HTTPException(status_code=400, detail="오너 계정은 삭제할 수 없어요.")
+    try:
+        from auth import _load_json, _save_json, _USERS_FILE
+        users = _load_json(_USERS_FILE)
+        if isinstance(users, dict) and user_id in users:
+            del users[user_id]
+            _save_json(_USERS_FILE, users)
+        # 사용자별 API 키 파일도 제거 (디스크 정리)
+        try:
+            from auth import _user_keys_path
+            p = _user_keys_path(user_id)
+            if p.exists():
+                p.unlink()
+        except Exception:
+            pass
+        return {"ok": True, "deleted": user_id, "nickname": target.get("nickname", "")}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 @router.put("/users/{user_id}/capabilities")
 async def auth_set_user_caps(user_id: str, body: dict, request: Request):
     """사용자 capabilities 일괄 설정 — 체크박스 UI 가 호출.
