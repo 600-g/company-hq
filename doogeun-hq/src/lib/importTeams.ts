@@ -71,8 +71,8 @@ export async function importTeamsFromServer(opts?: {
 
   const skipIds = new Set(["server-monitor"]);
   const fetchPrompts = opts?.fetchPrompts !== false;
-  const state = useAgentStore.getState();
-  const existing = new Map(state.agents.map((a) => [a.id, a]));
+  // existing 을 loop 시작 시 한 번만 만들면 useStateSync 의 applyRemote 가 동시에
+  // agents 를 채울 때 race condition 으로 중복 추가됨. 매 iteration 마다 fresh check.
   let added = 0, updated = 0, skipped = 0, promptsFetched = 0;
 
   for (const t of teams) {
@@ -98,7 +98,9 @@ export async function importTeamsFromServer(opts?: {
     }
 
     const isCpo = t.id.toLowerCase().includes("cpo") || (t.name || "").includes("관리자");
-    const cur = existing.get(t.id);
+    // 🛡 매 iteration 마다 fresh check — applyRemote 등이 동시에 setState 해서 이미 추가된 경우 중복 방지
+    const freshAgents = useAgentStore.getState().agents;
+    const cur = freshAgents.find((a) => a.id === t.id);
     if (cur) {
       const patch: Partial<typeof cur> = {
         name: t.name,
@@ -110,7 +112,7 @@ export async function importTeamsFromServer(opts?: {
       if (!cur.description && t.status) patch.description = t.status;
       // CPO 는 항상 1F 강제 (이전 잘못 저장된 값 보정)
       if (isCpo && cur.floor !== 1) patch.floor = 1;
-      state.updateAgent(t.id, patch);
+      useAgentStore.getState().updateAgent(t.id, patch);
       updated++;
     } else {
       const now = Date.now();

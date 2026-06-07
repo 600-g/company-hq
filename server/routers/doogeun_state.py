@@ -196,6 +196,16 @@ async def update_doogeun_state(body: dict, request: Request) -> dict:
     client_id = body.get("client_id") or ""
     if agents is None and layout is None:
         return {"ok": False, "error": "agents 또는 layout 필요"}
+    # 🛡 defensive dedupe — 클라가 race condition 으로 중복 전송해도 디스크 무결성 보장
+    if isinstance(agents, list):
+        seen_ids: set[str] = set()
+        deduped: list = []
+        for a in agents:
+            aid = a.get("id") if isinstance(a, dict) else None
+            if aid and aid not in seen_ids:
+                seen_ids.add(aid)
+                deduped.append(a)
+        agents = deduped
     prev = _load_doogeun_state()
 
     if not can_edit_scene:
