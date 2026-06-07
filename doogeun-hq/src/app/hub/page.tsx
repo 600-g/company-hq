@@ -12,6 +12,7 @@ import { useAgentStore, type Agent } from "@/stores/agentStore";
 import { useAuthStore } from "@/stores/authStore";
 import { useCapabilities } from "@/lib/useCapabilities";
 import { apiBase } from "@/lib/utils";
+import { authFetch } from "@/lib/api";
 import {
   X, Users, Bug, Cpu, Settings, LogOut, Send,
   MessagesSquare, Plus, Home as HomeIcon, RefreshCw, ChevronRight, ChevronLeft,
@@ -323,7 +324,7 @@ export default function HubPage() {
             setShowDeploy(true); // 배포 카드 자동 펼침
             // 300ms 후 배포 API 자동 호출
             setTimeout(() => {
-              fetch(`${apiBase()}/api/deploy/project/${selected.id}/github`, {
+              authFetch(`/api/deploy/project/${selected.id}/github`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ message: `auto: ${last.content.slice(0, 60).replace(/\n/g, " ")}` }),
@@ -766,7 +767,7 @@ export default function HubPage() {
                           // CPO 가 제안한 새 에이전트 채용 — generate-config로 시스템 프롬프트 생성 후 /api/teams/light 등록
                           try {
                             // 1) 시스템 프롬프트 자동 생성 (사용자 직접 만들기 플로우와 동일)
-                            const cfgRes = await fetch(`${apiBase()}/api/agents/generate-config`, {
+                            const cfgRes = await authFetch(`/api/agents/generate-config`, {
                               method: "POST",
                               headers: { "Content-Type": "application/json" },
                               body: JSON.stringify({
@@ -778,7 +779,7 @@ export default function HubPage() {
                             const systemPrompt = (cfg?.ok && cfg.system_prompt) ? cfg.system_prompt : `# ${proposal.name} (${proposal.role})\n\n## 역할\n${proposal.description}\n\n## 채용 사유\n${proposal.reason}`;
 
                             // 2) 서버 등록
-                            const regRes = await fetch(`${apiBase()}/api/teams/light`, {
+                            const regRes = await authFetch(`/api/teams/light`, {
                               method: "POST",
                               headers: { "Content-Type": "application/json" },
                               body: JSON.stringify({
@@ -812,7 +813,7 @@ export default function HubPage() {
                             try {
                               const allAgents = useAgentStore.getState().agents;
                               const allFloors = useLayoutStore.getState().floors;
-                              await fetch(`${apiBase()}/api/doogeun/state`, {
+                              await authFetch(`/api/doogeun/state`, {
                                 method: "PUT",
                                 headers: { "Content-Type": "application/json" },
                                 body: JSON.stringify({ agents: allAgents, layout: { floors: allFloors } }),

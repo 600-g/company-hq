@@ -41,6 +41,11 @@ export interface Agent {
   updatedAt: number;
   /** 활동 타임라인 (스펙 정리용) */
   activity: { ts: number; text: string }[];
+  /** 멀티유저 — 이 에이전트를 만든 사용자 id */
+  owner_id?: string;
+  owner_nickname?: string;
+  /** true 면 다른 사용자도 사이드바에 보임 (공개 에이전트) */
+  is_public?: boolean;
 }
 
 interface AgentState {

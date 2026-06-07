@@ -1,4 +1,5 @@
 "use client";
+import { authFetch } from "@/lib/api";
 
 /**
  * 외부 사이트 관리 — 두근컴퍼니가 만든 product 사이트들의 카드 대시보드.
@@ -53,17 +54,17 @@ export default function SitesModal({ onSelectAgent }: Props) {
     try {
       // CF 토큰 상태 — 가이드 표시 여부 결정
       try {
-        const tr = await fetch(`${apiBase()}/api/settings/tokens`);
+        const tr = await authFetch(`/api/settings/tokens`);
         const td = await tr.json();
         setCfTokenOk(!!td?.tokens?.CF_TOKEN?.configured);
       } catch { setCfTokenOk(null); }
 
-      const r = await fetch(`${apiBase()}/api/teams/info`);
+      const r = await authFetch(`/api/teams/info`);
       const data = await r.json();
       if (!Array.isArray(data)) throw new Error("응답 형식 오류");
       // 외부 사이트 후보: product / dev category 중 자체 repo 가 있는 팀
       // (system 팀 제외, light 에이전트 제외)
-      const r2 = await fetch(`${apiBase()}/api/teams`);
+      const r2 = await authFetch(`/api/teams`);
       const teams = await r2.json();
       const fullList = Array.isArray(teams) ? teams : [];
       const sites: SiteRow[] = fullList
@@ -112,7 +113,7 @@ export default function SitesModal({ onSelectAgent }: Props) {
     setBusyId(id);
     setResultMsg(null);
     try {
-      const r = await fetch(`${apiBase()}/api/teams/${id}/setup-subdomain`, {
+      const r = await authFetch(`/api/teams/${id}/setup-subdomain`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ subdomain: clean }),

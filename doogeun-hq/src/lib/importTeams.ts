@@ -1,6 +1,7 @@
 "use client";
 
 import { apiBase } from "@/lib/utils";
+import { authFetch } from "@/lib/api";
 import { useAgentStore } from "@/stores/agentStore";
 
 interface ServerTeam {
@@ -33,7 +34,7 @@ export interface ImportResult {
 /** 서버 쪽 팀 삭제 (GitHub 레포 유지 옵션). teams.json + team_prompts.json 에서 제거 */
 export async function deleteTeamOnServer(teamId: string, deleteRepo: boolean = false): Promise<{ ok: boolean; error?: string }> {
   try {
-    const res = await fetch(`${apiBase()}/api/teams/${teamId}?delete_repo=${deleteRepo ? "1" : "0"}`, { method: "DELETE" });
+    const res = await authFetch(`/api/teams/${teamId}?delete_repo=${deleteRepo ? "1" : "0"}`, { method: "DELETE" });
     const j = await res.json();
     return j;
   } catch (e) {
@@ -44,7 +45,7 @@ export async function deleteTeamOnServer(teamId: string, deleteRepo: boolean = f
 /** 팀 MD 프롬프트를 서버에 저장 (지속 동기화 — CLAUDE.md / team_prompts.json) */
 export async function saveTeamPromptToServer(teamId: string, systemPromptMd: string): Promise<{ ok: boolean; error?: string }> {
   try {
-    const res = await fetch(`${apiBase()}/api/teams/${teamId}/guide`, {
+    const res = await authFetch(`/api/teams/${teamId}/guide`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ system_prompt: systemPromptMd }),
@@ -64,7 +65,7 @@ export async function importTeamsFromServer(opts?: {
   includeSystemTeams?: boolean;
   fetchPrompts?: boolean;  // true (기본) — 각 팀별 /guide 호출
 }): Promise<ImportResult> {
-  const res = await fetch(`${apiBase()}/api/teams`);
+  const res = await authFetch(`/api/teams`);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const teams: ServerTeam[] = await res.json();
 
@@ -81,7 +82,7 @@ export async function importTeamsFromServer(opts?: {
     let systemPromptMd = "";
     if (fetchPrompts) {
       try {
-        const gr = await fetch(`${apiBase()}/api/teams/${t.id}/guide`);
+        const gr = await authFetch(`/api/teams/${t.id}/guide`);
         if (gr.ok) {
           const g: GuideResponse = await gr.json();
           if (g.ok) {

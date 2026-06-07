@@ -10,6 +10,8 @@ import EmojiPicker from "@/components/EmojiPicker";
 import { useConfirm } from "@/components/Confirm";
 import { deleteTeamOnServer, saveTeamPromptToServer } from "@/lib/importTeams";
 import { apiBase } from "@/lib/utils";
+import { authFetch } from "@/lib/api";
+import { useAuthStore } from "@/stores/authStore";
 
 interface Props {
   agent: Agent;
@@ -41,6 +43,29 @@ export default function AgentConfigModal({ agent, onClose }: Props) {
   const [languageChoice, setLanguageChoice] = useState<"ko" | "en" | "ja" | "zh" | "">(agent.language ?? "");
   const [roleGroupChoice, setRoleGroupChoice] = useState<"system" | "dev" | "agent">(agent.roleGroup ?? "dev");
   const [savedFlash, setSavedFlash] = useState(false);
+  const [isPublic, setIsPublic] = useState<boolean>(!!agent.is_public);
+  const [pubSaving, setPubSaving] = useState(false);
+  const myUid = useAuthStore((s) => s.user?.id || "");
+  const SYSTEM_IDS = new Set(["cpo-claude", "server-monitor", "hq-ops", "staff", "agent-6d883e"]);
+  const isSystemAgent = SYSTEM_IDS.has(agent.id);
+  const isMine = !!agent.owner_id && agent.owner_id === myUid;
+  const canTogglePublic = isMine && !isSystemAgent;
+
+  const togglePublic = async () => {
+    if (!canTogglePublic) return;
+    setPubSaving(true);
+    const next = !isPublic;
+    try {
+      const r = await authFetch(`/api/teams/${agent.id}/visibility`, {
+        method: "PUT",
+        json: { is_public: next },
+      });
+      const d = await r.json();
+      if (r.ok && d.ok) setIsPublic(d.is_public);
+    } finally {
+      setPubSaving(false);
+    }
+  };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -304,6 +329,36 @@ export default function AgentConfigModal({ agent, onClose }: Props) {
               </div>
             )}
           </CardContent>
+
+          {/* 공개 토글 — 본인 소유 비시스템 에이전트만 */}
+          {canTogglePublic && (
+            <div className="shrink-0 border-t border-gray-800/60 px-3 py-2.5 flex items-center gap-3">
+              <button
+                type="button"
+                onClick={togglePublic}
+                disabled={pubSaving}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                  isPublic ? "bg-emerald-500" : "bg-gray-700"
+                }`}
+              >
+                <span
+                  className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${
+                    isPublic ? "translate-x-5" : "translate-x-1"
+                  }`}
+                />
+              </button>
+              <div className="text-[12px] leading-tight">
+                <div className="font-bold text-gray-200">
+                  {isPublic ? "🌐 공개 에이전트" : "🔒 본인 전용"}
+                </div>
+                <div className="text-gray-500 text-[10.5px]">
+                  {isPublic
+                    ? "다른 사용자도 사이드바에 보이고 채팅 가능 (대화 세션은 각자 분리됨)"
+                    : "본인만 사이드바에 보임"}
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* 푸터 */}
           <div className="shrink-0 border-t border-gray-800/60 p-3 flex items-center gap-2">

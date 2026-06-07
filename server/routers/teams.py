@@ -304,18 +304,35 @@ async def update_team_guide(team_id: str, body: dict, request: Request):
         return {"ok": False, "error": "팀을 찾을 수 없습니다."}
     _require_team_owner_or_admin(request, body, team)
 
+    # 둘 중 하나 또는 둘 다 받음:
+    # - claude_md: 레포 안 CLAUDE.md 파일 갱신
+    # - system_prompt: TEAM_SYSTEM_PROMPTS + team_prompts.json 갱신 (런타임 즉시 반영)
+    claude_md = body.get("claude_md")
+    system_prompt = body.get("system_prompt")
+    if claude_md is None and system_prompt is None:
+        return {"ok": False, "error": "claude_md 또는 system_prompt 둘 중 하나는 필요합니다."}
+
+    saved = []
     local_path = os.path.expanduser(team.get("localPath", ""))
-    if not local_path or not os.path.isdir(local_path):
-        return {"ok": False, "error": "프로젝트 경로를 찾을 수 없습니다."}
+    if claude_md is not None:
+        if not local_path or not os.path.isdir(local_path):
+            return {"ok": False, "error": "프로젝트 경로를 찾을 수 없습니다 (claude_md 저장 불가)."}
+        claude_md_path = os.path.join(local_path, "CLAUDE.md")
+        with open(claude_md_path, "w", encoding="utf-8") as f:
+            f.write(claude_md)
+        saved.append("CLAUDE.md")
+    if system_prompt is not None:
+        try:
+            from claude_runner import TEAM_SYSTEM_PROMPTS, _SAVED_PROMPTS, _save_prompts
+            TEAM_SYSTEM_PROMPTS[team_id] = system_prompt
+            _SAVED_PROMPTS[team_id] = system_prompt
+            _save_prompts(_SAVED_PROMPTS)
+            saved.append("system_prompt")
+        except Exception as e:
+            return {"ok": False, "error": f"system_prompt 저장 실패: {e}"}
 
-    claude_md = body.get("claude_md", "")
-    claude_md_path = os.path.join(local_path, "CLAUDE.md")
-
-    with open(claude_md_path, "w", encoding="utf-8") as f:
-        f.write(claude_md)
-
-    _log_activity(team_id, "📝 CLAUDE.md 수정됨")
-    return {"ok": True, "team_id": team_id}
+    _log_activity(team_id, f"📝 가이드 수정 ({', '.join(saved)})")
+    return {"ok": True, "team_id": team_id, "saved": saved}
 
 
 @router.get("/api/teams/{team_id}/evolution")
@@ -332,6 +349,35 @@ async def get_team_evolution(team_id: str):
         if lp.exists():
             lessons_count = sum(1 for line in lp.read_text(encoding="utf-8", errors="ignore").splitlines() if line.strip().startswith("-") or line.strip().startswith("["))
     return {"ok": True, "team_id": team_id, **team_evo, "lessons_count": lessons_count}
+
+
+@router.put("/api/teams/{team_id}/visibility")
+async def update_team_visibility(team_id: str, body: dict, request: Request):
+    """에이전트 공개 여부 토글 — is_public: true → 다른 사용자도 사이드바에 보임.
+
+    🔐 권한: 본인 소유 + manage_users 권한자만 (시스템 에이전트는 항상 공개).
+    """
+    from auth import (
+        extract_token_from_request, require_user, AuthError, is_owner_of, has_capability,
+    )
+    token = extract_token_from_request(dict(request.headers), dict(request.query_params), body.get("token", ""))
+    try:
+        user = require_user(token, min_level=1)
+    except AuthError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.detail)
+    import main as _main
+    team = next((t for t in _main.TEAMS if t["id"] == team_id), None)
+    if not team:
+        return {"ok": False, "error": "팀을 찾을 수 없음"}
+    if not is_owner_of(team, user) and not has_capability(user, "manage_users"):
+        raise HTTPException(
+            status_code=403,
+            detail=f"이 에이전트의 소유자가 아니에요 (만든 사람: {team.get('owner_nickname','?')}).",
+        )
+    is_public = bool(body.get("is_public"))
+    team["is_public"] = is_public
+    _main._save_teams(_main.TEAMS)
+    return {"ok": True, "team_id": team_id, "is_public": is_public}
 
 
 @router.post("/api/teams/{team_id}/setup-subdomain")

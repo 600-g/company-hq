@@ -1,4 +1,5 @@
 "use client";
+import { authFetch } from "@/lib/api";
 
 import { useEffect, useRef } from "react";
 import { apiBase } from "@/lib/utils";
@@ -60,7 +61,7 @@ export function useStateSync() {
       try {
         await awaitAllStoresHydrated();
         if (!mounted) return;
-        const res = await fetch(`${apiBase()}/api/doogeun/state`, { cache: "no-store" });
+        const res = await authFetch(`/api/doogeun/state`, { cache: "no-store" });
         if (!res.ok) return;
         const data = await res.json();
         if (!mounted || !data?.ok || !data.state) return;
@@ -80,7 +81,7 @@ export function useStateSync() {
         const serialized = JSON.stringify({ agents, floors });
         if (serialized === lastSyncedRef.current) return;
         try {
-          const res = await fetch(`${apiBase()}/api/doogeun/state`, {
+          const res = await authFetch(`/api/doogeun/state`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ agents, layout: { floors } }),
@@ -98,7 +99,7 @@ export function useStateSync() {
     // ── 30초 polling (다른 디바이스 변경 감지)
     pollTimerRef.current = setInterval(async () => {
       try {
-        const res = await fetch(`${apiBase()}/api/doogeun/state`, { cache: "no-store" });
+        const res = await authFetch(`/api/doogeun/state`, { cache: "no-store" });
         if (!res.ok) return;
         const data = await res.json();
         if (!mounted || !data?.ok || !data.state) return;

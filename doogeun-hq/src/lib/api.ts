@@ -60,13 +60,18 @@ export function clearToken() {
 /** 권한 토큰을 자동 부착하는 fetch.
  *  - Authorization: Bearer <token> 헤더 자동
  *  - JSON body 면 Content-Type 자동
- *  - 401 응답 시 onUnauthorized 콜백 호출 (옵션)
+ *  - 401/403 응답 시 자동 토스트 ("권한이 없습니다") + 콜백 옵션
+ *  - silent: true 옵션 → 자동 토스트 끔
  */
 export async function authFetch(
   path: string,
-  options: RequestInit & { json?: unknown; onUnauthorized?: () => void } = {},
+  options: RequestInit & {
+    json?: unknown;
+    onUnauthorized?: () => void;
+    silent?: boolean;
+  } = {},
 ): Promise<Response> {
-  const { json, onUnauthorized, ...rest } = options;
+  const { json, onUnauthorized, silent, ...rest } = options;
   const token = readToken();
   const headers = new Headers(rest.headers);
   if (token) headers.set("Authorization", `Bearer ${token}`);
@@ -76,7 +81,25 @@ export async function authFetch(
     body = JSON.stringify(json);
   }
   const url = path.startsWith("http") ? path : `${apiBase()}${path}`;
+  const method = (rest.method || "GET").toUpperCase();
   const res = await fetch(url, { ...rest, headers, body });
+  // 자동 토스트 — 401/403 일 때만, mutating 메서드만 (GET 은 조용히), silent 아니면.
+  const isMutating = method !== "GET" && method !== "HEAD";
+  if (isMutating && (res.status === 401 || res.status === 403) && !silent) {
+    try {
+      const { toast } = await import("./toast");
+      const cloned = res.clone();
+      let detail = "";
+      try {
+        const d = await cloned.json();
+        detail = d?.detail || d?.error || "";
+      } catch { /* */ }
+      const msg = res.status === 401
+        ? "🔒 로그인이 필요합니다. 다시 로그인해주세요."
+        : `🔒 ${detail || "권한이 없습니다."}`;
+      toast(msg, res.status === 401 ? "error" : "warn");
+    } catch { /* toast 불러오기 실패 — 무시 */ }
+  }
   if (res.status === 401 && onUnauthorized) onUnauthorized();
   return res;
 }

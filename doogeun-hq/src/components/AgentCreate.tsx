@@ -147,7 +147,7 @@ export default function AgentCreate({ onDone }: Props) {
     setGenerating(true);
     setDraft(null);
     try {
-      const r = await fetch(`${apiBase()}/api/agents/generate-config`, {
+      const r = await authFetch(`/api/agents/generate-config`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: name.trim(), description: descSource }),
@@ -266,7 +266,7 @@ export default function AgentCreate({ onDone }: Props) {
       try {
         const allAgents = useAgentStore.getState().agents;
         const allFloors = useLayoutStore.getState().floors;
-        await fetch(`${apiBase()}/api/doogeun/state`, {
+        await authFetch(`/api/doogeun/state`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ agents: allAgents, layout: { floors: allFloors } }),
@@ -611,7 +611,7 @@ export default function AgentCreate({ onDone }: Props) {
                       setPublicSite(e.target.checked);
                       if (e.target.checked && cfTokenOk === null) {
                         try {
-                          const r = await fetch(`${apiBase()}/api/settings/tokens`);
+                          const r = await authFetch(`/api/settings/tokens`);
                           const d = await r.json();
                           setCfTokenOk(!!d?.tokens?.CF_TOKEN?.configured);
                           const byCat = d?.tokens?.CF_TOKEN_BY_CATEGORY || {};
