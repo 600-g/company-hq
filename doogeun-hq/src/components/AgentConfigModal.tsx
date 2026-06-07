@@ -46,9 +46,13 @@ export default function AgentConfigModal({ agent, onClose }: Props) {
   const [isPublic, setIsPublic] = useState<boolean>(!!agent.is_public);
   const [pubSaving, setPubSaving] = useState(false);
   const myUid = useAuthStore((s) => s.user?.id || "");
+  const myRole = useAuthStore((s) => s.user?.role || "guest");
   const SYSTEM_IDS = new Set(["cpo-claude", "server-monitor", "hq-ops", "staff", "agent-6d883e"]);
   const isSystemAgent = SYSTEM_IDS.has(agent.id);
   const isMine = !!agent.owner_id && agent.owner_id === myUid;
+  const isAdmin = myRole === "owner" || myRole === "admin";
+  // 본인 소유 + 비시스템 만 편집 가능. owner/admin 도 시스템은 못 만짐 (이름/프롬프트 등 핵심 보호).
+  const canEdit = (isMine || isAdmin) && !isSystemAgent;
   const canTogglePublic = isMine && !isSystemAgent;
 
   const togglePublic = async () => {
@@ -160,6 +164,21 @@ export default function AgentConfigModal({ agent, onClose }: Props) {
           </CardHeader>
 
           <CardContent className="flex-1 overflow-y-auto space-y-4 py-4">
+            {!canEdit && (
+              <div className="rounded-lg border border-amber-400/40 bg-amber-500/10 p-3 text-[12px] text-amber-100 flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 text-amber-300" />
+                <div>
+                  <div className="font-bold mb-0.5">
+                    {isSystemAgent ? "시스템 에이전트 — 보기 전용" : "본인 소유 아님 — 보기 전용"}
+                  </div>
+                  <div className="text-[11px] text-amber-200/80">
+                    {isSystemAgent
+                      ? "두근/CPO/스태프/MD메이커/서버실은 시스템 에이전트입니다. 저장·삭제 불가."
+                      : "이 에이전트의 소유자만 편집할 수 있어요. 채팅은 가능."}
+                  </div>
+                </div>
+              </div>
+            )}
             {/* 이름 + 이모지 */}
             <div className="flex gap-2 items-start">
               <EmojiPicker value={emoji} onChange={setEmoji} />
@@ -362,7 +381,13 @@ export default function AgentConfigModal({ agent, onClose }: Props) {
 
           {/* 푸터 */}
           <div className="shrink-0 border-t border-gray-800/60 p-3 flex items-center gap-2">
-            <Button variant="ghost" size="sm" onClick={del} className="text-red-300 hover:text-red-200 hover:bg-red-500/10">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={del}
+              disabled={!canEdit}
+              className="text-red-300 hover:text-red-200 hover:bg-red-500/10 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
               <Trash2 className="w-3.5 h-3.5 mr-1" /> 삭제
             </Button>
             <div className="ml-auto flex items-center gap-2">
@@ -372,7 +397,7 @@ export default function AgentConfigModal({ agent, onClose }: Props) {
                 </span>
               )}
               <Button variant="ghost" onClick={onClose}>닫기</Button>
-              <Button onClick={save} disabled={!dirty || !name.trim() || saving}>
+              <Button onClick={save} disabled={!canEdit || !dirty || !name.trim() || saving}>
                 <Save className="w-3.5 h-3.5 mr-1" /> {saving ? "저장 중..." : "저장"}
               </Button>
             </div>

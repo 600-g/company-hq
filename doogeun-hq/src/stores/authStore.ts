@@ -44,6 +44,23 @@ export const useAuthStore = create<AuthState>()(
       },
       logout: () => {
         persistTokenCookie(null);
+        // 사용자 전환 시 옛 사용자의 잔존 데이터 모두 제거 — 채팅·에이전트·권한 캐시·세션 등
+        if (typeof window !== "undefined") {
+          try {
+            // zustand persist 키 (per-user 데이터)
+            localStorage.removeItem("doogeun-hq-chat");
+            localStorage.removeItem("doogeun-hq-agents");
+            localStorage.removeItem("doogeun-hq-layout");
+            localStorage.removeItem("doogeun-hq-handoff");
+            localStorage.removeItem("doogeun-hq-pipeline");
+            localStorage.removeItem("doogeun-hq-notify");
+            localStorage.removeItem("doogeun-hq-draft-input");
+            localStorage.removeItem("doogeun-hq-pinned-agents");
+            localStorage.removeItem("doogeun-hq-applied-build");
+            // sessionStorage 권한 캐시
+            sessionStorage.removeItem("doogeun-hq-capabilities");
+          } catch { /* ignore */ }
+        }
         set({ token: null, user: null });
       },
       isOwner: () => get().user?.role === "owner",

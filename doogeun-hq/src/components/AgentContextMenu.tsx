@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Settings, MessageSquare, Trash2, Activity } from "lucide-react";
+import { Settings, MessageSquare, Trash2, Activity, Lock } from "lucide-react";
 import type { Agent } from "@/stores/agentStore";
+import { useAuthStore } from "@/stores/authStore";
+import { toast } from "@/lib/toast";
 
 interface Props {
   agent: Agent;
@@ -15,10 +17,23 @@ interface Props {
   onDelete: () => void;
 }
 
+const SYSTEM_AGENT_IDS = new Set([
+  "cpo-claude", "server-monitor", "hq-ops", "staff", "agent-6d883e",
+]);
+
 /** 에이전트 우클릭 컨텍스트 메뉴 */
 export default function AgentContextMenu({
   agent, x, y, onClose, onOpenConfig, onOpenChat, onOpenActivity, onDelete,
 }: Props) {
+  // 권한 — 본인 소유 또는 owner/admin 만 설정·삭제 가능. 시스템 에이전트는 절대 불가.
+  const myUid = useAuthStore((s) => s.user?.id || "");
+  const myRole = useAuthStore((s) => s.user?.role || "guest");
+  const isSystem = SYSTEM_AGENT_IDS.has(agent.id);
+  const isMine = !!agent.owner_id && agent.owner_id === myUid;
+  const isAdmin = myRole === "owner" || myRole === "admin";
+  const canEdit = !isSystem && (isMine || isAdmin);
+  const canDelete = !isSystem && (isMine || isAdmin);
+
   // 메뉴를 연 우클릭 제스처가 끝날 때까지 닫기 차단 — 사용자가 길게 눌러도 안전
   // 1) 첫 mouseup(메뉴를 연 우클릭의 release) 이후 다음 프레임에 armed
   // 2) 안전 마지노선 400ms 타이머 (mouseup 못 잡힐 때 fallback)
@@ -66,16 +81,52 @@ export default function AgentContextMenu({
         <MenuItem onClick={onOpenChat} icon={<MessageSquare className="w-3.5 h-3.5" />} color="sky">
           채팅 열기
         </MenuItem>
-        <MenuItem onClick={onOpenConfig} icon={<Settings className="w-3.5 h-3.5" />} color="sky">
-          설정 (편집)
-        </MenuItem>
+        {canEdit ? (
+          <MenuItem onClick={onOpenConfig} icon={<Settings className="w-3.5 h-3.5" />} color="sky">
+            설정 (편집)
+          </MenuItem>
+        ) : (
+          <MenuItem
+            onClick={() => {
+              toast(
+                isSystem
+                  ? "시스템 에이전트는 편집할 수 없어요."
+                  : "본인이 만든 에이전트만 편집할 수 있어요.",
+                "warn"
+              );
+              onClose();
+            }}
+            icon={<Lock className="w-3.5 h-3.5" />}
+            color="gray"
+          >
+            설정 (잠금)
+          </MenuItem>
+        )}
         <MenuItem onClick={onOpenActivity} icon={<Activity className="w-3.5 h-3.5" />} color="sky">
           활동 로그
         </MenuItem>
         <div className="h-px bg-gray-800" />
-        <MenuItem onClick={onDelete} icon={<Trash2 className="w-3.5 h-3.5" />} color="red">
-          삭제
-        </MenuItem>
+        {canDelete ? (
+          <MenuItem onClick={onDelete} icon={<Trash2 className="w-3.5 h-3.5" />} color="red">
+            삭제
+          </MenuItem>
+        ) : (
+          <MenuItem
+            onClick={() => {
+              toast(
+                isSystem
+                  ? "시스템 에이전트는 삭제할 수 없어요."
+                  : "본인이 만든 에이전트만 삭제할 수 있어요.",
+                "warn"
+              );
+              onClose();
+            }}
+            icon={<Lock className="w-3.5 h-3.5" />}
+            color="gray"
+          >
+            삭제 (잠금)
+          </MenuItem>
+        )}
       </div>
     </>
   );

@@ -48,31 +48,36 @@ export function clearCapabilitiesCache() {
 }
 
 export function useCapabilities() {
+  // 캐시는 초기 깜빡임 방지용 — 마운트 즉시 서버에서 fresh 재페치 (사용자 전환 시 stale 방어)
   const [caps, setCaps] = useState<Set<string>>(() => {
     const cached = readCache();
     return cached ? new Set(cached.caps) : new Set();
   });
-  const [ready, setReady] = useState<boolean>(() => readCache() !== null);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    if (ready) return;
     let cancelled = false;
     (async () => {
       try {
         const res = await authFetch("/api/auth/me/setup");
-        if (!cancelled && res.ok) {
+        if (cancelled) return;
+        if (res.ok) {
           const d = await res.json();
           if (d?.ok && Array.isArray(d.capabilities)) {
             const list: string[] = d.capabilities;
             writeCache(list);
             setCaps(new Set(list));
           }
+        } else if (res.status === 401 || res.status === 403) {
+          // 토큰 무효 또는 권한 없음 → 캐시 무효화 (옛 사용자 권한 흔적 제거)
+          clearCapabilitiesCache();
+          setCaps(new Set());
         }
       } catch { /* ignore */ }
       if (!cancelled) setReady(true);
     })();
     return () => { cancelled = true; };
-  }, [ready]);
+  }, []);
 
   return {
     has: (cap: string) => caps.has(cap),
