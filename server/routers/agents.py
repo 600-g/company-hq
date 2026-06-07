@@ -166,13 +166,20 @@ async def get_agent_activity(team_id: str):
 
 
 @router.post("/{team_id}/test")
-async def test_agent(team_id: str):
-    """에이전트 스모크 테스트 — CLI가 실제로 응답하는지 30초 안에 확인."""
+async def test_agent(team_id: str, request: Request):
+    """에이전트 스모크 테스트. 🔐 본인 소유 + admin/owner."""
+    from auth import extract_token_from_request, require_user, AuthError
+    token = extract_token_from_request(dict(request.headers), dict(request.query_params), "")
+    try:
+        require_user(token, min_level=1)
+    except AuthError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.detail)
     import main as _main
     from claude_runner import run_claude
     team = next((t for t in _main.TEAMS if t["id"] == team_id), None)
     if not team:
         return {"ok": False, "error": "팀을 찾을 수 없음"}
+    _require_agent_owner_or_admin(request, None, team)
     local_path = os.path.expanduser(team.get("localPath", ""))
     if not os.path.isdir(local_path):
         return {"ok": False, "error": f"로컬 경로 없음: {local_path}"}

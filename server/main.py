@@ -1075,8 +1075,12 @@ _UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads")
 os.makedirs(_UPLOAD_DIR, exist_ok=True)
 
 @app.post("/api/upload/image")
-async def upload_image(file: UploadFile = File(...)):
-    """이미지 업로드 → 서버 저장 → 경로 반환 (에이전트가 Read 도구로 분석)"""
+async def upload_image(request: Request, file: UploadFile = File(...)):
+    """이미지 업로드 → 서버 저장 → 경로 반환 (에이전트가 Read 도구로 분석).
+
+    🔐 인증 필수 (10MB 제한, 디스크 abuse 방지).
+    """
+    _auth_user(request, body=None, min_level=1)
     ext = os.path.splitext(file.filename or "img.png")[1].lower()
     if ext not in (".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"):
         return {"ok": False, "error": "지원하지 않는 이미지 형식"}
@@ -1093,8 +1097,12 @@ async def upload_image(file: UploadFile = File(...)):
 # ── 도구 (Notion 등) ──────────────────────────────────
 
 @app.post("/api/tools/notion")
-async def read_notion(body: dict):
-    """공개 Notion 페이지 읽기 — URL만 보내면 콘텐츠 추출"""
+async def read_notion(body: dict, request: Request):
+    """공개 Notion 페이지 읽기 — URL만 보내면 콘텐츠 추출.
+
+    🔐 인증 필수 (SSRF / abuse 방지).
+    """
+    _auth_user(request, body, min_level=1)
     url = body.get("url", "")
     if not url:
         return {"ok": False, "error": "url 필드가 필요합니다"}
@@ -1102,39 +1110,50 @@ async def read_notion(body: dict):
 
 
 @app.get("/api/settings/tokens")
-async def settings_tokens():
-    """외부 서비스 토큰이 서버 .env 에 설정됐는지 여부 (값은 노출 안 함).
+async def settings_tokens(request: Request):
+    """호스트(.env) 외부 서비스 토큰 설정 여부.
+
+    🔐 권한 단계 노출:
+    - 미인증/일반 사용자: configured(bool) 만 — "설정됨/안 됨" 표시용. masked 빈 문자열.
+    - manage_users 보유자: masked (앞6+뒤4) 도 노출 — 어떤 토큰인지 식별용.
 
     CF_TOKEN 은 카테고리별 (web/game/other) 분리 + 폴백 표시.
     """
     import shutil
     import subprocess
+    # 토큰 소유자(=owner) 만 raw 마스킹 받음
+    token_str = extract_token_from_request(dict(request.headers), dict(request.query_params), "")
+    auth_user = verify_token(token_str) if token_str else None
+    can_see_masked = bool(auth_user) and has_capability(auth_user, "manage_users")
+
     names = ["GITHUB_TOKEN", "CF_TOKEN", "ANTHROPIC_API_KEY", "GEMINI_API_KEY"]
     result = {}
     for n in names:
         v = os.getenv(n, "") or ""
         result[n] = {
             "configured": bool(v.strip()),
-            "masked": (v[:6] + "…" + v[-4:]) if len(v) >= 12 else ("설정됨" if v else ""),
+            "masked": (
+                (v[:6] + "…" + v[-4:]) if can_see_masked and len(v) >= 12
+                else ("설정됨" if v and can_see_masked else "")
+            ),
         }
-    # CF 는 wrangler OAuth 가 있으면 "배포 가능" 으로 표시
+    # CF 는 wrangler OAuth 가 있으면 "배포 가능" 으로 표시 (이메일은 admin 만)
     if not result["CF_TOKEN"]["configured"] and shutil.which("wrangler"):
         try:
             r = subprocess.run(["wrangler", "whoami"], capture_output=True, text=True, timeout=5)
             if r.returncode == 0 and "@" in (r.stdout or ""):
-                # 이메일 추출
                 import re as _re
                 m = _re.search(r"([\w.+-]+@[\w-]+\.[\w.-]+)", r.stdout)
-                email = m.group(1) if m else "OAuth"
-                result["CF_TOKEN"] = {"configured": True, "masked": f"wrangler · {email}"}
+                email = m.group(1) if (m and can_see_masked) else ("OAuth" if m else "")
+                result["CF_TOKEN"] = {"configured": True, "masked": f"wrangler · {email}" if can_see_masked else ""}
         except Exception:
             pass
-    # 카테고리별 CF 토큰 상태 추가 (UI 에서 어떤 카테고리가 비어있는지 보여줌)
-    try:
-        from cf_dns import list_token_status
-        result["CF_TOKEN_BY_CATEGORY"] = list_token_status()
-    except Exception:
-        pass
+    if can_see_masked:
+        try:
+            from cf_dns import list_token_status
+            result["CF_TOKEN_BY_CATEGORY"] = list_token_status()
+        except Exception:
+            pass
     return {"ok": True, "tokens": result}
 
 
@@ -1410,17 +1429,28 @@ async def http_chat_history(team_id: str, session_id: str | None = None):
 
 
 @app.post("/api/chat/{team_id}/send")
-async def http_chat_send(team_id: str, body: dict):
-    """HTTP 대체 — WS 없이 메시지 전송. 백그라운드로 Claude 실행. 응답은 히스토리 폴링으로 확인."""
+async def http_chat_send(team_id: str, body: dict, request: Request):
+    """HTTP 대체 — WS 없이 메시지 전송. 백그라운드로 Claude 실행.
+
+    🔐 인증 + 시야 필터: 시스템 에이전트 + 본인 소유 + is_public 만 채팅 가능.
+    """
+    user = _auth_user(request, body, min_level=1)
+    if not has_capability(user, "chat"):
+        return {"ok": False, "error": "채팅 권한이 없어요."}
     team = next((t for t in TEAMS if t["id"] == team_id), None)
     if not team:
         return {"ok": False, "error": "팀 없음"}
+    SYSTEM_AGENTS = {"cpo-claude", "server-monitor", "hq-ops", "staff", "agent-6d883e"}
+    if (team["id"] not in SYSTEM_AGENTS and not is_owner_of(team, user)
+            and not team.get("is_public") and not has_capability(user, "manage_users")):
+        return {"ok": False, "error": "다른 사용자의 비공개 에이전트에는 채팅할 수 없어요."}
     prompt = (body.get("prompt") or "").strip()
     image_paths = body.get("images", []) or []
     if not prompt and not image_paths:
         return {"ok": False, "error": "prompt 또는 images 필요"}
     import sessions_store
-    sid = sessions_store.resolve_session_id(team_id, body.get("session_id"))
+    # user 별 세션 사용 — WS 와 동일하게 본인 세션에 저장
+    sid = sessions_store.resolve_session_id(team_id, body.get("session_id"), user["user_id"])
     # 이미지가 있으면 프롬프트에 파일 경로 추가
     if image_paths:
         img_instruction = "\n\n[첨부된 이미지 — Read 도구로 확인]"
@@ -1616,16 +1646,21 @@ task_queue.init(
 
 
 @app.post("/api/queue/enqueue")
-async def queue_enqueue(body: dict):
-    """작업을 팀 큐에 추가 (대기열 관리)
+async def queue_enqueue(body: dict, request: Request):
+    """작업을 팀 큐에 추가 (대기열 관리). 🔐 인증 + 본인 소유 에이전트만.
 
     body: {"team_id": "backend-team", "prompt": "...", "priority": 0}
     """
+    user = _auth_user(request, body, min_level=1)
     team_id = body.get("team_id", "")
     prompt = body.get("prompt", "")
     priority = body.get("priority", 0)
     if not team_id or not prompt:
         return {"ok": False, "error": "team_id와 prompt가 필요합니다"}
+    team = next((t for t in TEAMS if t["id"] == team_id), None)
+    SYSTEM_AGENTS = {"cpo-claude", "server-monitor", "hq-ops", "staff", "agent-6d883e"}
+    if team and team_id not in SYSTEM_AGENTS and not is_owner_of(team, user) and not has_capability(user, "manage_users"):
+        return {"ok": False, "error": "다른 사용자의 에이전트에 작업을 큐잉할 수 없어요."}
     task = await task_queue.enqueue(team_id, prompt, priority=priority)
     return {"ok": True, "task": task.to_dict()}
 
@@ -1643,15 +1678,16 @@ async def queue_team_status(team_id: str):
 
 
 @app.post("/api/queue/cancel/{task_id}")
-async def queue_cancel(task_id: str):
-    """대기 중인 작업 취소"""
+async def queue_cancel(task_id: str, request: Request):
+    """대기 중인 작업 취소. 🔐 인증."""
+    _auth_user(request, body=None, min_level=1)
     ok = task_queue.cancel_task(task_id)
     return {"ok": ok}
 
 
 @app.post("/api/pipeline/run")
-async def pipeline_run(body: dict):
-    """순차 파이프라인 실행
+async def pipeline_run(body: dict, request: Request):
+    """순차 파이프라인 실행. 🔐 인증 + manage_users (멀티 팀 동시 실행은 위험).
 
     body: {
         "name": "기능 구현",
@@ -1661,6 +1697,7 @@ async def pipeline_run(body: dict):
         ]
     }
     """
+    _auth_cap(request, body, "manage_users")
     name = body.get("name", "")
     steps = body.get("steps", [])
     if not steps:

@@ -27,7 +27,23 @@ import logging
 import uuid
 from datetime import datetime
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, Request
+
+
+def _auth(request: Request, body: dict | None, *, cap: str | None = None, min_level: int = 1) -> dict:
+    """라우터 공용 인증. cap 명시 시 capability 체크 추가."""
+    from auth import (
+        extract_token_from_request, require_user, require_capability, AuthError,
+    )
+    token = extract_token_from_request(
+        dict(request.headers), dict(request.query_params), (body or {}).get("token", "")
+    )
+    try:
+        if cap:
+            return require_capability(token, cap)
+        return require_user(token, min_level=min_level)
+    except AuthError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.detail)
 from fastapi.responses import StreamingResponse
 
 logger = logging.getLogger(__name__)
@@ -42,8 +58,9 @@ DISCUSS_TASKS: dict[str, dict] = {}
 
 
 @router.post("/api/dispatch/approve")
-async def dispatch_approve(body: dict):
-    """인라인 핸드오프 승인 게이트 응답. TM 피드백+재작업 패턴 지원."""
+async def dispatch_approve(body: dict, request: Request):
+    """인라인 핸드오프 승인 게이트 응답. TM 피드백+재작업 패턴 지원. 🔐 인증."""
+    _auth(request, body)
     dispatch_id = body.get("dispatch_id", "")
     decision = body.get("decision", "")
     feedback = (body.get("feedback") or "").strip()
@@ -60,8 +77,9 @@ async def dispatch_approve(body: dict):
 
 
 @router.post("/api/dispatch")
-async def dispatch_task(body: dict):
-    """CPO가 여러 팀에 작업을 분배하고 결과를 수집."""
+async def dispatch_task(body: dict, request: Request):
+    """CPO가 여러 팀에 작업을 분배하고 결과를 수집. 🔐 manage_users (멀티 에이전트 트리거 = 권한 큼)."""
+    _auth(request, body, cap="manage_users")
     import main as _main
     from claude_runner import run_claude, run_claude_light
     from ws_handler import _log_activity, collab_broadcast
@@ -189,8 +207,9 @@ async def list_dispatches():
 
 
 @router.post("/api/dispatch/smart")
-async def smart_dispatch(body: dict):
-    """CPO 주도 디스패치: 필터링 → 관련 팀만 실행 → CPO 통합 보고. SSE stream."""
+async def smart_dispatch(body: dict, request: Request):
+    """CPO 주도 디스패치 — 필터링 → 관련 팀만 실행. 🔐 manage_users."""
+    _auth(request, body, cap="manage_users")
     import main as _main
     from claude_runner import run_claude, run_claude_light
     from ws_handler import _log_activity, manager as ws_manager
@@ -605,8 +624,9 @@ async def smart_dispatch(body: dict):
 
 
 @router.post("/api/dispatch/discuss")
-async def dispatch_discuss(body: dict):
-    """CPO 주도 토론: 개발진 의견 수렴 → 토론 → QA 검증 → CPO 최종 결정"""
+async def dispatch_discuss(body: dict, request: Request):
+    """CPO 주도 토론. 🔐 manage_users."""
+    _auth(request, body, cap="manage_users")
     import main as _main
     from claude_runner import run_claude, run_claude_light
     from ws_handler import _log_activity

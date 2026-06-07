@@ -55,6 +55,28 @@ export default function PermissionManager() {
   const [canManage, setCanManage] = useState(false);
   const [canInvite, setCanInvite] = useState(false);
 
+  // 초기 1회만 loading 토글 — 이후 변경은 reloadLists() 로 list 만 갱신 (성공 카드 깜빡임 방지)
+  const reloadLists = useCallback(async () => {
+    const jobs: Promise<unknown>[] = [];
+    if (canManage) {
+      jobs.push(
+        authFetch("/api/auth/users/full")
+          .then((r) => r.ok ? r.json() : null)
+          .then((d) => d?.ok && setUsers(d.users))
+          .catch(() => {})
+      );
+    }
+    if (canInvite) {
+      jobs.push(
+        authFetch("/api/auth/codes")
+          .then((r) => r.ok ? r.json() : null)
+          .then((d) => Array.isArray(d) && setCodes(d))
+          .catch(() => {})
+      );
+    }
+    await Promise.all(jobs);
+  }, [canManage, canInvite]);
+
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
@@ -75,7 +97,7 @@ export default function PermissionManager() {
         }
       }
     } catch {
-      /* ignore — finally 가 로딩 끝냄 */
+      /* ignore */
     } finally {
       setLoading(false);
     }
@@ -85,21 +107,10 @@ export default function PermissionManager() {
     refresh();
   }, [refresh]);
 
-  // 사용자 목록 / 코드 목록 — manage_users / invite_users 있을 때만 fetch
+  // 사용자/코드 목록 — manage_users / invite_users 있을 때만 (초기 + 변경)
   useEffect(() => {
-    if (canManage) {
-      authFetch("/api/auth/users/full")
-        .then((r) => r.ok ? r.json() : null)
-        .then((d) => d?.ok && setUsers(d.users))
-        .catch(() => {});
-    }
-    if (canInvite) {
-      authFetch("/api/auth/codes")
-        .then((r) => r.ok ? r.json() : null)
-        .then((d) => Array.isArray(d) && setCodes(d))
-        .catch(() => {});
-    }
-  }, [canManage, canInvite]);
+    reloadLists();
+  }, [reloadLists]);
 
   if (loading) {
     return (
@@ -143,10 +154,10 @@ export default function PermissionManager() {
         </div>
 
         {tab === "users" && canManage && (
-          <UsersPanel users={users} caps={caps} onChanged={() => refresh()} />
+          <UsersPanel users={users} caps={caps} onChanged={() => reloadLists()} />
         )}
         {tab === "invite" && canInvite && (
-          <InvitePanel codes={codes} caps={caps} onChanged={() => refresh()} />
+          <InvitePanel codes={codes} caps={caps} onChanged={() => reloadLists()} />
         )}
       </CardContent>
     </Card>
@@ -198,6 +209,16 @@ function UsersPanel({ users, caps, onChanged }: { users: UserRow[]; caps: CapsRe
   return (
     <div className="space-y-1.5">
       {users.map((u) => {
+        // 오너는 원래 전부 — 체크박스 안 띄움
+        if (u.role === "owner") {
+          return (
+            <div key={u.user_id} className="rounded border border-amber-400/30 bg-amber-500/5 p-2.5 flex items-center gap-2">
+              <span className="font-bold text-[13px] text-amber-100">{u.nickname}</span>
+              <span className="px-1.5 py-0.5 rounded bg-amber-500/15 text-[10px] text-amber-200">👑 오너</span>
+              <span className="ml-auto text-[10px] text-gray-500">모든 권한 (체크 불필요)</span>
+            </div>
+          );
+        }
         const isExp = expanded === u.user_id;
         const current = draft[u.user_id] || new Set(u.capabilities);
         return (

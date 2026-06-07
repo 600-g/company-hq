@@ -11,6 +11,7 @@ import { useSettingsStore } from "@/stores/settingsStore";
 import InfoBadge from "@/components/InfoBadge";
 import { useThemeStore } from "@/stores/themeStore";
 import { apiBase } from "@/lib/utils";
+import { authFetch } from "@/lib/api";
 import MyAccountGuide from "@/components/settings/MyAccountGuide";
 import PermissionManager from "@/components/settings/PermissionManager";
 
@@ -72,7 +73,7 @@ export default function SettingsPage() {
   const [serverTokens, setServerTokens] = useState<Record<string, { configured: boolean; masked: string }>>({});
 
   useEffect(() => {
-    fetch(`${apiBase()}/api/settings/tokens`)
+    authFetch(`/api/settings/tokens`)
       .then((r) => r.json())
       .then((d) => { if (d.ok && d.tokens) setServerTokens(d.tokens); })
       .catch(() => {});
