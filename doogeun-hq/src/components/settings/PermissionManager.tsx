@@ -6,6 +6,10 @@ import { Button } from "@/components/ui/button";
 import InfoTip from "@/components/ui/InfoTip";
 import { authFetch } from "@/lib/api";
 import { useAuthStore } from "@/stores/authStore";
+import {
+  Users, Key, Crown, Lock, Trash2, Save, Copy, Check, X,
+  ShieldCheck, Link as LinkIcon, ClipboardList,
+} from "lucide-react";
 
 interface Capability {
   label: string;
@@ -139,17 +143,17 @@ export default function PermissionManager() {
           {canManage && (
             <button
               onClick={() => setTab("users")}
-              className={`flex-1 text-[12px] py-1.5 rounded font-bold transition-colors ${tab === "users" ? "bg-sky-400/15 text-sky-300" : "text-gray-400 hover:text-gray-200"}`}
+              className={`flex-1 text-[12px] py-1.5 rounded font-bold transition-colors flex items-center justify-center gap-1.5 ${tab === "users" ? "bg-sky-400/15 text-sky-300" : "text-gray-400 hover:text-gray-200"}`}
             >
-              👥 사용자 권한
+              <Users className="w-3.5 h-3.5" /> 사용자 권한
             </button>
           )}
           {canInvite && (
             <button
               onClick={() => setTab("invite")}
-              className={`flex-1 text-[12px] py-1.5 rounded font-bold transition-colors ${tab === "invite" ? "bg-sky-400/15 text-sky-300" : "text-gray-400 hover:text-gray-200"}`}
+              className={`flex-1 text-[12px] py-1.5 rounded font-bold transition-colors flex items-center justify-center gap-1.5 ${tab === "invite" ? "bg-sky-400/15 text-sky-300" : "text-gray-400 hover:text-gray-200"}`}
             >
-              🔑 초대 코드
+              <Key className="w-3.5 h-3.5" /> 초대 코드
             </button>
           )}
         </div>
@@ -239,7 +243,9 @@ function UsersPanel({ users, caps, onChanged }: { users: UserRow[]; caps: CapsRe
           return (
             <div key={u.user_id} className="rounded border border-amber-400/30 bg-amber-500/5 p-2.5 flex items-center gap-2">
               <span className="font-bold text-[13px] text-amber-100">{u.nickname}</span>
-              <span className="px-1.5 py-0.5 rounded bg-amber-500/15 text-[10px] text-amber-200">👑 오너</span>
+              <span className="px-1.5 py-0.5 rounded bg-amber-500/15 text-[10px] text-amber-200 flex items-center gap-1">
+                <Crown className="w-3 h-3" /> 오너
+              </span>
               <span className="ml-auto text-[10px] text-gray-500">모든 권한 (체크 불필요)</span>
             </div>
           );
@@ -264,10 +270,10 @@ function UsersPanel({ users, caps, onChanged }: { users: UserRow[]; caps: CapsRe
                   className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-sky-500/10 hover:bg-sky-500/20 border border-sky-400/30 text-[10px] font-mono text-sky-300 transition-colors"
                   title="초대코드 복사"
                 >
-                  🔑 {u.invite_code}
-                  <span className="text-[9px] text-sky-200">
-                    {copiedCode === u.invite_code ? "✓" : "복사"}
-                  </span>
+                  <Key className="w-3 h-3" /> {u.invite_code}
+                  {copiedCode === u.invite_code
+                    ? <Check className="w-3 h-3 text-emerald-300" />
+                    : <Copy className="w-3 h-3 text-sky-200" />}
                 </button>
               )}
               <span className="text-[10px] text-gray-500">{u.capabilities.length} / {Object.keys(caps.capabilities).length} 권한</span>
@@ -283,7 +289,7 @@ function UsersPanel({ users, caps, onChanged }: { users: UserRow[]; caps: CapsRe
               <div className="p-3 pt-0 space-y-2">
                 <div className="text-[11px] text-gray-400">체크하면 부여, 풀면 박탈. 저장 누를 때만 반영.</div>
                 <div className="text-[11px] text-gray-400 mb-1.5">
-                  🔒 잠금된 건 역할 기본 권한 (변경 불가). 잠금 해제된 건 추가/박탈 가능.
+                  잠금된 건 역할 기본 권한 (변경 불가). 잠금 해제된 건 추가/박탈 가능.
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                   {Object.entries(caps.capabilities).map(([key, info]) => {
@@ -305,7 +311,11 @@ function UsersPanel({ users, caps, onChanged }: { users: UserRow[]; caps: CapsRe
                         <div className="flex-1 min-w-0">
                           <div className="text-[12px] font-bold text-gray-200 flex items-center gap-1.5">
                             {info.label}
-                            {inDefault && <span className="text-[9px] text-sky-300">🔒 기본</span>}
+                            {inDefault && (
+                              <span className="text-[9px] text-sky-300 flex items-center gap-0.5">
+                                <Lock className="w-2.5 h-2.5" /> 기본
+                              </span>
+                            )}
                           </div>
                           <div className="text-[11px] text-gray-500">{info.info}</div>
                         </div>
@@ -315,7 +325,8 @@ function UsersPanel({ users, caps, onChanged }: { users: UserRow[]; caps: CapsRe
                 </div>
                 <div className="flex gap-2 pt-1">
                   <Button size="sm" onClick={() => save(u.user_id)} disabled={savingId === u.user_id}>
-                    {savingId === u.user_id ? "저장 중..." : "💾 저장"}
+                    <Save className="w-3.5 h-3.5 mr-1" />
+                    {savingId === u.user_id ? "저장 중..." : "저장"}
                   </Button>
                   <Button size="sm" variant="ghost" onClick={() => setExpanded(null)}>취소</Button>
                   <Button
@@ -324,7 +335,7 @@ function UsersPanel({ users, caps, onChanged }: { users: UserRow[]; caps: CapsRe
                     onClick={() => deleteUser(u)}
                     className="ml-auto text-red-300 hover:text-red-200 hover:bg-red-500/10"
                   >
-                    🗑️ 계정 삭제
+                    <Trash2 className="w-3.5 h-3.5 mr-1" /> 계정 삭제
                   </Button>
                 </div>
               </div>
@@ -369,10 +380,23 @@ function InvitePanel({ codes, caps, onChanged }: { codes: InviteCode[]; caps: Ca
     }
   };
 
-  const deactivate = async (code: string) => {
-    if (!confirm(`${code} 비활성화? 이미 가입한 사람은 영향 없음.`)) return;
+  const deleteCodeAndUser = async (code: string) => {
+    if (!confirm(
+      `${code} 코드를 완전 삭제할까요?\n\n` +
+      `· 코드 자체 삭제 (재사용 불가)\n` +
+      `· 이 코드로 가입한 사용자 계정도 함께 삭제 (강제 로그아웃 + 권한 회수)\n` +
+      `· 복구 불가`
+    )) return;
     const res = await authFetch(`/api/auth/codes/${code}/deactivate`, { method: "POST" });
-    if (res.ok) onChanged();
+    const d = await res.json().catch(() => ({}));
+    if (res.ok && d.ok) {
+      if (d.users_deleted && d.users_deleted.length > 0) {
+        alert(`삭제 완료.\n계정도 함께 삭제됨: ${d.users_deleted.join(", ")}`);
+      }
+      onChanged();
+    } else {
+      alert(d.detail || d.error || "삭제 실패");
+    }
   };
 
   const copyCode = async (s: string) => {
@@ -418,7 +442,7 @@ function InvitePanel({ codes, caps, onChanged }: { codes: InviteCode[]; caps: Ca
             권한 목록 (체크된 건 자동 부여)
             <InfoTip inline={{
               title: "권한 부여",
-              body: "🔒 잠금된 체크는 역할 기본 — 이 역할에는 항상 포함. 잠금 해제된 건 추가로 줄 권한 — 체크하면 함께 부여."
+              body: "잠금된 체크는 역할 기본 — 이 역할에는 항상 포함. 잠금 해제된 건 추가로 줄 권한 — 체크하면 함께 부여."
             }} />
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
@@ -450,7 +474,11 @@ function InvitePanel({ codes, caps, onChanged }: { codes: InviteCode[]; caps: Ca
                   <div className="flex-1 min-w-0">
                     <div className="font-bold text-gray-200 flex items-center gap-1">
                       {info.label}
-                      {isDefault && <span className="text-[9px] text-sky-300">🔒 기본</span>}
+                      {isDefault && (
+                        <span className="text-[9px] text-sky-300 flex items-center gap-0.5">
+                          <Lock className="w-2.5 h-2.5" /> 기본
+                        </span>
+                      )}
                     </div>
                     <div className="text-gray-500 text-[10px]">{info.info}</div>
                   </div>
@@ -465,19 +493,21 @@ function InvitePanel({ codes, caps, onChanged }: { codes: InviteCode[]; caps: Ca
         </div>
 
         <Button onClick={create} disabled={creating} className="w-full">
-          {creating ? "생성 중..." : "🔑 초대코드 생성"}
+          <Key className="w-3.5 h-3.5 mr-1.5" />
+          {creating ? "생성 중..." : "초대코드 생성"}
         </Button>
 
         {justCreated && (
           <div className="rounded-md border border-emerald-400/40 bg-emerald-500/10 p-3 space-y-2">
-            <div className="text-[11px] text-emerald-300">✅ 생성 완료 — 사용자한테 이것만 전달:</div>
+            <div className="text-[11px] text-emerald-300">생성 완료 — 사용자한테 이것만 전달:</div>
             <div className="font-mono text-[18px] tracking-widest text-emerald-200 select-all">{justCreated.code}</div>
             <div className="flex flex-wrap gap-1.5">
-              <button onClick={() => copyCode(justCreated.code)} className="text-[11px] px-2 py-1 rounded bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200">
-                {copied === justCreated.code ? "✓ 복사됨" : "📋 코드 복사"}
+              <button onClick={() => copyCode(justCreated.code)} className="text-[11px] px-2 py-1 rounded bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200 flex items-center gap-1">
+                {copied === justCreated.code ? <Check className="w-3 h-3" /> : <ClipboardList className="w-3 h-3" />}
+                {copied === justCreated.code ? "복사됨" : "코드 복사"}
               </button>
-              <button onClick={() => copyCode(buildInviteUrl(justCreated.code))} className="text-[11px] px-2 py-1 rounded bg-sky-500/20 hover:bg-sky-500/30 text-sky-200">
-                🔗 가입 링크 복사
+              <button onClick={() => copyCode(buildInviteUrl(justCreated.code))} className="text-[11px] px-2 py-1 rounded bg-sky-500/20 hover:bg-sky-500/30 text-sky-200 flex items-center gap-1">
+                <LinkIcon className="w-3 h-3" /> 가입 링크 복사
               </button>
             </div>
             {justCreated.extras.length > 0 && (
@@ -502,16 +532,19 @@ function InvitePanel({ codes, caps, onChanged }: { codes: InviteCode[]; caps: Ca
                 {c.extra_caps && c.extra_caps.length > 0 && (
                   <span className="text-[10px] text-sky-300">+{c.extra_caps.length}</span>
                 )}
-                {!c.active && <span className="text-[10px] text-red-400">비활성</span>}
+                {!c.active && <span className="text-[10px] text-red-400">만료</span>}
                 <div className="ml-auto flex gap-1">
-                  {c.active && (
-                    <>
-                      <button onClick={() => copyCode(c.code)} className="text-[10px] px-2 py-0.5 rounded bg-gray-800 hover:bg-gray-700 text-gray-300">
-                        {copied === c.code ? "✓" : "복사"}
-                      </button>
-                      <button onClick={() => deactivate(c.code)} className="text-[10px] px-2 py-0.5 rounded bg-red-500/20 hover:bg-red-500/30 text-red-300">비활성</button>
-                    </>
-                  )}
+                  <button onClick={() => copyCode(c.code)} className="text-[10px] px-2 py-0.5 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 flex items-center gap-0.5">
+                    {copied === c.code ? <Check className="w-2.5 h-2.5" /> : <Copy className="w-2.5 h-2.5" />}
+                    복사
+                  </button>
+                  <button
+                    onClick={() => deleteCodeAndUser(c.code)}
+                    className="text-[10px] px-2 py-0.5 rounded bg-red-500/20 hover:bg-red-500/30 text-red-300 flex items-center gap-0.5"
+                    title="코드 + 사용자 계정 함께 삭제"
+                  >
+                    <Trash2 className="w-2.5 h-2.5" /> 삭제
+                  </button>
                 </div>
               </div>
             ))}

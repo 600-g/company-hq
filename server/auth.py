@@ -308,6 +308,20 @@ def deactivate_code(code: str) -> bool:
     return False
 
 
+def delete_code(code: str) -> bool:
+    """초대코드 완전 삭제 (디스크에서 제거)."""
+    codes = _load_json(_CODES_FILE)
+    if not isinstance(codes, list):
+        return False
+    target = code.upper()
+    before = len(codes)
+    new_codes = [c for c in codes if c["code"] != target]
+    if len(new_codes) == before:
+        return False
+    _save_json(_CODES_FILE, new_codes)
+    return True
+
+
 def get_all_users() -> dict:
     """모든 사용자 목록 (관리용). 토큰·세션·초대코드는 응답에서 항상 제거 — 누출 방어."""
     users = _load_json(_USERS_FILE)

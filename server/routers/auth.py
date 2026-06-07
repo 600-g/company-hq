@@ -15,7 +15,7 @@ from fastapi import APIRouter, HTTPException, Request
 from auth import (
     register_user, verify_token, create_invite_code,
     get_all_codes, get_all_users, ROLES, owner_login,
-    require_user, deactivate_code, extract_token_from_request, AuthError,
+    require_user, deactivate_code, delete_code, extract_token_from_request, AuthError,
     get_user_keys, set_user_keys, get_user_keys_status,
     CAPABILITIES, ROLE_DEFAULTS,
     set_user_capabilities, get_user_with_capabilities, has_capability,
@@ -112,10 +112,39 @@ async def auth_list_codes(request: Request):
 
 @router.post("/codes/{code}/deactivate")
 async def auth_deactivate_code(code: str, request: Request):
-    """초대코드 즉시 비활성화 (admin+)."""
-    _auth(request, body=None, min_level=4)
-    ok = deactivate_code(code)
-    return {"ok": ok}
+    """초대코드 완전 삭제 + 해당 코드로 가입한 사용자 계정도 함께 삭제.
+
+    효과: 가입했던 사용자의 토큰 무효화 → 다음 요청에서 401 → 자동 로그아웃.
+    🔐 manage_users 필요. 오너 계정은 cascade 삭제 대상에서 제외.
+    """
+    user = _auth(request, body=None, min_level=1)
+    if not has_capability(user, "manage_users"):
+        raise HTTPException(status_code=403, detail="권한 변경 권한이 없어요 (manage_users 필요).")
+    # 1) 코드 디스크에서 제거
+    ok = delete_code(code)
+    # 2) cascade: 해당 코드로 등록한 사용자 계정도 삭제 (오너 제외)
+    affected: list[str] = []
+    try:
+        from auth import _load_json, _save_json, _USERS_FILE, _user_keys_path
+        users = _load_json(_USERS_FILE)
+        if isinstance(users, dict):
+            target = code.upper()
+            for uid in list(users.keys()):
+                u = users[uid]
+                if u.get("invite_code") == target and u.get("role") != "owner":
+                    affected.append(u.get("nickname", uid))
+                    del users[uid]
+                    # API 키 파일도 디스크에서 정리
+                    try:
+                        p = _user_keys_path(uid)
+                        if p.exists():
+                            p.unlink()
+                    except Exception:
+                        pass
+            _save_json(_USERS_FILE, users)
+    except Exception as e:
+        return {"ok": ok, "code_deleted": ok, "users_deleted": [], "error": str(e)}
+    return {"ok": ok, "code_deleted": ok, "users_deleted": affected}
 
 
 @router.get("/users")
