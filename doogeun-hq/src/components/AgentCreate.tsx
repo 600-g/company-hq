@@ -1,13 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Zap, Settings, ChevronDown, ChevronRight, Wand2, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { useAgentStore } from "@/stores/agentStore";
 import { useLayoutStore } from "@/stores/layoutStore";
+import { useAuthStore } from "@/stores/authStore";
 import EmojiPicker from "@/components/EmojiPicker";
+import InfoTip from "@/components/ui/InfoTip";
 import { apiBase } from "@/lib/utils";
+import { authFetch } from "@/lib/api";
 
 type Mode = "light" | "project";
 
@@ -23,7 +26,31 @@ interface Props {
  */
 export default function AgentCreate({ onDone }: Props) {
   const addAgent = useAgentStore((s) => s.addAgent);
+  const isAdmin = useAuthStore((s) => s.isAdmin());
   const [mode, setMode] = useState<Mode>("light");
+
+  /* 능력 감지 — /api/auth/me/setup 응답으로 키 보유 여부 받음 */
+  const [caps, setCaps] = useState<{
+    github_token: boolean;
+    cloudflare_token: boolean;
+    cloudflare_zone: boolean;
+  }>({ github_token: false, cloudflare_token: false, cloudflare_zone: false });
+  useEffect(() => {
+    authFetch("/api/auth/me/setup")
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => {
+        if (d?.ok && d.keys_status) {
+          setCaps({
+            github_token: !!d.keys_status.github_token?.set,
+            cloudflare_token: !!d.keys_status.cloudflare_token?.set,
+            cloudflare_zone: !!d.keys_status.cloudflare_zone?.set,
+          });
+        }
+      })
+      .catch(() => {});
+  }, []);
+  const canCreateFull = isAdmin || caps.github_token;
+  const canAutoDomain = isAdmin || (caps.cloudflare_token && caps.cloudflare_zone);
 
   /* 공용 */
   const [name, setName] = useState("");
@@ -185,10 +212,9 @@ export default function AgentCreate({ onDone }: Props) {
       const finalRepo = (repoName.trim() || subdomain.trim() || "").toLowerCase();
 
       const r = useFullTeam
-        ? await fetch(`${apiBase()}/api/teams`, {
+        ? await authFetch("/api/teams", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
+            json: {
               name: name.trim(),
               repo: finalRepo,
               emoji: emoji.trim() || "🤖",
@@ -196,23 +222,28 @@ export default function AgentCreate({ onDone }: Props) {
               project_type: "general",
               category: "product",
               subdomain: subdomain.trim().toLowerCase(),
-              subdomain_category: cfCategory,  // 'web' | 'game' | 'other' — 토큰 라벨링
-            }),
+              subdomain_category: cfCategory,
+            },
           })
-        : await fetch(`${apiBase()}/api/teams/light`, {
+        : await authFetch("/api/teams/light", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
+            json: {
               name: name.trim(),
               emoji: emoji.trim() || "🤖",
               description: finalDesc,
               system_prompt: finalSysPrompt,
               collaborative: true,
-            }),
+            },
           });
       const data = await r.json().catch(() => ({}));
       if (!r.ok || !data?.ok) {
-        throw new Error(data?.error || `서버 등록 실패 (HTTP ${r.status})`);
+        // 백엔드가 need_key 필드 주면 친절한 안내 + 설정 페이지 링크
+        if (data?.need_key === "github_token") {
+          throw new Error(
+            (data.error || data.detail) + " → 설정 페이지에서 GitHub 토큰을 추가해주세요."
+          );
+        }
+        throw new Error(data?.error || data?.detail || `서버 등록 실패 (HTTP ${r.status})`);
       }
       const serverTeamId: string = data.team?.id || data.id || "";
       if (!serverTeamId) {
@@ -354,6 +385,36 @@ export default function AgentCreate({ onDone }: Props) {
 
   return (
     <div className="p-5 space-y-4">
+      {/* 능력 안내 배너 — 비개발자가 무엇을 추가하면 무엇이 풀리는지 한눈에 */}
+      <div className="rounded-lg border border-sky-400/30 bg-sky-500/5 p-3 text-[11px] text-gray-300 space-y-1.5">
+        <div className="font-bold text-sky-300 flex items-center gap-1">
+          🔓 내 권한 / 연동 현황
+        </div>
+        <div className="flex flex-wrap gap-2 items-center">
+          <span className={`px-1.5 py-0.5 rounded text-[10px] ${canCreateFull ? "bg-emerald-500/15 text-emerald-300" : "bg-gray-700/40 text-gray-400"}`}>
+            {canCreateFull ? "✅" : "🔒"} GitHub 자동 레포
+          </span>
+          <span className={`px-1.5 py-0.5 rounded text-[10px] ${canAutoDomain ? "bg-emerald-500/15 text-emerald-300" : "bg-gray-700/40 text-gray-400"}`}>
+            {canAutoDomain ? "✅" : "🔒"} 도메인 자동 발급
+          </span>
+          <InfoTip
+            inline={{
+              title: "잠금 해제 방법",
+              body:
+                "관리자 권한이거나, [설정 → 내 API 키] 에서 본인 토큰을 추가하면 자동으로 풀립니다. " +
+                "GitHub 토큰 → 본인 GitHub 계정에 레포 자동 생성. " +
+                "Cloudflare 토큰+도메인 → 본인 도메인에 서브도메인 자동 발급.",
+            }}
+            size={12}
+          />
+          {!canCreateFull && (
+            <a href="/settings" className="ml-auto text-sky-400 hover:text-sky-300 underline">
+              → 키 추가하러 가기
+            </a>
+          )}
+        </div>
+      </div>
+
       {/* 탭 */}
       <div className="flex gap-1 p-1 bg-gray-900/60 rounded-lg border border-gray-800">
         <button

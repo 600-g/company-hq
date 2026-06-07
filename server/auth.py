@@ -231,7 +231,8 @@ def set_user_keys(user_id: str, keys: dict) -> dict:
 def get_user_keys_status(user_id: str) -> dict:
     """API 키 설정 현황 — raw 값 노출 X. 비개발자 가이드용.
 
-    반환: {github_token: {set, masked}, gemini_api_key: {...}, anthropic_api_key: {...}}
+    반환: {github_token, gemini_api_key, anthropic_api_key, cloudflare_token, cloudflare_zone}
+    cloudflare_zone 은 도메인 이름이라 마스킹 없이 그대로 표시.
     """
     keys = get_user_keys(user_id)
     def _mask(v: str) -> str:
@@ -242,6 +243,8 @@ def get_user_keys_status(user_id: str) -> dict:
         "github_token": {"set": bool(keys.get("github_token")), "masked": _mask(keys.get("github_token", ""))},
         "gemini_api_key": {"set": bool(keys.get("gemini_api_key")), "masked": _mask(keys.get("gemini_api_key", ""))},
         "anthropic_api_key": {"set": bool(keys.get("anthropic_api_key")), "masked": _mask(keys.get("anthropic_api_key", ""))},
+        "cloudflare_token": {"set": bool(keys.get("cloudflare_token")), "masked": _mask(keys.get("cloudflare_token", ""))},
+        "cloudflare_zone": {"set": bool(keys.get("cloudflare_zone")), "masked": keys.get("cloudflare_zone", "") or ""},
     }
 
 

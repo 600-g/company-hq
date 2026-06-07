@@ -159,6 +159,44 @@ async def auth_me_setup(request: Request):
             "free": "✅ 완전 무료 (GitHub 무료 계정으로 OK)",
         },
         {
+            "key": "cloudflare_token",
+            "label": "Cloudflare API 토큰",
+            "set": status["cloudflare_token"]["set"],
+            "masked": status["cloudflare_token"]["masked"],
+            "required": False,
+            "why": (
+                "본인 도메인(예: myname.com) 에 서브도메인(예: agent-X.myname.com) 자동 발급. "
+                "이게 있어야 풀 에이전트 만들 때 인터넷에 공개되는 진짜 주소가 자동으로 붙어요. "
+                "본인 도메인 없으면 호스트(600g.net) 의 서브도메인 받음 (관리자만)."
+            ),
+            "where": "https://dash.cloudflare.com/profile/api-tokens",
+            "signup_steps": [
+                "이미 갖고 있는 도메인이 Cloudflare 에 등록돼야 함 (가비아·후이즈 등에서 산 도메인 → Cloudflare nameserver 로 전환).",
+                "dash.cloudflare.com 로그인 → 우상단 프로필 → My Profile → API Tokens → Create Token.",
+                "'Edit zone DNS' 템플릿 → Use template.",
+                "Zone Resources → Specific zone → 본인 도메인 선택 → Continue → Create Token.",
+                "토큰 복사 → 두근컴퍼니 [내 API 키 → Cloudflare 토큰] 붙여넣기.",
+            ],
+            "free": "✅ 토큰 발급 무료. 도메인은 별도 (가비아 1년 1만원~).",
+        },
+        {
+            "key": "cloudflare_zone",
+            "label": "Cloudflare 도메인 (zone)",
+            "set": status["cloudflare_zone"]["set"],
+            "masked": status["cloudflare_zone"]["masked"],
+            "required": False,
+            "why": (
+                "본인이 Cloudflare 에 등록한 도메인 이름. 예: 'myname.com' (https:// X, www. X). "
+                "Cloudflare 토큰과 함께 넣어야 서브도메인 자동 발급이 동작."
+            ),
+            "where": "https://dash.cloudflare.com/",
+            "signup_steps": [
+                "Cloudflare 대시보드 상단에 본인 도메인 카드가 보이면 → 그 이름을 그대로 입력.",
+                "여러 개면 자주 쓰는 것 1개만 (나중에 변경 가능).",
+            ],
+            "free": "ℹ️ 입력만 — 가입/결제 없음.",
+        },
+        {
             "key": "anthropic_api_key",
             "label": "Anthropic API 키 (선택)",
             "set": status["anthropic_api_key"]["set"],
@@ -214,7 +252,7 @@ async def auth_me_keys_put(body: dict, request: Request):
     keys = body.get("keys") or {}
     if not isinstance(keys, dict):
         return {"ok": False, "error": "keys 는 object 여야 합니다."}
-    ALLOWED = {"github_token", "gemini_api_key", "anthropic_api_key"}
+    ALLOWED = {"github_token", "gemini_api_key", "anthropic_api_key", "cloudflare_token", "cloudflare_zone"}
     filtered = {k: v for k, v in keys.items() if k in ALLOWED}
     set_user_keys(user["user_id"], filtered)
     return {"ok": True, "keys_status": get_user_keys_status(user["user_id"])}

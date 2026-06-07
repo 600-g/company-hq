@@ -86,46 +86,52 @@ def _get_zone_name() -> str:
     return os.getenv("CF_ZONE_NAME", "600g.net").strip()
 
 
-def _headers(category: str | None = None) -> dict[str, str]:
+def _headers(category: str | None = None, cf_token: str | None = None) -> dict[str, str]:
+    tok = (cf_token or "").strip() or _get_token(category)
     return {
-        "Authorization": f"Bearer {_get_token(category)}",
+        "Authorization": f"Bearer {tok}",
         "Content-Type": "application/json",
     }
 
 
-def get_zone_id(zone_name: str | None = None, category: str | None = None) -> str | None:
-    """Zone 이름으로 zone_id 조회 (캐시됨). 토큰 또는 zone 없으면 None."""
+def get_zone_id(zone_name: str | None = None, category: str | None = None, cf_token: str | None = None) -> str | None:
+    """Zone 이름으로 zone_id 조회 (캐시됨). 토큰 또는 zone 없으면 None.
+
+    cf_token 명시 전달 시 사용자별 토큰 사용 (본인 Cloudflare 계정).
+    """
     zone = zone_name or _get_zone_name()
-    if zone in _zone_id_cache:
-        return _zone_id_cache[zone]
-    if not _get_token(category):
+    cache_key = f"{cf_token[:8] if cf_token else 'default'}::{zone}"
+    if cache_key in _zone_id_cache:
+        return _zone_id_cache[cache_key]
+    effective = (cf_token or "").strip() or _get_token(category)
+    if not effective:
         logger.warning("[cf_dns] CF_TOKEN%s 미설정", f"_{category.upper()}" if category else "")
         return None
     try:
-        r = requests.get(f"{CF_API}/zones?name={zone}", headers=_headers(category), timeout=8)
+        r = requests.get(f"{CF_API}/zones?name={zone}", headers=_headers(category, cf_token), timeout=8)
         r.raise_for_status()
         result = r.json().get("result") or []
         if not result:
             logger.warning("[cf_dns] zone '%s' 못 찾음 (토큰 권한 확인)", zone)
             return None
         zone_id = result[0]["id"]
-        _zone_id_cache[zone] = zone_id
+        _zone_id_cache[cache_key] = zone_id
         return zone_id
     except Exception as e:
         logger.warning("[cf_dns] get_zone_id 실패: %s", e)
         return None
 
 
-def find_record(prefix: str, zone_name: str | None = None, category: str | None = None) -> dict | None:
+def find_record(prefix: str, zone_name: str | None = None, category: str | None = None, cf_token: str | None = None) -> dict | None:
     """기존 CNAME 레코드 조회. {prefix}.{zone} 매칭."""
-    zone_id = get_zone_id(zone_name, category)
+    zone_id = get_zone_id(zone_name, category, cf_token)
     if not zone_id:
         return None
     full_name = f"{prefix}.{zone_name or _get_zone_name()}"
     try:
         r = requests.get(
             f"{CF_API}/zones/{zone_id}/dns_records?name={full_name}&type=CNAME",
-            headers=_headers(category), timeout=8,
+            headers=_headers(category, cf_token), timeout=8,
         )
         r.raise_for_status()
         result = r.json().get("result") or []
@@ -141,6 +147,7 @@ def add_subdomain(
     zone_name: str | None = None,
     proxied: bool = False,
     category: str | None = None,
+    cf_token: str | None = None,
 ) -> dict[str, Any]:
     """{prefix}.{zone} CNAME → target 추가.
 
@@ -150,12 +157,13 @@ def add_subdomain(
 
     반환: {ok, record_id?, full_name?, url?, category_used?, error?}
     """
-    if not _get_token(category):
+    effective_token = (cf_token or "").strip() or _get_token(category)
+    if not effective_token:
         cat_msg = f"CF_TOKEN_{category.upper()}" if category else "CF_TOKEN"
         return {"ok": False, "error": f"{cat_msg} 미설정 (.env 또는 설정 페이지에서 추가)"}
 
     zone = zone_name or _get_zone_name()
-    zone_id = get_zone_id(zone, category)
+    zone_id = get_zone_id(zone, category, cf_token)
     if not zone_id:
         return {"ok": False, "error": f"zone '{zone}' 조회 실패 — 토큰 권한 확인"}
 
@@ -163,7 +171,7 @@ def add_subdomain(
     cat_used = category or "default"
 
     # 이미 있으면 skip (idempotent)
-    existing = find_record(prefix, zone, category)
+    existing = find_record(prefix, zone, category, cf_token)
     if existing:
         return {
             "ok": True,
@@ -184,7 +192,7 @@ def add_subdomain(
     try:
         r = requests.post(
             f"{CF_API}/zones/{zone_id}/dns_records",
-            headers=_headers(category), json=payload, timeout=8,
+            headers=_headers(category, cf_token), json=payload, timeout=8,
         )
         data = r.json()
         if not data.get("success"):

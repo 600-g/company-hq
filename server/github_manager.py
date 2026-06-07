@@ -262,10 +262,12 @@ def _generate_system_prompt(
     )
 
 
-def get_github() -> Github:
-    if not GITHUB_TOKEN:
-        raise RuntimeError("GITHUB_TOKEN이 설정되지 않았습니다. server/.env를 확인하세요.")
-    return Github(GITHUB_TOKEN)
+def get_github(github_token: str | None = None) -> Github:
+    """github_token 명시 전달 시 그 토큰 사용 (사용자별 PAT), 없으면 .env 의 호스트 토큰."""
+    tok = (github_token or GITHUB_TOKEN or "").strip()
+    if not tok:
+        raise RuntimeError("GITHUB_TOKEN이 설정되지 않았습니다. server/.env 또는 [설정 → 내 API 키] 를 확인하세요.")
+    return Github(tok)
 
 
 def create_repo(
@@ -274,9 +276,13 @@ def create_repo(
     private: bool = False,
     project_type: str = "general",
     emoji: str = "🆕",
+    github_token: str | None = None,
 ) -> dict:
-    """GitHub에 새 레포를 만들고 로컬에 클론 + CLAUDE.md 자동 생성."""
-    g = get_github()
+    """GitHub에 새 레포를 만들고 로컬에 클론 + CLAUDE.md 자동 생성.
+
+    github_token: 명시 전달 시 그 토큰의 GitHub 계정에 생성 (사용자별 PAT). 없으면 .env 호스트 토큰.
+    """
+    g = get_github(github_token)
     user = g.get_user()
 
     # GitHub API는 latin-1 인코딩 → 이모지/비ASCII 제거
@@ -340,12 +346,17 @@ def create_repo(
         else:
             raise
 
-    # 로컬 클론
+    # 로컬 클론 — 사용자 토큰이 있으면 URL 에 임시 임베드 (push 까지 끝낸 후 sanitize)
     local_path = os.path.join(PROJECTS_ROOT, name)
+    clone_url = repo.clone_url
+    actual_token = (github_token or GITHUB_TOKEN or "").strip()
+    authed_url = clone_url
+    if actual_token and clone_url.startswith("https://"):
+        authed_url = clone_url.replace("https://", f"https://x-access-token:{actual_token}@", 1)
     if not os.path.isdir(local_path):
         try:
             subprocess.run(
-                ["git", "clone", repo.clone_url, local_path],
+                ["git", "clone", authed_url, local_path],
                 check=True,
                 capture_output=True,
             )
@@ -380,12 +391,20 @@ def create_repo(
         pass  # 변경 없으면 커밋 실패 — 정상
 
     try:
-        subprocess.run(["git", "push"], cwd=local_path, capture_output=True, check=True)
+        # 사용자 토큰이 있으면 토큰 임베드된 URL 로 push (credential prompt 회피)
+        push_url = authed_url if actual_token else clone_url
+        subprocess.run(["git", "push", push_url, "HEAD:main"], cwd=local_path, capture_output=True, check=True)
     except subprocess.CalledProcessError as e:
         _log.getLogger("company-hq").warning(
             "CLAUDE.md push 실패 (에이전트는 정상 생성): %s",
             e.stderr.decode("utf-8", errors="replace")[:100] if e.stderr else str(e),
         )
+
+    # 토큰을 origin URL 에서 sanitize — push 후엔 깨끗한 URL 만 .git/config 에 남도록
+    try:
+        subprocess.run(["git", "remote", "set-url", "origin", clone_url], cwd=local_path, capture_output=True)
+    except Exception:
+        pass
 
     # 시스템프롬프트 생성
     system_prompt = _generate_system_prompt(name, description, project_type)

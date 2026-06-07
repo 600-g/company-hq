@@ -419,7 +419,25 @@ async def add_team(body: dict, request: Request):
     4. floor_layout 동기화 → 실패 시 prompts/TEAMS 롤백
     GitHub repo 자체 삭제는 안전상 자동 X — 부분 실패 시 사용자가 수동 정리.
     """
-    user = _auth_user(request, body, min_level=4)  # admin 이상만 GitHub 레포 생성
+    # 능력 기반 권한: admin+ 또는 본인 GitHub 토큰 보유 시 허용
+    user = _auth_user(request, body, min_level=2)  # 기본 member+
+    user_level = ROLES.get(user["role"], {}).get("level", 0)
+    user_keys_data = get_user_keys(user["user_id"])
+    user_github_token = (user_keys_data.get("github_token") or "").strip()
+
+    if user_level < 4 and not user_github_token:
+        return {
+            "ok": False,
+            "error": (
+                "GitHub 레포가 자동으로 생성되는 모드에요. "
+                "본인 GitHub 토큰을 [설정 → 내 API 키 → GitHub 토큰] 에 먼저 추가해주세요. "
+                "본인 계정에 코드 저장소가 만들어집니다."
+            ),
+            "need_key": "github_token",
+        }
+    # admin+ 가 본인 키 없으면 호스트 .env 토큰(600-g org) 사용. 본인 키 있으면 본인 계정 우선.
+    effective_github_token = user_github_token if user_github_token else None
+
     name = body.get("name", "").strip()
     repo_name = body.get("repo", name).strip()
     emoji = body.get("emoji", "🆕")
@@ -430,7 +448,10 @@ async def add_team(body: dict, request: Request):
         return {"ok": False, "error": "name과 repo는 필수입니다."}
 
     # ─ 단계 1: GitHub 레포 생성 ─
-    result = create_repo(repo_name, description, project_type=project_type, emoji=emoji)
+    result = create_repo(
+        repo_name, description, project_type=project_type, emoji=emoji,
+        github_token=effective_github_token,
+    )
     if not result["ok"]:
         return result
 
@@ -514,8 +535,15 @@ async def add_team(body: dict, request: Request):
             local_path = os.path.expanduser(new_team["localPath"])
             if not sub_category:
                 sub_category = suggest_category(subdomain)
-            # 5-1: CF DNS CNAME 등록 (카테고리별 토큰 우선)
-            dns_result = add_subdomain(subdomain, category=sub_category)
+            # 사용자별 CF 토큰 / zone 사용 (본인 도메인에 발급). 없으면 호스트 600g.net.
+            user_cf_token = (user_keys_data.get("cloudflare_token") or "").strip() or None
+            user_cf_zone = (user_keys_data.get("cloudflare_zone") or "").strip() or None
+            # 5-1: CF DNS CNAME 등록
+            dns_result = add_subdomain(
+                subdomain, category=sub_category,
+                cf_token=user_cf_token,
+                zone_name=user_cf_zone,
+            )
             if not dns_result.get("ok"):
                 logger.warning("[create-team] 서브도메인 DNS 등록 실패: %s", dns_result.get("error"))
                 subdomain_info = {"ok": False, "stage": "dns", "error": dns_result.get("error")}
