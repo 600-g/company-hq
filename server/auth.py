@@ -149,6 +149,20 @@ def get_all_codes() -> list:
     return codes if isinstance(codes, list) else []
 
 
+def deactivate_code(code: str) -> bool:
+    """초대코드 즉시 비활성화 (오너/관리자만 호출 예정)."""
+    codes = _load_json(_CODES_FILE)
+    if not isinstance(codes, list):
+        return False
+    target = code.upper()
+    for c in codes:
+        if c["code"] == target:
+            c["active"] = False
+            _save_json(_CODES_FILE, codes)
+            return True
+    return False
+
+
 def get_all_users() -> dict:
     """모든 사용자 목록 (관리용)."""
     users = _load_json(_USERS_FILE)
@@ -171,6 +185,113 @@ def ensure_owner_code():
         print(f"🔑 오너 초대코드 생성: {code}")
         return code
     return None
+
+
+# ── per-user API 키 저장소 ────────────────────────────
+_USER_KEYS_DIR = _AUTH_DIR / "user_keys"
+_USER_KEYS_DIR.mkdir(exist_ok=True)
+
+
+def _user_keys_path(user_id: str) -> Path:
+    safe = "".join(c for c in user_id if c.isalnum())
+    return _USER_KEYS_DIR / f"{safe}.json"
+
+
+def get_user_keys(user_id: str) -> dict:
+    """사용자별 API 키 (비공개 raw 값). 없으면 빈 dict."""
+    p = _user_keys_path(user_id)
+    if not p.exists():
+        return {}
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def set_user_keys(user_id: str, keys: dict) -> dict:
+    """사용자 키 저장 — None/공백 값은 제거. 파일 권한 600.
+
+    keys 예: {"github_token": "ghp_...", "gemini_api_key": "AIza...", "anthropic_api_key": "sk-ant-..."}
+    """
+    p = _user_keys_path(user_id)
+    cur = get_user_keys(user_id)
+    for k, v in keys.items():
+        if v is None or (isinstance(v, str) and v.strip() == ""):
+            cur.pop(k, None)
+        else:
+            cur[k] = v.strip() if isinstance(v, str) else v
+    p.write_text(json.dumps(cur, ensure_ascii=False, indent=2), encoding="utf-8")
+    try:
+        os.chmod(p, 0o600)
+    except Exception:
+        pass
+    return cur
+
+
+def get_user_keys_status(user_id: str) -> dict:
+    """API 키 설정 현황 — raw 값 노출 X. 비개발자 가이드용.
+
+    반환: {github_token: {set, masked}, gemini_api_key: {...}, anthropic_api_key: {...}}
+    """
+    keys = get_user_keys(user_id)
+    def _mask(v: str) -> str:
+        if not v or len(v) < 10:
+            return "****"
+        return v[:4] + "…" + v[-4:]
+    return {
+        "github_token": {"set": bool(keys.get("github_token")), "masked": _mask(keys.get("github_token", ""))},
+        "gemini_api_key": {"set": bool(keys.get("gemini_api_key")), "masked": _mask(keys.get("gemini_api_key", ""))},
+        "anthropic_api_key": {"set": bool(keys.get("anthropic_api_key")), "masked": _mask(keys.get("anthropic_api_key", ""))},
+    }
+
+
+# ── 권한 체크 헬퍼 ────────────────────────────────────
+class AuthError(Exception):
+    """인증/권한 실패 — FastAPI 라우터에서 HTTPException 으로 변환."""
+
+    def __init__(self, status_code: int, detail: str):
+        self.status_code = status_code
+        self.detail = detail
+        super().__init__(detail)
+
+
+def require_user(token: str, min_level: int = 1) -> dict:
+    """토큰 검증 + 최소 권한 레벨 체크.
+
+    레벨: owner=5 / admin=4 / manager=3 / member=2 / guest=1
+    실패 시 AuthError(401/403) 발생 — 호출자가 HTTPException 으로 래핑.
+    """
+    if not token:
+        raise AuthError(401, "로그인이 필요합니다.")
+    user = verify_token(token)
+    if not user:
+        raise AuthError(401, "토큰이 유효하지 않습니다. 다시 로그인해주세요.")
+    level = ROLES.get(user["role"], {}).get("level", 0)
+    if level < min_level:
+        need = next((r["label"] for r in ROLES.values() if r["level"] == min_level), str(min_level))
+        raise AuthError(403, f"권한이 부족합니다 ({need} 이상 필요).")
+    return user
+
+
+def is_owner_of(team: dict, user: dict) -> bool:
+    """에이전트 소유 여부 — owner_id 일치 또는 user.role == owner."""
+    if not user:
+        return False
+    if user["role"] == "owner":
+        return True
+    return team.get("owner_id") == user.get("user_id")
+
+
+def extract_token_from_request(headers: dict, query_params: dict | None = None, body_token: str = "") -> str:
+    """Authorization 헤더 / 쿼리 / 바디 어느 것이든 token 추출."""
+    auth = headers.get("authorization") or headers.get("Authorization") or ""
+    if auth.lower().startswith("bearer "):
+        return auth[7:].strip()
+    if query_params:
+        qt = query_params.get("token") or ""
+        if qt:
+            return qt
+    return body_token or ""
 
 
 def owner_login(password: str) -> dict | None:

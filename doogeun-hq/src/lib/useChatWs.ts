@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useCallback } from "react";
 import { apiBase } from "@/lib/utils";
+import { buildWsUrl } from "@/lib/api";
 import { parseArtifacts } from "@/lib/parseArtifacts";
 import { validateParsedResult, buildRetryPrompt } from "@/lib/validateOutput";
 import { useChatStore } from "@/stores/chatStore";
@@ -103,7 +104,7 @@ function connectTeam(teamId: string, agentEmoji?: string, agentName?: string): C
 
   const connect = () => {
     if (state.closed) return;
-    const url = `${wsBase()}/ws/chat/${teamId}`;
+    const url = buildWsUrl(teamId); // 토큰 자동 부착 (백엔드 인증 게이트)
     const ws = new WebSocket(url);
     state.ws = ws;
     ws.onopen = () => {

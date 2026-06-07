@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import TopBar from "@/components/layout/TopBar";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuthStore } from "@/stores/authStore";
 import { apiBase } from "@/lib/utils";
+import { persistToken } from "@/lib/api";
 
 export default function AuthPage() {
   const router = useRouter();
@@ -18,6 +19,17 @@ export default function AuthPage() {
   const [mode, setMode] = useState<"code" | "owner">("code");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // ?code=XXX 자동 입력 (오너가 보낸 가입 링크)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const c = params.get("code");
+    if (c) {
+      setCode(c.toUpperCase());
+      setMode("code");
+    }
+  }, []);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -32,20 +44,27 @@ export default function AuthPage() {
         });
         const d = await res.json();
         if (!res.ok || !d.ok) throw new Error(d.error || "로그인 실패");
-        login(d.token, { id: "owner", nickname: "오너", role: "owner", loggedInAt: Date.now() });
+        persistToken(d.token); // 쿠키 백업 (캐시 삭제 시 복원용)
+        login(d.token, { id: d.user_id || "owner", nickname: d.nickname || "오너", role: "owner", loggedInAt: Date.now() });
         const next1 = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("next") : null;
         router.push(next1 || "/hub");
         return;
       }
-      // 초대 코드 로그인 (기존 FastAPI /api/auth/verify 가정)
-      const res = await fetch(`${apiBase()}/api/auth/verify`, {
+      // 초대 코드로 신규 가입 — /api/auth/register (이전 /verify 는 토큰 검증 전용이라 잘못 호출됐었음)
+      const res = await fetch(`${apiBase()}/api/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ nickname, code }),
       });
       const d = await res.json();
-      if (!res.ok || !d.ok) throw new Error(d.error || "코드 검증 실패");
-      login(d.token, { id: d.user?.id || nickname, nickname, role: d.user?.role || "member", loggedInAt: Date.now() });
+      if (!res.ok || !d.ok) throw new Error(d.error || "초대코드가 유효하지 않습니다.");
+      persistToken(d.token);
+      login(d.token, {
+        id: d.user_id || nickname,
+        nickname: d.nickname || nickname,
+        role: d.role || "member",
+        loggedInAt: Date.now(),
+      });
       const next2 = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("next") : null;
       router.push(next2 || "/hub");
     } catch (err) {

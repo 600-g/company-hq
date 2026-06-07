@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuthStore } from "@/stores/authStore";
+import { apiBase } from "@/lib/utils";
 
 /** 로그인 안 된 사용자는 /auth 로 리다이렉트.
  *   - zustand persist 의 onFinishHydration 콜백으로 정확히 hydration 완료 후 판정
@@ -48,7 +49,7 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
     const path = pathname || "/";
     if (PUBLIC_ROUTES.has(path)) return;
     if (!user || !token) {
-      // 마지막 안전망: localStorage 직접 확인 (zustand store reactivity race 방지)
+      // 안전망 1: localStorage 직접 확인 (zustand store reactivity race 방지)
       try {
         const raw = localStorage.getItem("doogeun-hq-auth");
         if (raw) {
@@ -56,12 +57,42 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
           const persistedToken = parsed?.state?.token;
           const persistedUser = parsed?.state?.user;
           if (persistedToken && persistedUser) {
-            // localStorage 엔 있는데 store 에 없음 → 직접 hydrate 시도 + redirect 보류
             useAuthStore.setState({ token: persistedToken, user: persistedUser });
             return;
           }
         }
-      } catch { /* JSON 파싱 실패 → redirect 진행 */ }
+      } catch { /* JSON 파싱 실패 — 다음 fallback 진행 */ }
+
+      // 안전망 2: cookie 에서 토큰 복원 (캐시 삭제로 localStorage 날아가도 cookie 는 보존)
+      try {
+        const cookieMatch = document.cookie.match(/(?:^|;\s*)doogeun-hq-token=([^;]+)/);
+        const cookieToken = cookieMatch ? decodeURIComponent(cookieMatch[1]) : null;
+        if (cookieToken) {
+          // 백엔드에 verify 요청 → user 정보 복원 → 다시 로그인
+          (async () => {
+            try {
+              const res = await fetch(`${apiBase()}/api/auth/verify`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ token: cookieToken }),
+              });
+              const d = await res.json();
+              if (d.ok && d.user_id) {
+                useAuthStore.getState().login(cookieToken, {
+                  id: d.user_id,
+                  nickname: d.nickname || "사용자",
+                  role: d.role || "member",
+                  loggedInAt: Date.now(),
+                });
+                return;
+              }
+            } catch { /* ignore */ }
+            router.replace(`/auth?next=${encodeURIComponent(path)}`);
+          })();
+          return;
+        }
+      } catch { /* ignore */ }
+
       router.replace(`/auth?next=${encodeURIComponent(path)}`);
     }
   }, [hydrated, user, token, pathname, router]);

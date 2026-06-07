@@ -30,6 +30,8 @@ from claude_runner import TEAM_SESSIONS, TEAM_MODELS, AGENT_PIDS, MODEL_IDS, get
 from auth import (
     register_user, verify_token, create_invite_code,
     get_all_codes, get_all_users, ensure_owner_code, ROLES, owner_login,
+    require_user, is_owner_of, extract_token_from_request, AuthError,
+    deactivate_code, get_user_keys, set_user_keys, get_user_keys_status,
 )
 from push_notifications import (
     get_vapid_public_key, add_subscription, remove_subscription,
@@ -44,6 +46,46 @@ load_dotenv()
 
 # 서버 시작 시 오너 초대코드 확인
 ensure_owner_code()
+
+
+# ── 권한 헬퍼 (라우터에서 공용) ──────────────────────
+from fastapi import HTTPException
+
+
+def _auth_user(request: Request, body: dict | None = None, min_level: int = 1) -> dict:
+    """Request 헤더(Authorization: Bearer …) + 쿼리(?token=…) + 바디(token: …) 어느 곳이든 토큰 추출 후 권한 검증.
+
+    실패 시 HTTPException(401/403). 성공 시 user dict 반환.
+    """
+    token = extract_token_from_request(
+        dict(request.headers),
+        dict(request.query_params),
+        (body or {}).get("token", ""),
+    )
+    try:
+        return require_user(token, min_level=min_level)
+    except AuthError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.detail)
+
+
+def _ensure_team_owner_ids():
+    """teams.json 의 모든 팀에 owner_id 가 없으면 첫 오너 사용자 user_id 로 백필 (1회 마이그레이션)."""
+    global TEAMS
+    try:
+        users = get_all_users() or {}
+        owner_uid = next((uid for uid, u in users.items() if u.get("role") == "owner"), None)
+        if not owner_uid:
+            return  # 오너 없으면 백필 못 함
+        changed = False
+        for t in TEAMS:
+            if not t.get("owner_id"):
+                t["owner_id"] = owner_uid
+                changed = True
+        if changed:
+            _save_teams(TEAMS)
+            logger.info("[migrate] teams.json → owner_id 백필 (owner=%s)", owner_uid)
+    except Exception as e:
+        logger.warning("[migrate] owner_id 백필 실패: %s", e)
 
 PROJECTS_ROOT = os.path.expanduser(os.getenv("PROJECTS_ROOT", "~/Developer/my-company"))
 
@@ -139,6 +181,7 @@ def _next_order(teams: list) -> int:
 
 TEAMS = _load_teams()
 set_team_lookup(TEAMS)  # 푸시 알림용 팀 정보 초기화
+_ensure_team_owner_ids()  # 1회 마이그레이션 — 기존 팀 owner_id 백필
 
 # ── 층 배치 (floor_layout.json) ───────────────────────
 _LAYOUT_FILE = os.path.join(os.path.dirname(__file__), "floor_layout.json")
@@ -363,8 +406,11 @@ async def _shutdown_cleanup():
 
 
 @app.post("/api/teams")
-async def add_team(body: dict):
+async def add_team(body: dict, request: Request):
     """신규 팀 추가: GitHub 레포 생성 + 로컬 클론 + CLAUDE.md + 시스템프롬프트 자동 등록.
+
+    🔐 권한: admin 이상 (level≥4). 친구 게스트가 GitHub 레포를 함부로 만들면 안 됨.
+    GitHub 토큰은 .env 의 OWNER GITHUB_TOKEN 사용 → guest/member 차단.
 
     [안정화 2026-05-08] 4단계 트랜잭션화:
     1. GitHub 레포 생성 → 실패 시 즉시 반환 (rollback 불가, 만들어진 게 없음)
@@ -373,6 +419,7 @@ async def add_team(body: dict):
     4. floor_layout 동기화 → 실패 시 prompts/TEAMS 롤백
     GitHub repo 자체 삭제는 안전상 자동 X — 부분 실패 시 사용자가 수동 정리.
     """
+    user = _auth_user(request, body, min_level=4)  # admin 이상만 GitHub 레포 생성
     name = body.get("name", "").strip()
     repo_name = body.get("repo", name).strip()
     emoji = body.get("emoji", "🆕")
@@ -426,6 +473,8 @@ async def add_team(body: dict):
         "category": category,
         "order": _next_order(TEAMS),
         "layer": 1,
+        "owner_id": user["user_id"],
+        "owner_nickname": user.get("nickname", ""),
     }
     try:
         if not any(t["id"] == repo_name for t in TEAMS):
@@ -636,8 +685,11 @@ async def generate_agent_config(body: dict):
 
 
 @app.post("/api/teams/light")
-async def add_light_agent(body: dict):
+async def add_light_agent(body: dict, request: Request):
     """경량 에이전트 — GitHub/레포 없이 빠르게 추가 (단독 / 협업 가능)
+
+    🔐 권한: member 이상 (level≥2). 게스트는 본인 에이전트 못 만듦.
+    생성자 user_id 를 owner_id 로 자동 주입 — 본인만 삭제 가능 (오너/관리자 예외).
 
     [안정화 2026-05-08] 4단계 트랜잭션화:
     1. sandbox 폴더 생성    → 실패 시 즉시 반환
@@ -646,6 +698,7 @@ async def add_light_agent(body: dict):
     4. floor_layout 동기화  → 실패 시 prompts/TEAMS 롤백 + sandbox 삭제
     각 단계 실패 시 이전 모든 단계 자동 롤백 → ghost 에이전트 제거.
     """
+    user = _auth_user(request, body, min_level=2)  # member 이상
     import re as _re
     description = (body.get("description") or "").strip()
     if not description:
@@ -724,6 +777,8 @@ async def add_light_agent(body: dict):
         "status": "운영중", "category": "product",
         "order": _next_order(TEAMS), "layer": 1,
         "lightweight": True, "collaborative": collaborative,
+        "owner_id": user["user_id"],
+        "owner_nickname": user.get("nickname", ""),
     }
     try:
         TEAMS.append(new_team)
@@ -783,17 +838,30 @@ async def add_light_agent(body: dict):
 
 
 @app.delete("/api/teams/{team_id}")
-async def delete_team(team_id: str):
-    """에이전트 삭제 — teams.json + 로컬 폴더 + GitHub 레포 + 프롬프트 정리"""
+async def delete_team(team_id: str, request: Request):
+    """에이전트 삭제 — teams.json + 로컬 폴더 + GitHub 레포 + 프롬프트 정리
+
+    🔐 권한: 본인이 만든 에이전트만 삭제 가능. 단, owner/admin 은 모든 에이전트 삭제 가능.
+    cpo-claude, server-monitor, hq-ops, staff, agent-6d883e(MD메이커) 는 시스템 보호 — 삭제 불가.
+    """
     import json
     import logging
     global TEAMS
-    if team_id in ("cpo-claude",):
-        return {"ok": False, "error": "CPO는 삭제할 수 없습니다."}
-    before = len(TEAMS)
-    TEAMS = [t for t in TEAMS if t["id"] != team_id]
-    if len(TEAMS) == before:
+    user = _auth_user(request, body=None, min_level=1)
+    SYSTEM_PROTECTED = {"cpo-claude", "server-monitor", "hq-ops", "staff", "agent-6d883e"}
+    if team_id in SYSTEM_PROTECTED:
+        return {"ok": False, "error": f"{team_id} 는 시스템 핵심 에이전트라 삭제할 수 없어요."}
+    target = next((t for t in TEAMS if t["id"] == team_id), None)
+    if not target:
         return {"ok": False, "error": "팀을 찾을 수 없습니다."}
+    # 소유자 본인 또는 owner/admin 만 삭제 가능
+    if not is_owner_of(target, user) and ROLES.get(user["role"], {}).get("level", 0) < 4:
+        return {
+            "ok": False,
+            "error": f"이 에이전트의 소유자가 아니에요. 만든 사람({target.get('owner_nickname','?')})만 삭제할 수 있어요.",
+            "owned_by": target.get("owner_nickname", ""),
+        }
+    TEAMS = [t for t in TEAMS if t["id"] != team_id]
     _save_teams(TEAMS)
     set_team_lookup(TEAMS)  # 푸시 룩업 갱신
 
@@ -1428,10 +1496,24 @@ async def activate_session_api(team_id: str, session_id: str):
 
 
 @app.websocket("/ws/chat/{team_id}")
-async def ws_chat(ws: WebSocket, team_id: str, session_id: str | None = None):
+async def ws_chat(ws: WebSocket, team_id: str, session_id: str | None = None, token: str | None = None):
     """팀별 채팅 WebSocket 엔드포인트.
     쿼리스트링 session_id 로 초기 구독 세션 지정 가능 (?session_id=...).
+
+    🔐 토큰 인증: ?token=xxx 으로 토큰 전달. 유효하지 않으면 즉시 close.
+    레거시 호환: token 미전달 시에도 일단 accept 후 첫 메시지로 토큰 받기 가능.
     """
+    # 토큰 검증 (쿼리 우선) — 친구 베타 단계 보안 게이트
+    auth_user = verify_token(token) if token else None
+    if not auth_user:
+        await ws.accept()
+        await ws.send_json({
+            "type": "auth_required",
+            "content": "🔒 로그인이 필요합니다. 다시 로그인해주세요.",
+        })
+        await ws.close(code=4401)
+        return
+
     team = next((t for t in TEAMS if t["id"] == team_id), None)
     if not team:
         await ws.accept()
