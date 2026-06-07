@@ -25,6 +25,137 @@ ROLES = {
 }
 
 
+# ── 권한 체크박스 시스템 ─────────────────────────────
+# 오너/관리자가 사용자에게 "이건 할 수 있고 저건 못 함" 를 체크박스로 부여.
+# 역할은 프리셋(기본 묶음) 으로 동작 — 그 위에 grant/revoke 로 개별 override.
+CAPABILITIES: dict[str, dict] = {
+    # 채팅 / 본인 에이전트
+    "chat": {"label": "에이전트와 채팅", "info": "사이드바에 있는 에이전트에게 메시지 보내기."},
+    "create_own_light": {"label": "Light 에이전트 만들기", "info": "GitHub 없이 빠르게 만드는 페르소나 에이전트."},
+    "create_own_full": {"label": "Full 에이전트 만들기 (GitHub 자동)", "info": "본인 GitHub 토큰 필요. 자동으로 본인 계정에 코드 저장소 생성."},
+    # 다른 사람 에이전트
+    "delete_others_agents": {"label": "다른 사람 에이전트 삭제", "info": "기본은 본인 것만 삭제. 이건 owner 권한."},
+    "edit_others_prompts": {"label": "다른 사람 시스템 프롬프트 편집", "info": "기본은 본인 것만 편집."},
+    # 씬 / 사무실
+    "edit_scene": {"label": "씬·층·캐릭터 위치 편집", "info": "사무실 배치, 층 이동, 캐릭터 드래그. 전 사용자에게 보이는 화면."},
+    "edit_furniture": {"label": "사무실 가구 편집", "info": "가구 라벨/카테고리/배치."},
+    # 사용자 관리
+    "invite_users": {"label": "친구 초대코드 발급", "info": "8자리 비밀번호 만들어 친구한테 전달."},
+    "manage_users": {"label": "다른 사용자 권한 변경", "info": "다른 사용자의 capability 체크박스 토글. owner 만 권장."},
+    # 시스템 위험 동작
+    "deploy": {"label": "프로덕션 배포", "info": "[업데이트] 버튼 — 새 빌드 배포 트리거."},
+    "terminal": {"label": "쉘 명령 실행", "info": "임의 명령 실행 — 사실상 호스트 머신 제어."},
+    "restart_server": {"label": "백엔드 재시작", "info": "FastAPI 재기동 (몇 초 다운).", },
+}
+
+# 역할별 기본 capability 묶음 (프리셋)
+ROLE_DEFAULTS: dict[str, list[str]] = {
+    "owner": list(CAPABILITIES.keys()),  # 전부
+    "admin": [
+        "chat", "create_own_light", "create_own_full",
+        "delete_others_agents", "edit_others_prompts",
+        "edit_scene", "edit_furniture", "invite_users",
+        "deploy", "restart_server",
+    ],
+    "manager": ["chat", "create_own_light", "create_own_full", "invite_users"],
+    "member": ["chat", "create_own_light", "create_own_full"],
+    "guest": ["chat"],
+}
+
+
+def effective_capabilities(user: dict) -> set[str]:
+    """사용자의 최종 권한 = 역할 기본 ∪ granted − revoked.
+
+    user 딕셔너리는 verify_token 응답 형태 + users.json 의 raw 모두 호환.
+    """
+    if not user:
+        return set()
+    role = user.get("role", "guest")
+    base = set(ROLE_DEFAULTS.get(role, []))
+    granted = set(user.get("granted_caps") or [])
+    revoked = set(user.get("revoked_caps") or [])
+    return (base | granted) - revoked
+
+
+def has_capability(user: dict, cap: str) -> bool:
+    """단일 capability 보유 여부. verify_token 응답의 capabilities 우선 (디스크 X)."""
+    if not user or not cap:
+        return False
+    cached = user.get("capabilities")
+    if isinstance(cached, list):
+        return cap in cached
+    return cap in effective_capabilities(user)
+
+
+def require_capability(token: str, cap: str) -> dict:
+    """capability 기반 권한 체크. 실패 시 AuthError(401/403)."""
+    user = require_user(token, min_level=1)
+    if has_capability(user, cap):
+        return user
+    label = CAPABILITIES.get(cap, {}).get("label", cap)
+    raise AuthError(403, f"권한 부족 — '{label}' 가 체크되어 있지 않아요. 오너/관리자에게 요청하세요.")
+
+
+def grant_capabilities(target_user_id: str, caps: list[str]) -> dict:
+    """사용자 user.granted_caps 에 추가. 잘못된 capability 는 무시."""
+    users = _load_json(_USERS_FILE)
+    if not isinstance(users, dict) or target_user_id not in users:
+        return {"ok": False, "error": "사용자를 찾을 수 없음"}
+    u = users[target_user_id]
+    g = set(u.get("granted_caps") or [])
+    g.update(c for c in caps if c in CAPABILITIES)
+    # revoked 에서 같이 빠지면 사라지지 않게 — granted 우선
+    r = set(u.get("revoked_caps") or [])
+    r -= g
+    u["granted_caps"] = sorted(g)
+    u["revoked_caps"] = sorted(r)
+    _save_json(_USERS_FILE, users)
+    return {"ok": True}
+
+
+def set_user_capabilities(target_user_id: str, capabilities: list[str]) -> dict:
+    """capabilities 배열을 사용자의 최종 권한과 일치시키기.
+
+    역할 기본과 diff 해서 granted/revoked 둘 다 갱신 — 체크박스 UI 의 핵심.
+    """
+    users = _load_json(_USERS_FILE)
+    if not isinstance(users, dict) or target_user_id not in users:
+        return {"ok": False, "error": "사용자를 찾을 수 없음"}
+    u = users[target_user_id]
+    role = u.get("role", "guest")
+    base = set(ROLE_DEFAULTS.get(role, []))
+    desired = set(c for c in capabilities if c in CAPABILITIES)
+    granted = desired - base  # 기본에 없는데 체크된 것 → grant
+    revoked = base - desired  # 기본인데 체크 해제됨 → revoke
+    u["granted_caps"] = sorted(granted)
+    u["revoked_caps"] = sorted(revoked)
+    _save_json(_USERS_FILE, users)
+    return {"ok": True, "capabilities": sorted(desired)}
+
+
+def get_user_with_capabilities(user_id: str) -> dict | None:
+    """관리 UI 용 — 사용자 정보 + 최종 capabilities + 역할 기본 + override 상세."""
+    users = _load_json(_USERS_FILE)
+    if not isinstance(users, dict) or user_id not in users:
+        return None
+    u = users[user_id]
+    role = u.get("role", "guest")
+    base = ROLE_DEFAULTS.get(role, [])
+    final = effective_capabilities({**u, "user_id": user_id})
+    return {
+        "user_id": user_id,
+        "nickname": u.get("nickname", ""),
+        "role": role,
+        "role_label": ROLES.get(role, {}).get("label", role),
+        "role_defaults": sorted(base),
+        "granted_caps": sorted(u.get("granted_caps") or []),
+        "revoked_caps": sorted(u.get("revoked_caps") or []),
+        "capabilities": sorted(final),
+        "created_at": u.get("created_at", ""),
+        "last_active": u.get("last_active", ""),
+    }
+
+
 def _load_json(path: Path) -> dict | list:
     if path.exists():
         try:
@@ -100,6 +231,9 @@ def register_user(nickname: str, code: str) -> dict | None:
     user_id = uuid.uuid4().hex[:12]
     token = uuid.uuid4().hex
 
+    # 초대코드에 extra_caps 가 있으면 가입 시 grant
+    extra_caps = code_info.get("extra_caps") or []
+    extra_caps = [c for c in extra_caps if c in CAPABILITIES]
     users[user_id] = {
         "nickname": nickname,
         "role": code_info["role"],
@@ -107,6 +241,8 @@ def register_user(nickname: str, code: str) -> dict | None:
         "created_at": datetime.now().isoformat(),
         "last_active": datetime.now().isoformat(),
         "invite_code": code.upper(),
+        "granted_caps": sorted(extra_caps),
+        "revoked_caps": [],
     }
     _save_json(_USERS_FILE, users)
     use_invite_code(code)
@@ -140,11 +276,13 @@ def verify_token(token: str) -> dict | None:
         if legacy_match or array_match:
             user["last_active"] = datetime.now().isoformat()
             _save_json(_USERS_FILE, users)
+            caps = sorted(effective_capabilities({**user, "user_id": user_id}))
             return {
                 "user_id": user_id,
                 "nickname": user["nickname"],
                 "role": user["role"],
                 "permissions": ROLES.get(user["role"], ROLES["guest"]),
+                "capabilities": caps,
             }
     return None
 

@@ -152,7 +152,7 @@ async def update_doogeun_state(body: dict, request: Request) -> dict:
     """
     from fastapi import HTTPException
     from auth import (
-        extract_token_from_request, require_user, AuthError, ROLES, is_owner_of,
+        extract_token_from_request, require_user, AuthError, is_owner_of, has_capability,
     )
     import main as _main_mod  # TEAMS 룩업 — owner_id 매칭용
 
@@ -164,7 +164,8 @@ async def update_doogeun_state(body: dict, request: Request) -> dict:
     except AuthError as e:
         raise HTTPException(status_code=e.status_code, detail=e.detail)
 
-    is_admin_level = ROLES.get(user["role"], {}).get("level", 0) >= 4
+    # 씬 편집 capability 가 있으면 layout 도 자유롭게 변경 가능
+    can_edit_scene = has_capability(user, "edit_scene")
     agents = body.get("agents")
     layout = body.get("layout")
     client_id = body.get("client_id") or ""
@@ -172,8 +173,8 @@ async def update_doogeun_state(body: dict, request: Request) -> dict:
         return {"ok": False, "error": "agents 또는 layout 필요"}
     prev = _load_doogeun_state()
 
-    if not is_admin_level:
-        # 비관리자: layout 변경 차단 + agents 는 본인 소유분만 머지
+    if not can_edit_scene:
+        # 씬 편집 권한 없음: layout 변경 차단 + agents 는 본인 소유분만 머지
         if layout is not None:
             logger.info("[doogeun_state] %s (level<4) layout 변경 시도 차단", user["nickname"])
             layout = None

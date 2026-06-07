@@ -32,6 +32,7 @@ from auth import (
     get_all_codes, get_all_users, ensure_owner_code, ROLES, owner_login,
     require_user, is_owner_of, extract_token_from_request, AuthError,
     deactivate_code, get_user_keys, set_user_keys, get_user_keys_status,
+    has_capability, require_capability, CAPABILITIES,
 )
 from push_notifications import (
     get_vapid_public_key, add_subscription, remove_subscription,
@@ -53,10 +54,7 @@ from fastapi import HTTPException
 
 
 def _auth_user(request: Request, body: dict | None = None, min_level: int = 1) -> dict:
-    """Request 헤더(Authorization: Bearer …) + 쿼리(?token=…) + 바디(token: …) 어느 곳이든 토큰 추출 후 권한 검증.
-
-    실패 시 HTTPException(401/403). 성공 시 user dict 반환.
-    """
+    """레거시 — 레벨 기반. 신규 코드는 _auth_cap 사용."""
     token = extract_token_from_request(
         dict(request.headers),
         dict(request.query_params),
@@ -64,6 +62,19 @@ def _auth_user(request: Request, body: dict | None = None, min_level: int = 1) -
     )
     try:
         return require_user(token, min_level=min_level)
+    except AuthError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.detail)
+
+
+def _auth_cap(request: Request, body: dict | None, cap: str) -> dict:
+    """capability 기반 인증. 권한 부족 시 친절한 메시지."""
+    token = extract_token_from_request(
+        dict(request.headers),
+        dict(request.query_params),
+        (body or {}).get("token", ""),
+    )
+    try:
+        return require_capability(token, cap)
     except AuthError as e:
         raise HTTPException(status_code=e.status_code, detail=e.detail)
 
@@ -420,12 +431,12 @@ async def add_team(body: dict, request: Request):
     GitHub repo 자체 삭제는 안전상 자동 X — 부분 실패 시 사용자가 수동 정리.
     """
     # 능력 기반 권한: admin+ 또는 본인 GitHub 토큰 보유 시 허용
-    user = _auth_user(request, body, min_level=2)  # 기본 member+
-    user_level = ROLES.get(user["role"], {}).get("level", 0)
+    user = _auth_cap(request, body, "create_own_full")  # capability 기반 (admin 또는 grant)
     user_keys_data = get_user_keys(user["user_id"])
     user_github_token = (user_keys_data.get("github_token") or "").strip()
+    user_is_admin = "manage_users" in (user.get("capabilities") or []) or user["role"] in ("owner", "admin")
 
-    if user_level < 4 and not user_github_token:
+    if not user_is_admin and not user_github_token:
         return {
             "ok": False,
             "error": (
@@ -726,7 +737,7 @@ async def add_light_agent(body: dict, request: Request):
     4. floor_layout 동기화  → 실패 시 prompts/TEAMS 롤백 + sandbox 삭제
     각 단계 실패 시 이전 모든 단계 자동 롤백 → ghost 에이전트 제거.
     """
-    user = _auth_user(request, body, min_level=2)  # member 이상
+    user = _auth_cap(request, body, "create_own_light")
     import re as _re
     description = (body.get("description") or "").strip()
     if not description:
@@ -882,8 +893,8 @@ async def delete_team(team_id: str, request: Request):
     target = next((t for t in TEAMS if t["id"] == team_id), None)
     if not target:
         return {"ok": False, "error": "팀을 찾을 수 없습니다."}
-    # 소유자 본인 또는 owner/admin 만 삭제 가능
-    if not is_owner_of(target, user) and ROLES.get(user["role"], {}).get("level", 0) < 4:
+    # 본인 소유 또는 delete_others_agents capability 보유 시 삭제 가능
+    if not is_owner_of(target, user) and not has_capability(user, "delete_others_agents"):
         return {
             "ok": False,
             "error": f"이 에이전트의 소유자가 아니에요. 만든 사람({target.get('owner_nickname','?')})만 삭제할 수 있어요.",
@@ -1133,9 +1144,9 @@ async def settings_tokens():
 async def terminal_run(body: dict, request: Request):
     """TM TerminalPanel용 — 쉘 명령 실행 + SSE stdout/stderr 스트림.
 
-    🔐 권한: owner/admin 만 (쉘 명령 임의 실행 = 호스트 머신 통제).
+    🔐 권한: terminal capability (기본 owner/admin).
     """
-    _auth_user(request, body, min_level=4)
+    _auth_cap(request, body, "terminal")
     from fastapi.responses import StreamingResponse
     cmd = (body.get("command") or "").strip()
     cwd = body.get("cwd") or os.path.expanduser("~/Developer/my-company/company-hq")
@@ -1205,9 +1216,9 @@ async def deploy_status():
 async def deploy_trigger(request: Request):
     """배포 스크립트 실행 — SSE 스트림으로 진행상황 보고.
 
-    🔐 권한: owner/admin 만 (프로덕션 배포 트리거).
+    🔐 권한: deploy capability (기본 owner/admin).
     """
-    _auth_user(request, None, min_level=4)
+    _auth_cap(request, None, "deploy")
     from fastapi.responses import StreamingResponse
     import subprocess
     import os as _os
@@ -1662,19 +1673,16 @@ async def debounce_status():
 
 @app.post("/api/terminal/{team_id}/start")
 async def start_terminal(team_id: str, request: Request):
-    """팀별 웹터미널 세션 시작.
-
-    🔐 권한: owner/admin 만.
-    """
-    _auth_user(request, None, min_level=4)
+    """팀별 웹터미널 세션 시작. 🔐 terminal capability."""
+    _auth_cap(request, None, "terminal")
     result = start_team_terminal(team_id)
     return result
 
 
 @app.delete("/api/terminal/{team_id}/stop")
 async def stop_terminal(team_id: str, request: Request):
-    """팀별 웹터미널 세션 종료. 🔐 owner/admin 만."""
-    _auth_user(request, None, min_level=4)
+    """팀별 웹터미널 세션 종료. 🔐 terminal capability."""
+    _auth_cap(request, None, "terminal")
     stop_team_terminal(team_id)
     return {"status": "stopped"}
 
@@ -1748,8 +1756,8 @@ async def run_qa():
 
 @app.post("/api/qa/restart-server")
 async def qa_restart_server(request: Request):
-    """서버 재시작 (QA용). 🔐 owner/admin 만."""
-    _auth_user(request, None, min_level=4)
+    """서버 재시작 (QA용). 🔐 restart_server capability."""
+    _auth_cap(request, None, "restart_server")
     import subprocess
     script = os.path.join(os.path.dirname(__file__), "..", "scripts", "restart_server.sh")
     try:

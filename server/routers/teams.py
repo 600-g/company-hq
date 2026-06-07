@@ -29,7 +29,7 @@ router = APIRouter(tags=["teams"])
 
 
 def _require(request: Request, body: dict | None = None, min_level: int = 4) -> dict:
-    """씬/레이아웃 mutating 라우터 공용 권한 체크. 기본 owner/admin (level≥4)."""
+    """레거시 — 새 코드는 _require_cap 사용."""
     from auth import extract_token_from_request, require_user, AuthError
     token = extract_token_from_request(
         dict(request.headers), dict(request.query_params), (body or {}).get("token", "")
@@ -40,10 +40,22 @@ def _require(request: Request, body: dict | None = None, min_level: int = 4) -> 
         raise HTTPException(status_code=e.status_code, detail=e.detail)
 
 
-def _require_team_owner_or_admin(request: Request, body: dict | None, team: dict) -> dict:
-    """팀 소유자 본인 또는 owner/admin (멀티유저 베타용)."""
+def _require_cap(request: Request, body: dict | None, cap: str) -> dict:
+    """capability 기반 라우터 공용 게이트."""
+    from auth import extract_token_from_request, require_capability, AuthError
+    token = extract_token_from_request(
+        dict(request.headers), dict(request.query_params), (body or {}).get("token", "")
+    )
+    try:
+        return require_capability(token, cap)
+    except AuthError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.detail)
+
+
+def _require_team_owner_or_cap(request: Request, body: dict | None, team: dict, cap_for_others: str = "edit_others_prompts") -> dict:
+    """팀 소유자 본인 또는 cap_for_others capability 보유 시 통과 (예: edit_others_prompts)."""
     from auth import (
-        extract_token_from_request, require_user, AuthError, is_owner_of, ROLES,
+        extract_token_from_request, require_user, AuthError, is_owner_of, has_capability,
     )
     token = extract_token_from_request(
         dict(request.headers), dict(request.query_params), (body or {}).get("token", "")
@@ -52,12 +64,16 @@ def _require_team_owner_or_admin(request: Request, body: dict | None, team: dict
         user = require_user(token, min_level=1)
     except AuthError as e:
         raise HTTPException(status_code=e.status_code, detail=e.detail)
-    if not is_owner_of(team, user) and ROLES.get(user["role"], {}).get("level", 0) < 4:
+    if not is_owner_of(team, user) and not has_capability(user, cap_for_others):
         raise HTTPException(
             status_code=403,
-            detail=f"이 에이전트의 소유자가 아니에요 (만든 사람: {team.get('owner_nickname','?')}). owner/admin 만 예외.",
+            detail=f"이 에이전트의 소유자가 아니에요 (만든 사람: {team.get('owner_nickname','?')}). 본인 소유 에이전트만 수정 가능.",
         )
     return user
+
+
+# 레거시 별칭
+_require_team_owner_or_admin = _require_team_owner_or_cap
 
 
 @router.get("/api/teams")
@@ -107,7 +123,7 @@ async def update_team_order(team_id: str, body: dict, request: Request):
     🔐 권한: owner/admin 만 (전체 사이드바 순서에 영향). 친구가 본인 에이전트 위치는
     layoutStore 의 핀(즐겨찾기) 으로 조정 가능.
     """
-    _require(request, body, min_level=4)
+    _require_cap(request, body, "edit_scene")
     import main as _main
     from ws_handler import _log_activity
     team = next((t for t in _main.TEAMS if t["id"] == team_id), None)
@@ -138,7 +154,7 @@ async def reorder_teams(body: dict, request: Request):
 
     🔐 권한: owner/admin 만.
     """
-    _require(request, body, min_level=4)
+    _require_cap(request, body, "edit_scene")
     import main as _main
     orders: list[dict] = body.get("orders", [])
     if not orders:
@@ -200,7 +216,7 @@ async def update_team_positions(body: dict, request: Request):
 
     🔐 권한: owner/admin 만. 캐릭터 위치는 전체 씬에 영향이라 친구는 변경 불가.
     """
-    _require(request, body, min_level=4)
+    _require_cap(request, body, "edit_scene")
     import main as _main
     incoming = body.get("positions") or {}
     current = _main._load_positions()
@@ -378,7 +394,7 @@ async def update_floor_layout(body: dict, request: Request):
 
     🔐 권한: owner/admin 만. 층 배치는 모든 사용자 공유 → 친구는 변경 불가.
     """
-    _require(request, body, min_level=4)
+    _require_cap(request, body, "edit_scene")
     import main as _main
     new_layout: dict[str, list[str]] = body.get("layout", {})
     if not new_layout:

@@ -17,6 +17,8 @@ from auth import (
     get_all_codes, get_all_users, ROLES, owner_login,
     require_user, deactivate_code, extract_token_from_request, AuthError,
     get_user_keys, set_user_keys, get_user_keys_status,
+    CAPABILITIES, ROLE_DEFAULTS,
+    set_user_capabilities, get_user_with_capabilities, has_capability,
 )
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -70,14 +72,35 @@ async def auth_verify(body: dict):
 
 @router.post("/create-code")
 async def auth_create_code(body: dict, request: Request):
-    """초대코드 생성 (오너/관리자만)"""
-    user = _auth(request, body, min_level=4)
+    """초대코드 생성 — invite_users capability 필요.
+
+    body:
+      role: "guest"|"member"|"admin"...  (필수 — 역할 기본값 정의)
+      max_uses: int (선택, 기본 1)
+      capabilities: list[str] (선택 — 역할 기본 위에 추가 grant 할 권한)
+    """
+    user = _auth(request, body, min_level=1)
+    if not has_capability(user, "invite_users"):
+        return {"ok": False, "error": "친구 초대 권한이 없어요 (invite_users 체크 필요)."}
     role = body.get("role", "member")
     max_uses = body.get("max_uses", 1)
     if role not in ROLES:
         return {"ok": False, "error": f"존재하지 않는 역할: {role}"}
+    extra_caps = [c for c in (body.get("capabilities") or []) if c in CAPABILITIES]
     code = create_invite_code(role=role, created_by=user["nickname"], max_uses=max_uses)
-    return {"ok": True, "code": code, "role": role, "max_uses": max_uses}
+    # 코드에 capabilities 추가 (register_user 에서 적용)
+    if extra_caps:
+        try:
+            from auth import _load_json, _save_json, _CODES_FILE
+            codes = _load_json(_CODES_FILE)
+            for c in codes:
+                if c["code"] == code:
+                    c["extra_caps"] = extra_caps
+                    break
+            _save_json(_CODES_FILE, codes)
+        except Exception:
+            pass
+    return {"ok": True, "code": code, "role": role, "max_uses": max_uses, "extra_caps": extra_caps}
 
 
 @router.get("/codes")
@@ -106,6 +129,65 @@ async def auth_list_users(request: Request):
 async def auth_roles():
     """역할 목록"""
     return ROLES
+
+
+@router.get("/capabilities")
+async def auth_capabilities():
+    """전체 capability 목록 + 라벨/설명 + 역할별 기본 묶음.
+
+    프론트 권한 관리 UI 가 이걸 받아서 체크박스 렌더링.
+    """
+    return {
+        "ok": True,
+        "capabilities": CAPABILITIES,
+        "role_defaults": ROLE_DEFAULTS,
+    }
+
+
+@router.get("/users/full")
+async def auth_users_full(request: Request):
+    """오너/관리자 권한 관리용 — 모든 사용자 + 최종 capabilities + 토큰 카운트.
+
+    🔐 manage_users 필요. 없으면 401/403.
+    """
+    user = _auth(request, body=None, min_level=1)
+    if not has_capability(user, "manage_users"):
+        raise HTTPException(status_code=403, detail="다른 사용자 권한 변경 권한이 없어요 (manage_users 필요).")
+    users_raw = get_all_users()  # 토큰 제거된 dict
+    result = []
+    for uid in users_raw.keys():
+        info = get_user_with_capabilities(uid)
+        if info:
+            result.append(info)
+    return {"ok": True, "users": result, "all_capabilities": CAPABILITIES}
+
+
+@router.put("/users/{user_id}/capabilities")
+async def auth_set_user_caps(user_id: str, body: dict, request: Request):
+    """사용자 capabilities 일괄 설정 — 체크박스 UI 가 호출.
+
+    body: {"capabilities": ["chat", "edit_scene", ...]}
+    🔐 manage_users 필요.
+    """
+    user = _auth(request, body, min_level=1)
+    if not has_capability(user, "manage_users"):
+        raise HTTPException(status_code=403, detail="권한 변경 권한이 없어요 (manage_users 필요).")
+    if user["user_id"] == user_id and not has_capability(user, "manage_users"):
+        # 자기 자신의 manage_users 권한을 셀프 박탈 시도 차단 (lockout 방지)
+        raise HTTPException(status_code=400, detail="본인의 manage_users 권한은 직접 끌 수 없어요 (lockout 방지).")
+    caps = body.get("capabilities") or []
+    if not isinstance(caps, list):
+        return {"ok": False, "error": "capabilities 는 배열이어야 합니다."}
+    # 셀프 lockout 방어 — 본인이 본인의 manage_users 를 빼려고 하면 거부
+    target = get_user_with_capabilities(user_id)
+    if not target:
+        return {"ok": False, "error": "사용자를 찾을 수 없음"}
+    if user["user_id"] == user_id and "manage_users" not in caps:
+        return {"ok": False, "error": "본인의 manage_users 는 직접 끌 수 없어요."}
+    result = set_user_capabilities(user_id, caps)
+    if not result.get("ok"):
+        return result
+    return {"ok": True, "user": get_user_with_capabilities(user_id)}
 
 
 # ── 신규유저 가이드/셋업 ─────────────────────────────
