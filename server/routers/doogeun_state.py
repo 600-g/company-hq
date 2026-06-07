@@ -96,12 +96,20 @@ def _save_doogeun_state(data: dict) -> None:
 
 
 @router.get("/api/doogeun/state")
-async def get_doogeun_state() -> dict:
+async def get_doogeun_state(request: Request) -> dict:
     """전체 doogeun-hq 상태 — 에이전트 + 레이아웃.
 
-    GET 시 teams.json 의 새 팀(예: staff)을 자동 보충 — 클라가 빠진 팀 못 받는 문제 방지.
+    🔍 시야 필터: 시스템 에이전트 + 본인 소유만 응답에 포함 (manage_users 보유자는 전부).
+    GET 시 teams.json 의 새 팀 자동 보충.
     """
     import main as _main
+    from auth import (
+        extract_token_from_request, verify_token, is_owner_of, has_capability,
+    )
+    token = extract_token_from_request(dict(request.headers), dict(request.query_params), "")
+    auth_user = verify_token(token) if token else None
+    SYSTEM_AGENTS = {"cpo-claude", "server-monitor", "hq-ops", "staff", "agent-6d883e"}
+    show_all = bool(auth_user and has_capability(auth_user, "manage_users"))
     state = _load_doogeun_state()
     existing_ids = {a.get("id") for a in state.get("agents", [])}
     server_skip = {"server-monitor"}
@@ -138,6 +146,18 @@ async def get_doogeun_state() -> dict:
         t = teams_by_id.get(a.get("id"))
         if t is not None:
             a["hidden"] = bool(t.get("hidden"))
+
+    # 시야 필터 적용 — 응답 시점에만 (디스크 데이터는 보존)
+    if not show_all:
+        def _can_see(a: dict) -> bool:
+            aid = a.get("id")
+            if aid in SYSTEM_AGENTS:
+                return True
+            t = teams_by_id.get(aid) or {}
+            if t.get("is_public"):
+                return True
+            return is_owner_of(t, auth_user)
+        state["agents"] = [a for a in state.get("agents", []) if _can_see(a)]
     return {"ok": True, "state": state}
 
 

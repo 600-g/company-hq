@@ -10,6 +10,7 @@ import Modal from "@/components/Modal";
 import Weather, { useWeatherStore } from "@/components/Weather";
 import { useAgentStore, type Agent } from "@/stores/agentStore";
 import { useAuthStore } from "@/stores/authStore";
+import { useCapabilities } from "@/lib/useCapabilities";
 import { apiBase } from "@/lib/utils";
 import {
   X, Users, Bug, Cpu, Settings, LogOut, Send,
@@ -81,6 +82,7 @@ export default function HubPage() {
   const agents = useAgentStore((s) => s.agents);
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
+  const caps = useCapabilities();
   const fetchWx = useWeatherStore((s) => s.fetch);
   const tod = useWeatherStore((s) => s.tod);
   const ambientTint = useWeatherStore((s) => s.ambientTint);
@@ -397,8 +399,14 @@ export default function HubPage() {
           />
           <WorkingAgentsStrip collapsed={sideCollapsed} onSelect={(id) => { setSelectedAgentId(id); setChatOpen(true); }} />
           <SideItem collapsed={sideCollapsed} icon={Globe} label="프로덕트" onClick={() => setModalKey("sites")} />
-          <SideItem collapsed={sideCollapsed} icon={Cpu} label="서버실" onClick={() => setModalKey("server")} />
-          <SideItem collapsed={sideCollapsed} icon={Bug} label="연구소" onClick={() => setModalKey("lab")} />
+          {/* 서버실 — restart_server 또는 deploy 또는 terminal 권한 보유자만 노출 */}
+          {caps.hasAny("restart_server", "deploy", "terminal", "manage_users") && (
+            <SideItem collapsed={sideCollapsed} icon={Cpu} label="서버실" onClick={() => setModalKey("server")} />
+          )}
+          {/* 연구소 — manage_users 보유자만 (시스템 관리 도구) */}
+          {caps.has("manage_users") && (
+            <SideItem collapsed={sideCollapsed} icon={Bug} label="연구소" onClick={() => setModalKey("lab")} />
+          )}
           <SideItem collapsed={sideCollapsed} icon={Settings} label="설정" onClick={() => router.push("/settings")} />
           <div className="h-px bg-gray-800/60 my-2" />
           {/* 메모리 정리 → 서버실(ServerDashboard) 의 메모리 게이지 클릭으로 통합. 별도 메뉴 제거 */}

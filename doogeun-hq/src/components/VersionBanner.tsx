@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Sparkles, RefreshCw, X, Loader2 } from "lucide-react";
 import { apiBase } from "@/lib/utils";
+import { authFetch } from "@/lib/api";
 import { useVersionStore } from "@/stores/versionStore";
 
 declare global {
@@ -216,8 +217,13 @@ export default function VersionBanner() {
       if (typeof window !== "undefined") {
         (window as any).__DEPLOY_IN_PROGRESS__ = true;
       }
-      const r = await fetch(`${apiBase()}/api/admin/deploy`, { method: "POST" });
-      const d = await r.json();
+      const r = await authFetch("/api/admin/deploy", { method: "POST" });
+      const d = await r.json().catch(() => ({}));
+      if (r.status === 401 || r.status === 403) {
+        alert("배포 권한이 없어요 (deploy 권한 필요). [설정 → 권한 관리] 에서 부여 가능.");
+        if (typeof window !== "undefined") (window as any).__DEPLOY_IN_PROGRESS__ = false;
+        return;
+      }
       if (!d.ok) {
         if (d.running) startDeployPolling();
         return;

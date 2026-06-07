@@ -33,6 +33,52 @@ _DEFAULT_TITLE = "기본 세션"
 _MAX_MESSAGES_PER_SESSION = 200
 _MAX_SESSIONS_PER_TEAM = 20
 
+# 멀티유저 마이그레이션 — 기존 세션에 user_id 가 없으면 오너 user_id 로 백필. 1회.
+_MIGRATION_FLAG = _BASE_DIR / ".user_id_migrated"
+
+
+def _ensure_user_id_migration():
+    if _MIGRATION_FLAG.exists():
+        return
+    try:
+        from auth import get_all_users
+        users = get_all_users() or {}
+        owner_uid = next((uid for uid, u in users.items() if u.get("role") == "owner"), None)
+        if not owner_uid:
+            return  # 오너 없으면 백필 보류
+        migrated = 0
+        for team_dir in _BASE_DIR.iterdir():
+            if not team_dir.is_dir():
+                continue
+            meta_p = team_dir / "_meta.json"
+            if not meta_p.exists():
+                continue
+            try:
+                meta = json.loads(meta_p.read_text(encoding="utf-8"))
+                changed = False
+                for s in meta:
+                    if "user_id" not in s:
+                        s["user_id"] = owner_uid
+                        changed = True
+                if changed:
+                    meta_p.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+                    migrated += 1
+                # _active.json → _active_{owner_uid}.json 로 복사 (사용자 첫 접속 시 본인 active 폴백)
+                old_active = team_dir / "_active.json"
+                safe = "".join(c for c in owner_uid if c.isalnum())
+                new_active = team_dir / f"_active_{safe}.json"
+                if old_active.exists() and not new_active.exists():
+                    new_active.write_text(old_active.read_text(encoding="utf-8"), encoding="utf-8")
+            except Exception as e:
+                logger.warning("[sessions migrate] %s 실패: %s", team_dir.name, e)
+        _MIGRATION_FLAG.touch()
+        logger.info("[sessions migrate] %d 팀 user_id 백필 (owner=%s)", migrated, owner_uid)
+    except Exception as e:
+        logger.warning("[sessions migrate] 일괄 실패: %s", e)
+
+
+_ensure_user_id_migration()
+
 
 # ── 경로 헬퍼 ──────────────────────────────────────
 
@@ -83,7 +129,16 @@ def _save_meta(team_id: str, meta: list[dict]) -> None:
     )
 
 
-def _load_active(team_id: str) -> str | None:
+def _load_active(team_id: str, user_id: str | None = None) -> str | None:
+    """사용자별 active 세션. 사용자 파일 없으면 공용 _active.json fallback (마이그레이션 직후 호환)."""
+    if user_id:
+        p = _active_path(team_id, user_id)
+        if p.exists():
+            try:
+                return json.loads(p.read_text(encoding="utf-8")).get("sessionId")
+            except Exception:
+                pass
+        return None
     p = _active_path(team_id)
     if p.exists():
         try:
@@ -93,8 +148,8 @@ def _load_active(team_id: str) -> str | None:
     return None
 
 
-def _save_active(team_id: str, session_id: str) -> None:
-    _active_path(team_id).write_text(
+def _save_active(team_id: str, session_id: str, user_id: str | None = None) -> None:
+    _active_path(team_id, user_id).write_text(
         json.dumps({"sessionId": session_id}, ensure_ascii=False), encoding="utf-8"
     )
 
@@ -127,11 +182,31 @@ def _save_messages(team_id: str, session_id: str, messages: list[dict]) -> None:
 
 # ── 마이그레이션 ───────────────────────────────────
 
-def _ensure_default_session(team_id: str) -> str:
-    """팀에 세션이 하나도 없으면 default 생성.
+def _ensure_default_session(team_id: str, user_id: str | None = None) -> str:
+    """팀+사용자에 세션이 하나도 없으면 default 생성.
+
+    user_id 가 주어지면 그 사용자의 default 세션을 만들고 반환.
     기존 legacy 파일(chat_history/{team_id}.json)이 있으면 그 메시지를 옮겨준다.
     """
     meta = _load_meta(team_id)
+    if user_id:
+        # 사용자별 default 세션
+        user_sessions = [s for s in meta if s.get("user_id") == user_id]
+        if user_sessions:
+            return user_sessions[0]["id"]
+        # 새 사용자 — 본인 default 세션 생성
+        session_id = f"default-{user_id[:8]}"
+        now = int(time.time() * 1000)
+        meta.append({
+            "id": session_id,
+            "title": _DEFAULT_TITLE,
+            "createdAt": now,
+            "updatedAt": now,
+            "messageCount": 0,
+            "user_id": user_id,
+        })
+        _save_meta(team_id, meta)
+        return session_id
     if meta:
         return meta[0]["id"]
 
@@ -173,19 +248,28 @@ def _ensure_default_session(team_id: str) -> str:
 
 # ── 공개 API ───────────────────────────────────────
 
-def list_sessions(team_id: str, *, include_resume_state: bool = True, include_hidden: bool = False) -> list[dict]:
-    """팀의 세션 목록 (최신 순). 없으면 default 1개 자동 생성.
+def list_sessions(
+    team_id: str,
+    user_id: str | None = None,
+    *,
+    include_resume_state: bool = True,
+    include_hidden: bool = False,
+    show_all_users: bool = False,
+) -> list[dict]:
+    """팀+사용자의 세션 목록 (최신 순). 없으면 default 1개 자동 생성.
 
-    include_resume_state=True면 각 세션에 `resumable`(bool) 필드 추가 —
-    claudeSessionId의 .jsonl 파일이 실제로 남아있어 --resume 가능한지 여부.
+    user_id 가 주어지면 그 사용자의 세션만 (시스템 마이그레이션 후 도입된 다중 사용자).
+    show_all_users=True 면 관리용 — 모든 사용자 세션 (manage_users 권한자).
 
-    include_hidden=False (기본) 면 hidden=True 세션 제외. 데이터는 디스크에 보존,
-    UI 에서만 가려짐. include_hidden=True 로 백업/관리용 전체 조회 가능.
+    include_resume_state=True면 각 세션에 `resumable`(bool) 필드 추가.
+    include_hidden=False (기본) 면 hidden=True 세션 제외.
     """
-    _ensure_default_session(team_id)
+    _ensure_default_session(team_id, user_id)
     meta = _load_meta(team_id)
     if not include_hidden:
         meta = [s for s in meta if not s.get("hidden")]
+    if user_id and not show_all_users:
+        meta = [s for s in meta if s.get("user_id") == user_id]
     ordered = sorted(meta, key=lambda s: s.get("updatedAt", 0), reverse=True)
     if include_resume_state:
         for s in ordered:
@@ -227,37 +311,45 @@ def _is_resumable(claude_sid: str | None) -> bool:
     return False
 
 
-def get_active_session_id(team_id: str) -> str:
-    """현재 active 세션 id. 없으면 default 생성 후 반환."""
-    active = _load_active(team_id)
+def get_active_session_id(team_id: str, user_id: str | None = None) -> str:
+    """현재 active 세션 id. 없으면 default 생성 후 반환. user_id 별로 분리."""
+    active = _load_active(team_id, user_id)
     meta = _load_meta(team_id)
+    if user_id:
+        # 사용자 본인 세션만 후보
+        my_sessions = [s for s in meta if s.get("user_id") == user_id]
+        my_ids = {s["id"] for s in my_sessions}
+        if active and active in my_ids:
+            return active
+        if my_sessions:
+            fallback = sorted(my_sessions, key=lambda s: s.get("updatedAt", 0), reverse=True)[0]["id"]
+            _save_active(team_id, fallback, user_id)
+            return fallback
+        return _ensure_default_session(team_id, user_id)
     meta_ids = {s["id"] for s in meta}
-
     if active and active in meta_ids:
         return active
-
     if meta:
-        # active가 유효하지 않으면 가장 최근 세션으로
         fallback = sorted(meta, key=lambda s: s.get("updatedAt", 0), reverse=True)[0]["id"]
         _save_active(team_id, fallback)
         return fallback
-
     return _ensure_default_session(team_id)
 
 
-def resolve_session_id(team_id: str, session_id: str | None) -> str:
-    """None이면 active 세션을 반환, 주어진 id가 유효하지 않으면 active로 폴백."""
+def resolve_session_id(team_id: str, session_id: str | None, user_id: str | None = None) -> str:
+    """None이면 active 세션을 반환, 주어진 id가 유효하지 않거나 본인 것이 아니면 active 로 폴백."""
     if not session_id:
-        return get_active_session_id(team_id)
+        return get_active_session_id(team_id, user_id)
     meta = _load_meta(team_id)
-    if any(s["id"] == session_id for s in meta):
+    target = next((s for s in meta if s["id"] == session_id), None)
+    if target and (not user_id or target.get("user_id") == user_id):
         return session_id
-    return get_active_session_id(team_id)
+    return get_active_session_id(team_id, user_id)
 
 
-def create_session(team_id: str, title: str | None = None) -> dict:
-    """새 세션 생성. 상한 초과 시 가장 오래된 세션 자동 삭제."""
-    meta = list_sessions(team_id)
+def create_session(team_id: str, title: str | None = None, user_id: str | None = None) -> dict:
+    """새 세션 생성 (user_id 본인 소유). 상한 초과 시 가장 오래된 세션 자동 삭제."""
+    meta = list_sessions(team_id, user_id)
 
     if len(meta) >= _MAX_SESSIONS_PER_TEAM:
         # 가장 오래된 세션 삭제
@@ -274,11 +366,15 @@ def create_session(team_id: str, title: str | None = None) -> dict:
         "updatedAt": now,
         "messageCount": 0,
     }
-    meta.append(session)
-    _save_meta(team_id, meta)
+    if user_id:
+        session["user_id"] = user_id
+    # 메타 파일은 모든 세션을 공유하므로 list_sessions 결과(필터링됨) 가 아니라 raw _meta 에 append
+    raw_meta = _load_meta(team_id)
+    raw_meta.append(session)
+    _save_meta(team_id, raw_meta)
     _save_messages(team_id, session_id, [])
-    _save_active(team_id, session_id)
-    logger.info("[sessions] 새 세션 %s/%s (%s)", team_id, session_id, session["title"])
+    _save_active(team_id, session_id, user_id)
+    logger.info("[sessions] 새 세션 %s/%s (%s, user=%s)", team_id, session_id, session["title"], user_id or "shared")
     return session
 
 

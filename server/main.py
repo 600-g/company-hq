@@ -1446,31 +1446,34 @@ async def http_chat_send(team_id: str, body: dict):
 # ── 세션 CRUD ────────────────────────────────────────
 
 @app.get("/api/sessions/{team_id}")
-async def list_sessions_api(team_id: str):
-    """팀의 세션 목록 + active 세션 id."""
+async def list_sessions_api(team_id: str, request: Request):
+    """팀의 세션 목록 + active 세션 id — 본인 user_id 의 세션만."""
     import sessions_store
+    user = _auth_user(request, body=None, min_level=1)
+    uid = user["user_id"]
     return {
         "ok": True,
         "team_id": team_id,
-        "session_id": sessions_store.get_active_session_id(team_id),
-        "sessions": sessions_store.list_sessions(team_id),
+        "session_id": sessions_store.get_active_session_id(team_id, uid),
+        "sessions": sessions_store.list_sessions(team_id, uid),
     }
 
 
 @app.post("/api/sessions/{team_id}")
-async def create_session_api(team_id: str, body: dict | None = None):
+async def create_session_api(team_id: str, body: dict | None, request: Request):
     """새 세션 생성. body: {title?: str}"""
     import sessions_store
     team = next((t for t in TEAMS if t["id"] == team_id), None)
     if not team:
         return {"ok": False, "error": "팀 없음"}
+    user = _auth_user(request, body, min_level=1)
+    uid = user["user_id"]
     title = ((body or {}).get("title") or "").strip() or None
-    session = sessions_store.create_session(team_id, title)
-    # 실시간 브로드캐스트 (해당 팀 접속자들 UI 갱신)
+    session = sessions_store.create_session(team_id, title, uid)
     try:
         await ws_manager.send_json(team_id, {
             "type": "sessions_sync",
-            "sessions": sessions_store.list_sessions(team_id),
+            "sessions": sessions_store.list_sessions(team_id, uid),
             "session_id": session["id"],
         })
     except Exception:
@@ -1479,12 +1482,12 @@ async def create_session_api(team_id: str, body: dict | None = None):
 
 
 @app.delete("/api/sessions/{team_id}/{session_id}")
-async def delete_session_api(team_id: str, session_id: str, force: bool = False):
+async def delete_session_api(team_id: str, session_id: str, request: Request, force: bool = False):
     import sessions_store
-    # 진행 중 삭제 방지 — claude 프로세스 살아있거나 세션이 active면 거부 (force=true 시 우회)
+    user = _auth_user(request, body=None, min_level=1)
+    uid = user["user_id"]
     if not force:
-        # AGENT_PIDS 체크 — 이 팀의 claude가 돌고 있으면 현재 active 세션 삭제 금지
-        active_sid = sessions_store.get_active_session_id(team_id)
+        active_sid = sessions_store.get_active_session_id(team_id, uid)
         if AGENT_PIDS.get(team_id) and session_id == active_sid:
             return {
                 "ok": False,
@@ -1497,8 +1500,8 @@ async def delete_session_api(team_id: str, session_id: str, force: bool = False)
     try:
         await ws_manager.send_json(team_id, {
             "type": "sessions_sync",
-            "sessions": sessions_store.list_sessions(team_id),
-            "session_id": sessions_store.get_active_session_id(team_id),
+            "sessions": sessions_store.list_sessions(team_id, uid),
+            "session_id": sessions_store.get_active_session_id(team_id, uid),
         })
     except Exception:
         pass
@@ -1506,13 +1509,15 @@ async def delete_session_api(team_id: str, session_id: str, force: bool = False)
 
 
 @app.patch("/api/sessions/{team_id}/{session_id}")
-async def rename_session_api(team_id: str, session_id: str, body: dict):
+async def rename_session_api(team_id: str, session_id: str, body: dict, request: Request):
     """세션 제목 변경 + Phase 4: workingDirectory/githubRepo/supabaseProjectId 메타 설정.
     Body:
       - {"title": "..."} → 제목 변경
       - {"workingDirectory": "...", "githubRepo": "...", "supabaseProjectId": "..."} → 프로젝트 메타
     """
     import sessions_store
+    user = _auth_user(request, body, min_level=1)
+    uid = user["user_id"]
     changed = False
     title = (body.get("title") or "").strip()
     if title:
@@ -1534,8 +1539,8 @@ async def rename_session_api(team_id: str, session_id: str, body: dict):
     try:
         await ws_manager.send_json(team_id, {
             "type": "sessions_sync",
-            "sessions": sessions_store.list_sessions(team_id),
-            "session_id": sessions_store.get_active_session_id(team_id),
+            "sessions": sessions_store.list_sessions(team_id, uid),
+            "session_id": sessions_store.get_active_session_id(team_id, uid),
         })
     except Exception:
         pass
@@ -1576,6 +1581,15 @@ async def ws_chat(ws: WebSocket, team_id: str, session_id: str | None = None, to
         await ws.close()
         return
 
+    # 시야 필터: 시스템 에이전트(공용) + 본인 소유 + manage_users 보유자만 접근.
+    SYSTEM_AGENTS = {"cpo-claude", "server-monitor", "hq-ops", "staff", "agent-6d883e"}
+    is_system_agent = team_id in SYSTEM_AGENTS
+    if not is_system_agent and not is_owner_of(team, auth_user) and not has_capability(auth_user, "manage_users"):
+        await ws.accept()
+        await ws.send_json({"type": "error", "content": "🔒 다른 사용자의 에이전트에는 접근할 수 없어요."})
+        await ws.close(code=4403)
+        return
+
     project_path = team["localPath"]
     local_path = os.path.expanduser(project_path)
     if not os.path.isdir(local_path):
@@ -1584,7 +1598,8 @@ async def ws_chat(ws: WebSocket, team_id: str, session_id: str | None = None, to
         await ws.close()
         return
 
-    await handle_chat(ws, team_id, project_path, session_id=session_id)
+    # user_id 전달 → 본인 세션만 사용 (Option A: per-user 채팅)
+    await handle_chat(ws, team_id, project_path, session_id=session_id, user_id=auth_user["user_id"])
 
 
 # ── Task Queue / Pipeline / Debounce API ────────────────

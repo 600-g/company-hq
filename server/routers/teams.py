@@ -76,22 +76,47 @@ def _require_team_owner_or_cap(request: Request, body: dict | None, team: dict, 
 _require_team_owner_or_admin = _require_team_owner_or_cap
 
 
+_SYSTEM_AGENTS = {"cpo-claude", "server-monitor", "hq-ops", "staff", "agent-6d883e"}
+
+
+def _filter_visible_teams(teams: list, request: Request) -> list:
+    """시야 필터: 시스템 에이전트(공용) + 본인 소유 + manage_users 권한자는 전부.
+
+    토큰 없거나 무효면 시스템만 노출.
+    """
+    from auth import (
+        extract_token_from_request, verify_token, is_owner_of, has_capability,
+    )
+    token = extract_token_from_request(dict(request.headers), dict(request.query_params), "")
+    user = verify_token(token) if token else None
+    if not user:
+        return [t for t in teams if t.get("id") in _SYSTEM_AGENTS]
+    if has_capability(user, "manage_users"):
+        return teams
+    return [
+        t for t in teams
+        if t.get("id") in _SYSTEM_AGENTS or is_owner_of(t, user) or t.get("is_public")
+    ]
+
+
 @router.get("/api/teams")
-async def get_teams():
-    """팀 목록 + 프로젝트 현황(버전, 최근 커밋일 포함) — order 순 정렬"""
+async def get_teams(request: Request):
+    """팀 목록 + 프로젝트 현황 — order 순 정렬. 시야 필터 적용 (시스템 + 본인 소유)."""
     import main as _main
     from project_scanner import scan_all
-    sorted_teams = sorted(_main.TEAMS, key=lambda t: t.get("order", 999))
+    visible = _filter_visible_teams(_main.TEAMS, request)
+    sorted_teams = sorted(visible, key=lambda t: t.get("order", 999))
     return scan_all(_main.PROJECTS_ROOT, sorted_teams)
 
 
 @router.get("/api/teams/info")
-async def get_teams_info():
-    """팀 목록 + 버전/업데이트일 간략 정보 (폴링용 경량 API)"""
+async def get_teams_info(request: Request):
+    """팀 목록 + 버전/업데이트일 간략 정보 (폴링용 경량 API). 시야 필터 적용."""
     import main as _main
     from project_scanner import scan_project
+    visible = _filter_visible_teams(_main.TEAMS, request)
     result = []
-    for team in sorted(_main.TEAMS, key=lambda t: t.get("order", 999)):
+    for team in sorted(visible, key=lambda t: t.get("order", 999)):
         local_path = os.path.expanduser(team.get("localPath", ""))
         scan = scan_project(local_path)
         result.append({

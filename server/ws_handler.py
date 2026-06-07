@@ -240,7 +240,7 @@ async def emit_char_state(team_id: str):
     })
 
 
-async def _do_cancel(team_id: str):
+async def _do_cancel(team_id: str, user_id: str | None = None):
     """작업 취소 — 프로세스 그룹 kill + 히스토리 정리 + 클라이언트 동기화"""
     from claude_runner import AGENT_PIDS
     import signal, os as _os
@@ -267,7 +267,7 @@ async def _do_cancel(team_id: str):
         AGENT_PIDS.pop(team_id, None)
     _update_status(team_id, working=False, tool=None)
     # 히스토리에서 마지막 user 메시지에 취소 표시 + 이후 ai 응답 제거
-    sid = sessions_store.get_active_session_id(team_id)
+    sid = sessions_store.get_active_session_id(team_id, user_id)
     hist = manager.get_history(team_id, sid)
     last_user_idx = -1
     for i in range(len(hist) - 1, -1, -1):
@@ -604,11 +604,16 @@ async def handle_chat(
     team_id: str,
     project_path: str | None,
     session_id: str | None = None,
+    user_id: str | None = None,
 ):
     """WebSocket 연결 하나를 처리한다. 각 팀은 독립적으로 병렬 실행된다.
 
     session_id를 URL 쿼리로 받아 초기 구독 세션 결정. 이후 `switch_session` 액션으로 변경 가능.
+    user_id 가 주어지면 본인 세션만 list/get/create — 멀티유저 채팅 사생활 보장.
     """
+    # 사용자 본인 세션만 보이게 — 본인 active 또는 default 자동 생성
+    if user_id and not session_id:
+        session_id = sessions_store.get_active_session_id(team_id, user_id)
     current_sid = await manager.connect(team_id, ws, session_id)
 
     # ── keepalive ping (20초 간격) — 연결 끊김 방지 ──
@@ -626,11 +631,11 @@ async def handle_chat(
                 break
     ping_task = asyncio.create_task(_keepalive())
 
-    # 접속 시 세션 목록 + 현재 세션 히스토리 전송
+    # 접속 시 세션 목록 + 현재 세션 히스토리 전송 — 사용자 본인 세션만
     try:
         await ws.send_json({
             "type": "sessions_sync",
-            "sessions": sessions_store.list_sessions(team_id),
+            "sessions": sessions_store.list_sessions(team_id, user_id),
             "session_id": current_sid,
         })
         history = manager.get_history(team_id, current_sid)
@@ -685,13 +690,13 @@ async def handle_chat(
 
             if action == "create_session":
                 title = (msg.get("title") or "").strip() or None
-                sess = sessions_store.create_session(team_id, title)
+                sess = sessions_store.create_session(team_id, title, user_id)
                 current_sid = sess["id"]
                 manager.set_ws_session(ws, current_sid)
                 try:
                     await ws.send_json({
                         "type": "sessions_sync",
-                        "sessions": sessions_store.list_sessions(team_id),
+                        "sessions": sessions_store.list_sessions(team_id, user_id),
                         "session_id": current_sid,
                     })
                     await ws.send_json({
@@ -709,11 +714,11 @@ async def handle_chat(
                     sessions_store.delete_session(team_id, target)
                     # 이 연결이 해당 세션을 보고 있었으면 active로 전환
                     if current_sid == target:
-                        current_sid = sessions_store.get_active_session_id(team_id)
+                        current_sid = sessions_store.get_active_session_id(team_id, user_id)
                         manager.set_ws_session(ws, current_sid)
                     await manager.send_json(team_id, {
                         "type": "sessions_sync",
-                        "sessions": sessions_store.list_sessions(team_id),
+                        "sessions": sessions_store.list_sessions(team_id, user_id),
                         "session_id": current_sid,
                     })
                     try:
@@ -732,7 +737,7 @@ async def handle_chat(
                 if target and title and sessions_store.rename_session(team_id, target, title):
                     await manager.send_json(team_id, {
                         "type": "sessions_sync",
-                        "sessions": sessions_store.list_sessions(team_id),
+                        "sessions": sessions_store.list_sessions(team_id, user_id),
                         "session_id": current_sid,
                     })
                 continue
@@ -750,7 +755,7 @@ async def handle_chat(
             # 작업 취소 요청 — 별도 처리 (run_claude 실행 중에도 동작)
             if action == "cancel":
                 _cancel_flags[team_id] = True
-                await _do_cancel(team_id)
+                await _do_cancel(team_id, user_id)
                 continue
 
             if not prompt and not image_paths:
@@ -914,7 +919,7 @@ async def handle_chat(
                         if msg2.get("action") == "cancel":
                             _cancel_flags[team_id] = True
                             cancelled = True
-                            await _do_cancel(team_id)
+                            await _do_cancel(team_id, user_id)
                             return
                         elif msg2.get("action") == "clear_history":
                             manager.clear_history(team_id, current_sid)
@@ -959,7 +964,7 @@ async def handle_chat(
                 idle = asyncio.get_event_loop().time() - _last_event_time
                 if idle > _CLAUDE_IDLE_TIMEOUT:
                     _cancel_flags[team_id] = True
-                    await _do_cancel(team_id)
+                    await _do_cancel(team_id, user_id)
                     stream_task.cancel()
                     msg_txt = (
                         f"⚠️ 세션 타임아웃 — {_CLAUDE_IDLE_TIMEOUT // 60}분간 응답 없음.\n"
