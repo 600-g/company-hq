@@ -11,11 +11,30 @@ const GROUP_HOVER: Record<"system" | "dev" | "agent", string> = {
   agent: "프로덕트 (외부 사용자 대상). 자체 GitHub 레포 + 호스팅, 두근컴퍼니 꺼져도 작동.",
 };
 
-/** 에이전트의 사이드바 그룹 분류 — agentStore.roleGroup 우선, 없으면 id 기반 default */
+/** 고정 에이전트 — 그룹 + 그룹 내 정렬 슬롯 (사용자 활동과 무관하게 항상 같은 위치).
+ *  시스템: CPO → 관리자(hq-ops) → 스태프
+ *  개발: MD메이커 → 프론트엔드 → 백엔드 → 디자인 → 콘텐츠랩 → QA
+ */
+const FIXED_AGENT_CONFIG: Record<string, { group: "system" | "dev" | "agent"; slot: number }> = {
+  // 시스템 그룹
+  "cpo-claude": { group: "system", slot: 1 },
+  "hq-ops":     { group: "system", slot: 2 },
+  "staff":      { group: "system", slot: 3 },
+  // 개발 그룹 (MD메이커 포함)
+  "agent-6d883e":  { group: "dev", slot: 11 },
+  "frontend-team": { group: "dev", slot: 12 },
+  "backend-team":  { group: "dev", slot: 13 },
+  "design-team":   { group: "dev", slot: 14 },
+  "content-lab":   { group: "dev", slot: 15 },
+  "qa-agent":      { group: "dev", slot: 16 },
+};
+
+/** 에이전트의 사이드바 그룹 분류 — FIXED_AGENT_CONFIG 우선, 없으면 roleGroup, 마지막은 id 기반 default */
 export function groupOfAgent(a: Agent): "system" | "dev" | "agent" {
+  const fixed = FIXED_AGENT_CONFIG[a.id];
+  if (fixed) return fixed.group;
   if (a.roleGroup === "system" || a.roleGroup === "dev" || a.roleGroup === "agent") return a.roleGroup;
-  const SYSTEM_IDS = new Set(["hq-ops", "cpo-claude", "staff", "server-monitor", "agent-6d883e"]);
-  if (SYSTEM_IDS.has(a.id)) return "system";
+  if (a.id === "server-monitor") return "system";
   if (a.id.startsWith("agent-")) return "agent";
   return "dev";
 }
@@ -110,11 +129,15 @@ export default function AgentSelector({
   const now = Date.now();
   const DAY = 24 * 60 * 60 * 1000;
   const sortKey = (a: Agent): number => {
+    // 고정 에이전트는 슬롯 그대로 — 항상 같은 위치 (활동·핀 무관)
+    const fixed = FIXED_AGENT_CONFIG[a.id];
+    if (fixed) return fixed.slot;
+    // 비고정 (사용자가 만든 에이전트만): 활동 기준
     const last = lastActiveByTeam[a.id] || 0;
-    if (pinned.has(a.id)) return 0;
-    if (now - last < DAY) return 1;
-    if (last && now - last > 30 * DAY) return 3;
-    return 2;
+    if (pinned.has(a.id)) return 100;
+    if (now - last < DAY) return 101;
+    if (last && now - last > 30 * DAY) return 103;
+    return 102;
   };
   allOrdered.sort((a, b) => {
     const ka = sortKey(a), kb = sortKey(b);
