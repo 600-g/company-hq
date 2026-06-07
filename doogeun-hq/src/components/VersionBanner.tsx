@@ -342,10 +342,13 @@ export default function VersionBanner() {
   ) : null;
 
   // 모달 표시 조건 — 진행 중 / 에러 / 미반영 알림 (단, 같은 commit 에 dismiss 했으면 모달 안 띄움)
-  // 🔐 권한 분리: 관리자(deploy 권한) 만 배포 모달, 일반 사용자에겐 작은 "새로고침" 알림.
+  // 🔐 권한 분리:
+  //   - 관리자(canDeploy=true): 배포 모달만 (refresh notice 안 뜸 — 본인이 배포 후 자동 reload 처리)
+  //   - 일반 사용자(canDeploy=false): refresh notice 만 (배포 모달 절대 X)
+  // 둘이 동시에 또는 연속해서 뜨는 "두 번 중복" 버그 차단.
   const dismissedForThis = isDismissedFor(gitCommit);
   const showAdminModal = canDeploy && (deploy?.running || deploy?.error || (hasPending && !dismissedForThis));
-  const showRefreshNotice = !showAdminModal && browserBehind && !refreshDismissed;
+  const showRefreshNotice = !canDeploy && browserBehind && !refreshDismissed;
 
   // 일반 사용자 (관리자 아님): 작은 "새로고침" 알림만
   if (showRefreshNotice) {

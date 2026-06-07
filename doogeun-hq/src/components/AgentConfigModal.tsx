@@ -51,8 +51,9 @@ export default function AgentConfigModal({ agent, onClose }: Props) {
   const isSystemAgent = SYSTEM_IDS.has(agent.id);
   const isMine = !!agent.owner_id && agent.owner_id === myUid;
   const isAdmin = myRole === "owner" || myRole === "admin";
-  // 본인 소유 + 비시스템 만 편집 가능. owner/admin 도 시스템은 못 만짐 (이름/프롬프트 등 핵심 보호).
-  const canEdit = (isMine || isAdmin) && !isSystemAgent;
+  // 오너/관리자: 시스템 포함 모든 에이전트 편집 가능.
+  // 일반 사용자: 본인 소유 (비시스템) 만 편집 가능.
+  const canEdit = isAdmin || (isMine && !isSystemAgent);
   const canTogglePublic = isMine && !isSystemAgent;
 
   const togglePublic = async () => {

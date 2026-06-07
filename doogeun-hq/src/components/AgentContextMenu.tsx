@@ -31,7 +31,8 @@ export default function AgentContextMenu({
   const isSystem = SYSTEM_AGENT_IDS.has(agent.id);
   const isMine = !!agent.owner_id && agent.owner_id === myUid;
   const isAdmin = myRole === "owner" || myRole === "admin";
-  const canEdit = !isSystem && (isMine || isAdmin);
+  // 오너/관리자: 시스템 포함 편집 가능. 다만 삭제는 시스템 보호 (cpo-claude 등 5종 영구 보존).
+  const canEdit = isAdmin || (isMine && !isSystem);
   const canDelete = !isSystem && (isMine || isAdmin);
 
   // 메뉴를 연 우클릭 제스처가 끝날 때까지 닫기 차단 — 사용자가 길게 눌러도 안전
