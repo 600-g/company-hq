@@ -166,11 +166,9 @@ function handleMessage(teamId: string, data: Record<string, unknown>, agentEmoji
         streaming: false,
       };
     });
-    // 클라이언트에 더 최근 메시지가 있을 수도 — 개수 많은 쪽 유지
-    const cur = store.messagesByTeam[teamId] ?? [];
-    if (restored.length >= cur.length) {
-      store.setMessages(teamId, restored);
-    }
+    // 서버 응답이 authoritative — 사용자별 세션 격리 위해 항상 replace.
+    // (이전 로직: cur.length > restored.length 면 안 덮어씀 → 사용자 전환 시 옛 메시지 잔존 버그)
+    store.setMessages(teamId, restored);
     // 히스토리 복원 후 streaming 고착 해제 (WS 끊기며 ai_end 못 받은 잔류 해소)
     store.setStreaming(teamId, false);
     store.setToolStatus(teamId, null);

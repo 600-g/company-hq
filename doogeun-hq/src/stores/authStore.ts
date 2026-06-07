@@ -44,24 +44,29 @@ export const useAuthStore = create<AuthState>()(
       },
       logout: () => {
         persistTokenCookie(null);
-        // 사용자 전환 시 옛 사용자의 잔존 데이터 모두 제거 — 채팅·에이전트·권한 캐시·세션 등
+        // 사용자 전환 시 옛 사용자의 잔존 데이터 모두 제거.
+        // zustand persist 가 in-memory state 변경 시 즉시 다시 저장하므로 단순 removeItem 만으론 부족.
+        // → localStorage 통째로 초기화 (theme/auth 만 보존) + 강제 reload 로 in-memory state 완전 폐기.
         if (typeof window !== "undefined") {
           try {
-            // zustand persist 키 (per-user 데이터)
-            localStorage.removeItem("doogeun-hq-chat");
-            localStorage.removeItem("doogeun-hq-agents");
-            localStorage.removeItem("doogeun-hq-layout");
-            localStorage.removeItem("doogeun-hq-handoff");
-            localStorage.removeItem("doogeun-hq-pipeline");
-            localStorage.removeItem("doogeun-hq-notify");
-            localStorage.removeItem("doogeun-hq-draft-input");
-            localStorage.removeItem("doogeun-hq-pinned-agents");
-            localStorage.removeItem("doogeun-hq-applied-build");
-            // sessionStorage 권한 캐시
-            sessionStorage.removeItem("doogeun-hq-capabilities");
+            // 보존할 키들 (사용자별 데이터 아님)
+            const PRESERVE = new Set([
+              "doogeun-hq-theme",            // 다크/라이트 테마 (사용자 무관 UX 선호)
+              "doogeun-hq-version-dismiss",  // 업데이트 모달 dismiss
+            ]);
+            for (const key of Object.keys(localStorage)) {
+              if (key.startsWith("doogeun-hq-") && !PRESERVE.has(key)) {
+                localStorage.removeItem(key);
+              }
+            }
+            sessionStorage.clear();
           } catch { /* ignore */ }
         }
         set({ token: null, user: null });
+        // 강제 reload → zustand in-memory state 완전 폐기 + 새 사용자 fresh start
+        if (typeof window !== "undefined") {
+          setTimeout(() => { window.location.replace("/auth"); }, 50);
+        }
       },
       isOwner: () => get().user?.role === "owner",
       isAdmin: () => (ROLE_LEVEL[get().user?.role || "guest"] || 0) >= 4,
