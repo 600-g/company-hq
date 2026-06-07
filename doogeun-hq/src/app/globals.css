@@ -70,6 +70,15 @@ html, body {
   height: 100%;
 }
 
+/* 스크롤바 토글로 인한 가로 시프트 방지 — 항상 스크롤바 공간 예약.
+ * 탭/버튼 클릭 시 콘텐츠 길이 변해도 페이지가 좌우로 움직이지 않음.
+ * scrollbar-gutter: Chrome 94+ / Firefox 97+ / Safari 16+ 지원.
+ * 미지원 브라우저 fallback: overflow-y: scroll 로 항상 스크롤바 표시. */
+html {
+  scrollbar-gutter: stable;
+  overflow-y: scroll;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
