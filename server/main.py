@@ -596,7 +596,7 @@ async def add_team(body: dict, request: Request):
 
 
 @app.post("/api/agents/generate-config")
-async def generate_agent_config(body: dict):
+async def generate_agent_config(body: dict, request: Request):
     """TM generateAgentConfig + Skill Router + LLM 도메인 강화 (2026-05-09 업그레이드).
 
     body: {name?, description, project_type?, framework?}
@@ -612,7 +612,10 @@ async def generate_agent_config(body: dict):
 
     returns: {ok, role, description, outputHint, steps, system_prompt,
               skill_key, refs_used, enhanced_sop_len}
+
+    🔐 인증 + create_own_light 권한 (에이전트 만들 사람만 호출).
     """
+    _auth_cap(request, body, "create_own_light")
     from skill_router import (
         select_skill_md, select_references, enhance_sop_with_llm,
         compose_system_prompt,
@@ -1611,10 +1614,12 @@ async def ws_chat(ws: WebSocket, team_id: str, session_id: str | None = None, to
         await ws.close()
         return
 
-    # 시야 필터: 시스템 에이전트(공용) + 본인 소유 + manage_users 보유자만 접근.
+    # 시야 필터: 시스템 + 개발팀(공용) + 본인 소유 + is_public + manage_users 만 접근.
     SYSTEM_AGENTS = {"cpo-claude", "server-monitor", "hq-ops", "staff", "agent-6d883e"}
-    is_system_agent = team_id in SYSTEM_AGENTS
-    if not is_system_agent and not is_owner_of(team, auth_user) and not has_capability(auth_user, "manage_users"):
+    role = team.get("role", "")
+    is_shared = team_id in SYSTEM_AGENTS or role in ("system", "dev")
+    if (not is_shared and not is_owner_of(team, auth_user) and not team.get("is_public")
+            and not has_capability(auth_user, "manage_users")):
         await ws.accept()
         await ws.send_json({"type": "error", "content": "🔒 다른 사용자의 에이전트에는 접근할 수 없어요."})
         await ws.close(code=4403)

@@ -109,6 +109,11 @@ async def get_doogeun_state(request: Request) -> dict:
     token = extract_token_from_request(dict(request.headers), dict(request.query_params), "")
     auth_user = verify_token(token) if token else None
     SYSTEM_AGENTS = {"cpo-claude", "server-monitor", "hq-ops", "staff", "agent-6d883e"}
+
+    def _is_shared(t: dict) -> bool:
+        if t.get("id") in SYSTEM_AGENTS:
+            return True
+        return t.get("role", "") in ("system", "dev")
     show_all = bool(auth_user and has_capability(auth_user, "manage_users"))
     state = _load_doogeun_state()
     existing_ids = {a.get("id") for a in state.get("agents", [])}
@@ -151,9 +156,9 @@ async def get_doogeun_state(request: Request) -> dict:
     if not show_all:
         def _can_see(a: dict) -> bool:
             aid = a.get("id")
-            if aid in SYSTEM_AGENTS:
-                return True
             t = teams_by_id.get(aid) or {}
+            if _is_shared(t):
+                return True
             if t.get("is_public"):
                 return True
             return is_owner_of(t, auth_user)

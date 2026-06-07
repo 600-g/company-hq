@@ -79,7 +79,7 @@ async def dispatch_approve(body: dict, request: Request):
 @router.post("/api/dispatch")
 async def dispatch_task(body: dict, request: Request):
     """CPO가 여러 팀에 작업을 분배하고 결과를 수집. 🔐 manage_users (멀티 에이전트 트리거 = 권한 큼)."""
-    _auth(request, body, cap="manage_users")
+    _auth(request, body, cap="edit_others_prompts")
     import main as _main
     from claude_runner import run_claude, run_claude_light
     from ws_handler import _log_activity, collab_broadcast
@@ -209,7 +209,7 @@ async def list_dispatches():
 @router.post("/api/dispatch/smart")
 async def smart_dispatch(body: dict, request: Request):
     """CPO 주도 디스패치 — 필터링 → 관련 팀만 실행. 🔐 manage_users."""
-    _auth(request, body, cap="manage_users")
+    _auth(request, body, cap="edit_others_prompts")
     import main as _main
     from claude_runner import run_claude, run_claude_light
     from ws_handler import _log_activity, manager as ws_manager
@@ -626,7 +626,7 @@ async def smart_dispatch(body: dict, request: Request):
 @router.post("/api/dispatch/discuss")
 async def dispatch_discuss(body: dict, request: Request):
     """CPO 주도 토론. 🔐 manage_users."""
-    _auth(request, body, cap="manage_users")
+    _auth(request, body, cap="edit_others_prompts")
     import main as _main
     from claude_runner import run_claude, run_claude_light
     from ws_handler import _log_activity

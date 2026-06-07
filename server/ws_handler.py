@@ -96,12 +96,16 @@ class ConnectionManager:
         # ws → 현재 보고 있는 session_id (팀당 여러 탭이 서로 다른 세션 보는 케이스)
         self.ws_session: dict[int, str] = {}
 
-    async def connect(self, team_id: str, ws: WebSocket, session_id: str | None = None):
+    async def connect(self, team_id: str, ws: WebSocket, session_id: str | None = None, user_id: str | None = None):
+        """WS 연결 + 사용자 본인 세션 확정.
+
+        user_id 주어지면 resolve 시 cross-user session 차단 — 게스트가 owner 세션 못 봄.
+        """
         await ws.accept()
         if team_id not in self.active:
             self.active[team_id] = []
         self.active[team_id].append(ws)
-        sid = sessions_store.resolve_session_id(team_id, session_id)
+        sid = sessions_store.resolve_session_id(team_id, session_id, user_id)
         self.ws_session[id(ws)] = sid
         return sid
 
@@ -614,7 +618,7 @@ async def handle_chat(
     # 사용자 본인 세션만 보이게 — 본인 active 또는 default 자동 생성
     if user_id and not session_id:
         session_id = sessions_store.get_active_session_id(team_id, user_id)
-    current_sid = await manager.connect(team_id, ws, session_id)
+    current_sid = await manager.connect(team_id, ws, session_id, user_id=user_id)
 
     # ── keepalive ping (20초 간격) — 연결 끊김 방지 ──
     _ws_alive = True
@@ -660,6 +664,13 @@ async def handle_chat(
             # ── 세션 관리 액션 ─────────────────────────────
             if action == "switch_session":
                 target = msg.get("session_id")
+                # 사용자 본인 세션인지 확인 — 다른 사용자 세션으로 못 옮김
+                if target and user_id:
+                    meta = sessions_store._load_meta(team_id)
+                    target_meta = next((s for s in meta if s.get("id") == target), None)
+                    if not target_meta or target_meta.get("user_id") != user_id:
+                        await ws.send_json({"type": "error", "content": "다른 사용자의 세션은 열 수 없어요."})
+                        continue
                 if target and target != current_sid:
                     # E3: 기존 세션의 agentStatus 스냅샷 저장 (working/tool/working_since 등)
                     try:

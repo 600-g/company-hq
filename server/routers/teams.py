@@ -79,10 +79,28 @@ _require_team_owner_or_admin = _require_team_owner_or_cap
 _SYSTEM_AGENTS = {"cpo-claude", "server-monitor", "hq-ops", "staff", "agent-6d883e"}
 
 
-def _filter_visible_teams(teams: list, request: Request) -> list:
-    """시야 필터: 시스템 에이전트(공용) + 본인 소유 + manage_users 권한자는 전부.
+def _is_shared_team(t: dict) -> bool:
+    """공용 노출 대상: 시스템 에이전트(id 5종) + role=system + role=dev 모두 공용.
 
-    토큰 없거나 무효면 시스템만 노출.
+    teams.json 의 role 필드 (system / dev / agent) 기준. 개인 에이전트(role=agent)
+    + agent-XXX light 만 본인 소유자에게만 노출.
+    """
+    if t.get("id") in _SYSTEM_AGENTS:
+        return True
+    role = t.get("role", "")
+    if role in ("system", "dev"):
+        return True
+    return False
+
+
+def _filter_visible_teams(teams: list, request: Request) -> list:
+    """시야 필터:
+    - 공용 에이전트 (시스템 + 개발팀) — 모든 사용자에게 노출
+    - 본인 소유 에이전트 — 만든 사용자에게만
+    - is_public 플래그 — 다른 사용자에게도 공개 (per-agent 토글)
+    - manage_users 보유자 — 전체 노출 (관리용)
+
+    토큰 없거나 무효면 공용만.
     """
     from auth import (
         extract_token_from_request, verify_token, is_owner_of, has_capability,
@@ -90,12 +108,12 @@ def _filter_visible_teams(teams: list, request: Request) -> list:
     token = extract_token_from_request(dict(request.headers), dict(request.query_params), "")
     user = verify_token(token) if token else None
     if not user:
-        return [t for t in teams if t.get("id") in _SYSTEM_AGENTS]
+        return [t for t in teams if _is_shared_team(t)]
     if has_capability(user, "manage_users"):
         return teams
     return [
         t for t in teams
-        if t.get("id") in _SYSTEM_AGENTS or is_owner_of(t, user) or t.get("is_public")
+        if _is_shared_team(t) or is_owner_of(t, user) or t.get("is_public")
     ]
 
 
