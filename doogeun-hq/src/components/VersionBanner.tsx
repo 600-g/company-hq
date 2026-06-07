@@ -5,6 +5,7 @@ import { Sparkles, RefreshCw, X, Loader2 } from "lucide-react";
 import { apiBase } from "@/lib/utils";
 import { authFetch } from "@/lib/api";
 import { useVersionStore } from "@/stores/versionStore";
+import { useCapabilities } from "@/lib/useCapabilities";
 
 declare global {
   interface Window {
@@ -82,11 +83,15 @@ function inferProgress(logTail: string[]): { pct: number; stage: string } {
  *      · 완료 시 자동 reload
  */
 export default function VersionBanner() {
+  const caps = useCapabilities();
+  const canDeploy = caps.has("deploy");
   const [loaded, setLoaded] = useState<VersionInfo | null>(null);
   const [latestBuild, setLatestBuild] = useState<VersionInfo | null>(null);
   const [gitHead, setGitHead] = useState<GitHead | null>(null);
   const [deploy, setDeploy] = useState<DeployStatus | null>(null);
   const [releaseNotes, setReleaseNotes] = useState<ReleaseNotes | null>(null);
+  const [showReleaseNotes, setShowReleaseNotes] = useState(false);
+  const [refreshDismissed, setRefreshDismissed] = useState(false);
   const isDismissedFor = useVersionStore((s) => s.isDismissedFor);
   const setDismissedCommit = useVersionStore((s) => s.setDismissedCommit);
   const setCache = useVersionStore((s) => s.setCache);
@@ -180,6 +185,11 @@ export default function VersionBanner() {
       if (deployPollTimer.current) clearInterval(deployPollTimer.current);
     };
   }, []);
+
+  // 사용자 본인 브라우저가 CF Pages 보다 옛 build 로 캐싱돼 있는지 (관리자가 배포 완료 후)
+  const browserBuild = loaded?.build || (typeof window !== "undefined" ? window.__DOOGEUN_LOADED_BUILD__ || "" : "");
+  const cfBuild = latestBuild?.build || "";
+  const browserBehind = !!(browserBuild && cfBuild && browserBuild !== cfBuild);
 
   // 미반영 변경 감지 — production build hash 가 git HEAD commit 과 다른지
   // build 형식: "{commit}-{timestamp}" → 앞부분이 commit hash
@@ -332,9 +342,92 @@ export default function VersionBanner() {
   ) : null;
 
   // 모달 표시 조건 — 진행 중 / 에러 / 미반영 알림 (단, 같은 commit 에 dismiss 했으면 모달 안 띄움)
+  // 🔐 권한 분리: 관리자(deploy 권한) 만 배포 모달, 일반 사용자에겐 작은 "새로고침" 알림.
   const dismissedForThis = isDismissedFor(gitCommit);
-  const showModal = deploy?.running || deploy?.error || (hasPending && !dismissedForThis);
-  if (!showModal) return serverDownBanner;
+  const showAdminModal = canDeploy && (deploy?.running || deploy?.error || (hasPending && !dismissedForThis));
+  const showRefreshNotice = !showAdminModal && browserBehind && !refreshDismissed;
+
+  // 일반 사용자 (관리자 아님): 작은 "새로고침" 알림만
+  if (showRefreshNotice) {
+    return (
+      <>
+        {serverDownBanner}
+        <div className="fixed bottom-4 right-4 z-[400] max-w-sm">
+          <div className="rounded-xl border border-sky-400/50 bg-gray-950/98 shadow-2xl overflow-hidden">
+            <div className="p-4">
+              <div className="flex items-start gap-2 mb-3">
+                <div className="w-8 h-8 rounded-full bg-sky-500/20 border border-sky-400/50 flex items-center justify-center shrink-0">
+                  <Sparkles className="w-4 h-4 text-sky-300" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[13px] font-bold text-sky-100">새 버전 배포됨</div>
+                  <div className="text-[11px] text-gray-400">관리자가 새 버전을 배포했어요. 새로고침 해서 받으시겠어요?</div>
+                </div>
+                <button
+                  onClick={() => setRefreshDismissed(true)}
+                  className="shrink-0 text-gray-500 hover:text-gray-200 -mt-1 -mr-1 p-1"
+                  title="나중에"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              {releaseNotes?.groups && releaseNotes.groups.length > 0 && (
+                <details
+                  className="mb-3"
+                  open={showReleaseNotes}
+                  onToggle={(e) => setShowReleaseNotes((e.target as HTMLDetailsElement).open)}
+                >
+                  <summary className="cursor-pointer text-[11px] text-sky-400 hover:text-sky-300 select-none">
+                    📋 릴리즈 노트 보기 ({releaseNotes.total_commits}건)
+                  </summary>
+                  <div className="mt-2 max-h-40 overflow-y-auto space-y-1.5 text-[11px] pl-1">
+                    {releaseNotes.groups.map((g) => (
+                      <div key={g.type}>
+                        <div className="font-bold text-sky-200 flex items-center gap-1">
+                          <span>{g.emoji}</span><span>{g.label}</span>
+                          <span className="text-gray-500 font-mono font-normal">({g.items.length})</span>
+                        </div>
+                        <ul className="text-gray-300 list-disc list-inside text-[10.5px]">
+                          {g.items.slice(0, 4).map((it) => (
+                            <li key={it.hash}>{it.scope && <span className="text-gray-500">[{it.scope}]</span>} {it.title}</li>
+                          ))}
+                          {g.items.length > 4 && <li className="text-gray-500 list-none text-[10px]">… 외 {g.items.length - 4}건</li>}
+                        </ul>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              )}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    try {
+                      const u = new URL(window.location.href);
+                      u.searchParams.set("_v", cfBuild || String(Date.now()));
+                      window.location.replace(u.toString());
+                    } catch {
+                      location.reload();
+                    }
+                  }}
+                  className="flex-1 h-9 rounded-md text-[12px] font-bold bg-sky-500/25 border border-sky-400/70 text-sky-50 hover:bg-sky-500/40 flex items-center justify-center gap-1.5"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" /> 새로고침
+                </button>
+                <button
+                  onClick={() => setRefreshDismissed(true)}
+                  className="px-3 h-9 rounded-md text-[11px] border border-gray-700 text-gray-400 hover:text-gray-200"
+                >
+                  나중에
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  if (!showAdminModal) return serverDownBanner;
 
   return (
     <>
