@@ -4,6 +4,13 @@ import { Badge } from "@/components/ui/badge";
 import { useAgentStore } from "@/stores/agentStore";
 import { useChatStore } from "@/stores/chatStore";
 
+/** AgentSelector 와 동일한 고정 순서 — 활동중 패널도 동일 슬롯 사용. */
+const FIXED_SLOT: Record<string, number> = {
+  "cpo-claude": 1, "hq-ops": 2, "staff": 3,
+  "agent-6d883e": 11, "frontend-team": 12, "backend-team": 13,
+  "design-team": 14, "content-lab": 15, "qa-agent": 16,
+};
+
 interface WorkingAgentsStripProps {
   collapsed: boolean;
   onSelect: (id: string) => void;
@@ -15,7 +22,12 @@ export function WorkingAgentsStrip({ collapsed, onSelect }: WorkingAgentsStripPr
   const agents = useAgentStore((s) => s.agents);
   const workingIds = Object.entries(streamingByTeam).filter(([, v]) => v).map(([k]) => k);
   const unreadIds = Object.entries(unreadByTeam).filter(([, v]) => v > 0).map(([k]) => k);
-  const activeIds = Array.from(new Set([...workingIds, ...unreadIds]));
+  // FIXED 슬롯 기준 정렬 — 시스템/개발 에이전트는 활동중 패널 안에서도 항상 같은 위치.
+  const activeIds = Array.from(new Set([...workingIds, ...unreadIds])).sort((a, b) => {
+    const sa = FIXED_SLOT[a] ?? 100;
+    const sb = FIXED_SLOT[b] ?? 100;
+    return sa - sb;
+  });
   if (activeIds.length === 0) return null;
   if (collapsed) {
     return (
