@@ -166,9 +166,17 @@ function handleMessage(teamId: string, data: Record<string, unknown>, agentEmoji
         streaming: false,
       };
     });
-    // 서버 응답이 authoritative — 사용자별 세션 격리 위해 항상 replace.
-    // (이전 로직: cur.length > restored.length 면 안 덮어씀 → 사용자 전환 시 옛 메시지 잔존 버그)
-    store.setMessages(teamId, restored);
+    // Smart replace — 서버가 authoritative 지만 최근 10초 내 사용자 메시지는 보존
+    // (WS 끊김 → 재연결 → history_sync 시 in-flight 메시지 잠시 사라지는 깜빡임 방지)
+    const cur = store.messagesByTeam[teamId] ?? [];
+    const FRESH_MS = 10_000;
+    const now = Date.now();
+    const freshLocal = cur.filter((m) =>
+      m.role === "user" && (now - m.ts) < FRESH_MS &&
+      !restored.some((r) => r.id === m.id || (r.role === "user" && Math.abs(r.ts - m.ts) < 1000 && r.content === m.content))
+    );
+    const merged = freshLocal.length > 0 ? [...restored, ...freshLocal] : restored;
+    store.setMessages(teamId, merged);
     // 히스토리 복원 후 streaming 고착 해제 (WS 끊기며 ai_end 못 받은 잔류 해소)
     store.setStreaming(teamId, false);
     store.setToolStatus(teamId, null);

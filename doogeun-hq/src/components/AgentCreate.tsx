@@ -126,14 +126,18 @@ export default function AgentCreate({ onDone }: Props) {
   /* 진행률 게이지 — 실시간 단계 표시 (백엔드는 SSE 안 보내므로 클라가 합성) */
   const [progress, setProgress] = useState<{ pct: number; stage: string } | null>(null);
 
-  /* 성공 가이드 팝업 — 외부 사이트 발급 시 한 번 더 안내 */
+  /* 성공 가이드 팝업 — Light/Full 양쪽 다 표시.
+   *  Light: 초보자 가이드 (앱·웹 만들려면 다음 단계 필요).
+   *  Full: 도메인 발급 + 다음 단계. */
   const [successInfo, setSuccessInfo] = useState<null | {
     agentId: string;
     agentName: string;
+    isLight: boolean;
     publicUrl?: string;
     repoUrl?: string;
     subdomainOk: boolean;
     subdomainError?: string;
+    needsGithubToken?: boolean;
   }>(null);
 
   /* AI 초안 생성 — light 모드의 quickDesc 또는 고도화 모드의 role+description 기반.
@@ -310,12 +314,25 @@ export default function AgentCreate({ onDone }: Props) {
         // 실패해도 1초 후 useStateSync debounce가 재시도
       }
 
-      // 외부 사이트 발급 시도가 있었으면 → 성공 팝업으로 한 번 더 안내
+      // Light/Full 양쪽 다 성공 가이드 표시 — 초보자가 다음 단계 알 수 있게
+      if (!useFullTeam) {
+        // Light 에이전트 → 초보자용 다음 단계 가이드
+        setProgress({ pct: 100, stage: "완료!" });
+        setSuccessInfo({
+          agentId: agent.id,
+          agentName: name.trim(),
+          isLight: true,
+          subdomainOk: false,
+          needsGithubToken: !caps.github_token,
+        });
+        return;  // onDone 은 사용자가 [채팅 시작] 클릭 시 호출
+      }
       if (useFullTeam) {
         const sdInfo = data?.subdomain_info as { ok?: boolean; error?: string; url?: string } | undefined;
         setSuccessInfo({
           agentId: agent.id,
           agentName: name.trim(),
+          isLight: false,
           publicUrl: data?.public_url || sdInfo?.url,
           repoUrl: data?.repo_url,
           subdomainOk: !!sdInfo?.ok,
@@ -342,9 +359,87 @@ export default function AgentCreate({ onDone }: Props) {
     }
   };
 
-  // ── 성공 팝업 — 외부 사이트 발급 직후 한 번 더 안내 ──
+  // ── 성공 팝업 — Light/Full 양쪽 다 ──
   if (successInfo) {
-    const { agentName, publicUrl, repoUrl, subdomainOk, subdomainError, agentId } = successInfo;
+    const { agentName, publicUrl, repoUrl, subdomainOk, subdomainError, agentId, isLight, needsGithubToken } = successInfo;
+
+    // Light 에이전트 → 초보자용 다음 단계 가이드
+    if (isLight) {
+      return (
+        <div className="p-6 space-y-4 max-w-xl mx-auto">
+          <div className="text-center space-y-2">
+            <div className="text-5xl">🎉</div>
+            <div className="text-[18px] font-bold text-gray-100">{agentName} 만들어졌어요!</div>
+            <div className="text-[12px] text-gray-400">
+              에이전트 (= AI 도우미) 가 사이드바에 추가됐어요
+            </div>
+          </div>
+
+          <div className="p-4 rounded-xl bg-amber-500/20 border-2 border-amber-400/60 space-y-2 shadow-lg shadow-amber-500/10">
+            <div className="flex items-center gap-2 text-amber-50">
+              <AlertTriangle className="w-5 h-5" />
+              <span className="font-bold text-[14px]">잠깐 — 아직 진짜 사이트/앱은 없어요</span>
+            </div>
+            <div className="text-[12px] text-amber-50 leading-relaxed">
+              방금 만든 건 <strong>대화할 수 있는 AI 도우미</strong> 예요. 글쓰기·요약·아이디어·번역 같은 작업에 강해요.
+              <br />
+              실제 웹사이트나 앱 (URL 로 접속 가능한) 은 <strong>별도 단계</strong> 가 필요해요.
+            </div>
+          </div>
+
+          <div className="p-4 rounded-xl bg-sky-500/15 border-2 border-sky-400/50 space-y-3">
+            <div className="font-bold text-sky-100 text-[14px]">📚 사이트/앱 만들고 싶다면</div>
+            <div className="space-y-2 text-[12px] text-gray-100 leading-relaxed">
+              <div className="flex gap-2">
+                <span className="text-sky-300 font-mono shrink-0">1.</span>
+                <div>
+                  <strong className="text-sky-100">GitHub 계정 가입</strong> (없으면) — 무료, 5분.
+                  <a href="https://github.com/signup" target="_blank" rel="noopener noreferrer" className="ml-1 text-sky-300 hover:text-sky-200 underline">github.com 가입 ↗</a>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <span className="text-sky-300 font-mono shrink-0">2.</span>
+                <div>
+                  <strong className="text-sky-100">GitHub 토큰 발급</strong> 후 두근컴퍼니에 등록.
+                  <a href="/settings" className="ml-1 text-sky-300 hover:text-sky-200 underline">설정 → 내 API 키 → GitHub 토큰 가이드 ↗</a>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <span className="text-sky-300 font-mono shrink-0">3.</span>
+                <div>
+                  새로 만들 때 <strong className="text-sky-100">"고도화 프로젝트"</strong> 탭 선택 → 자동으로 GitHub 레포 생성 + 사이트 빌드.
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <span className="text-sky-300 font-mono shrink-0">4.</span>
+                <div>
+                  (선택) <strong className="text-sky-100">본인 도메인</strong> 연결하려면 Cloudflare 계정 + 도메인 등록. <span className="text-gray-400">(없어도 github.io 무료 주소로 작동)</span>
+                </div>
+              </div>
+            </div>
+            {needsGithubToken && (
+              <div className="text-[11px] text-amber-200 border-t border-sky-400/30 pt-2">
+                💡 지금은 GitHub 토큰이 등록 안 돼서 "Light 모드" 만 가능해요. 위 2번 마치면 잠금 해제.
+              </div>
+            )}
+          </div>
+
+          <div className="p-3 rounded-lg bg-gray-800/50 border border-gray-700 text-[11px] text-gray-300 leading-relaxed">
+            💬 <strong className="text-gray-100">먼저 채팅으로 시도해보세요</strong> — 이 도우미에게 "어떻게 시작하면 좋아?" 하고 물어보면 본인 역할에 맞게 안내해줘요.
+          </div>
+
+          <div className="space-y-2 pt-2">
+            <Button className="w-full" onClick={() => { onDone(agentId); }}>
+              💬 이 에이전트와 채팅 시작
+            </Button>
+            <button onClick={() => { onDone(); }} className="w-full text-[11px] text-gray-500 hover:text-gray-300">
+              나중에 (모달 닫기)
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="p-6 space-y-4 max-w-xl mx-auto">
         <div className="text-center space-y-2">
@@ -356,23 +451,23 @@ export default function AgentCreate({ onDone }: Props) {
         </div>
 
         {subdomainOk && publicUrl ? (
-          <div className="p-4 rounded-lg bg-emerald-500/10 border border-emerald-400/30 space-y-3">
-            <div className="flex items-center gap-2 text-emerald-200">
-              <CheckCircle2 className="w-4 h-4" />
-              <span className="font-bold text-[13px]">도메인 발급 완료</span>
+          <div className="p-4 rounded-xl bg-emerald-500/25 border-2 border-emerald-400/70 space-y-3 shadow-lg shadow-emerald-500/10">
+            <div className="flex items-center gap-2 text-emerald-50">
+              <CheckCircle2 className="w-5 h-5" />
+              <span className="font-bold text-[14px]">도메인 발급 완료</span>
             </div>
             <a
               href={publicUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="block text-center py-3 rounded-md bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/40 transition-colors"
+              className="block text-center py-3 rounded-md bg-emerald-500/40 hover:bg-emerald-500/55 border-2 border-emerald-300/80 transition-colors"
             >
-              <div className="text-[16px] font-mono text-emerald-100 font-bold">{publicUrl.replace(/^https?:\/\//, "")}</div>
-              <div className="text-[10px] text-emerald-300/70 mt-1">클릭하면 새 탭에서 열림 ↗</div>
+              <div className="text-[16px] font-mono text-white font-bold">{publicUrl.replace(/^https?:\/\//, "")}</div>
+              <div className="text-[10px] text-emerald-100 mt-1">클릭하면 새 탭에서 열림 ↗</div>
             </a>
-            <div className="text-[12px] text-gray-300 space-y-1.5 pt-1">
+            <div className="text-[12px] text-gray-100 space-y-1.5 pt-1 leading-relaxed">
               <div>📌 <strong>지금 바로 접속해도</strong> SSL 발급 중일 수 있어요. 5분~1시간 후 정상 작동.</div>
-              <div>📌 첫 빌드는 <code className="text-emerald-300">index.html</code> 같은 파일이 레포에 push 된 후부터.</div>
+              <div>📌 첫 빌드는 <code className="text-emerald-200 bg-black/30 px-1 rounded">index.html</code> 같은 파일이 레포에 push 된 후부터.</div>
               <div>📌 사이트 콘텐츠는 <strong>채팅으로 이 에이전트에게 요청</strong>하면 자동 작성·푸시.</div>
             </div>
           </div>

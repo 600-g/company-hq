@@ -231,7 +231,9 @@ def register_user(nickname: str, code: str) -> dict | None:
     code_upper = code.upper()
 
     # 코드가 소진됐어도 같은 닉네임 + 같은 코드로 가입한 사용자가 있으면 → 재로그인 허용
+    # 닉네임이 다르면 "닉네임 불일치" 명확한 메시지 (단순 "코드 없음" 보다 친절)
     if not code_info:
+        existing_with_code = [u for u in users.values() if u.get("invite_code") == code_upper]
         for uid, u in users.items():
             if u.get("invite_code") == code_upper and u.get("nickname") == nickname:
                 # 같은 사용자 — 새 토큰 발급 (디바이스 추가 또는 재로그인)
@@ -254,6 +256,10 @@ def register_user(nickname: str, code: str) -> dict | None:
                     "token": token,
                     "relogin": True,
                 }
+        # 코드는 존재하지만 닉네임 불일치 — 명확한 메시지
+        if existing_with_code:
+            registered_nick = existing_with_code[0].get("nickname", "")
+            return {"_error": "nickname_mismatch", "registered_nickname": registered_nick}
         return None
 
     # 코드 유효 → 신규 가입

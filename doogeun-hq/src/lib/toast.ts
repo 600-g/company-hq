@@ -29,11 +29,12 @@ function ensureContainer(): HTMLDivElement | null {
 
 export type ToastKind = "info" | "warn" | "error" | "success";
 
+// 강한 대비 — 다크/라이트 어디서든 잘 보이게 진한 배경 + 두꺼운 보더 + 밝은 텍스트
 const STYLES: Record<ToastKind, { bg: string; bd: string; fg: string }> = {
-  info:    { bg: "rgba(15,23,42,0.95)",  bd: "rgba(56,189,248,0.6)", fg: "#bae6fd" },
-  warn:    { bg: "rgba(15,23,42,0.95)",  bd: "rgba(251,191,36,0.6)", fg: "#fde68a" },
-  error:   { bg: "rgba(15,23,42,0.95)",  bd: "rgba(239,68,68,0.7)",  fg: "#fecaca" },
-  success: { bg: "rgba(15,23,42,0.95)",  bd: "rgba(52,211,153,0.6)", fg: "#a7f3d0" },
+  info:    { bg: "rgba(8,47,73,0.98)",  bd: "rgba(56,189,248,0.9)",  fg: "#e0f2fe" },
+  warn:    { bg: "rgba(69,26,3,0.98)",  bd: "rgba(251,191,36,0.95)", fg: "#fef3c7" },
+  error:   { bg: "rgba(69,10,10,0.98)", bd: "rgba(239,68,68,0.95)",  fg: "#fee2e2" },
+  success: { bg: "rgba(6,46,28,0.98)",  bd: "rgba(52,211,153,0.95)", fg: "#d1fae5" },
 };
 
 export function toast(message: string, kind: ToastKind = "info", durationMs = 3000) {
@@ -44,18 +45,19 @@ export function toast(message: string, kind: ToastKind = "info", durationMs = 30
   const s = STYLES[kind];
   el.style.cssText = [
     `background:${s.bg}`,
-    `border:1px solid ${s.bd}`,
+    `border:2px solid ${s.bd}`,
     `color:${s.fg}`,
-    "padding:8px 14px",
-    "border-radius:8px",
-    "font-size:13px",
-    "font-weight:600",
-    "box-shadow:0 4px 12px rgba(0,0,0,0.4)",
+    "padding:10px 16px",
+    "border-radius:10px",
+    "font-size:13.5px",
+    "font-weight:700",
+    "box-shadow:0 6px 20px rgba(0,0,0,0.5)",
     "opacity:0",
     "transform:translateY(-6px)",
     "transition:opacity 200ms,transform 200ms",
     "pointer-events:auto",
     "max-width:90vw",
+    "backdrop-filter:blur(8px)",
   ].join(";");
   el.textContent = message;
   c.appendChild(el);

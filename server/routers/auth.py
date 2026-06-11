@@ -49,14 +49,23 @@ async def auth_owner(body: dict):
 
 @router.post("/register")
 async def auth_register(body: dict):
-    """초대코드로 회원가입"""
+    """초대코드로 회원가입 또는 같은 닉네임 재로그인"""
     nickname = body.get("nickname", "").strip()
     code = body.get("code", "").strip()
     if not nickname or not code:
         return {"ok": False, "error": "닉네임과 초대코드를 입력하세요."}
     result = register_user(nickname, code)
     if not result:
-        return {"ok": False, "error": "초대코드가 유효하지 않습니다."}
+        return {"ok": False, "error": "초대코드가 존재하지 않습니다."}
+    # 닉네임 불일치 케이스 — 명확한 메시지 + 등록된 닉네임 힌트
+    if isinstance(result, dict) and result.get("_error") == "nickname_mismatch":
+        registered = result.get("registered_nickname", "")
+        if registered:
+            return {
+                "ok": False,
+                "error": f"닉네임이 다릅니다. 이 코드는 '{registered}' 로 등록돼있어요. 첫 가입 시 입력한 닉네임으로 다시 시도해주세요.",
+            }
+        return {"ok": False, "error": "닉네임이 다릅니다."}
     return {"ok": True, **result}
 
 
