@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ExternalLink, MessageSquare, Globe, Loader2, AlertCircle, Sparkles } from "lucide-react";
 import { apiBase } from "@/lib/utils";
+import { useAuthStore } from "@/stores/authStore";
 
 interface SiteRow {
   id: string;
@@ -40,6 +41,8 @@ const KNOWN_DOMAINS: Record<string, string> = {
 };
 
 export default function SitesModal({ onSelectAgent }: Props) {
+  const myRole = useAuthStore((s) => s.user?.role || "guest");
+  const isAdmin = myRole === "owner" || myRole === "admin";
   const [rows, setRows] = useState<SiteRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -134,9 +137,14 @@ export default function SitesModal({ onSelectAgent }: Props) {
   };
 
   // 카드 렌더 — product / dev 양쪽에서 재사용
+  // 🔒 권한: 일반 사용자 = 에이전트 이름 + 커스텀 도메인(있으면) 만 노출. GitHub 정보 완전 숨김.
+  //        관리자 = 전체 노출 + 도메인 추가 버튼.
   const renderCard = (s: SiteRow) => {
-    const liveUrl = s.publicUrl || s.githubPagesUrl;
     const hasOwnDomain = !!s.publicUrl;
+    // 일반 사용자: 커스텀 도메인만 (publicUrl 없으면 사이트 자체 비공개로 간주 → 카드 자체 숨김 선택 가능)
+    const visibleUrl = isAdmin ? (s.publicUrl || s.githubPagesUrl) : s.publicUrl;
+    // 일반 사용자가 보는 카드는 커스텀 도메인 있는 사이트만 (GitHub Pages 만 있는 건 숨김 — repo 노출 방지)
+    if (!isAdmin && !hasOwnDomain) return null;
     return (
       <div
         key={s.id}
@@ -146,39 +154,46 @@ export default function SitesModal({ onSelectAgent }: Props) {
           <span className="text-2xl">{s.emoji}</span>
           <div className="flex-1 min-w-0">
             <div className="text-[14px] font-bold text-gray-100 truncate">{s.name}</div>
-            <div className="text-[10px] text-gray-500 font-mono truncate">{s.repo}</div>
+            {isAdmin && (
+              <div className="text-[10px] text-gray-500 font-mono truncate">{s.repo}</div>
+            )}
           </div>
-          {hasOwnDomain ? (
+          {isAdmin && (hasOwnDomain ? (
             <Badge variant="success" className="text-[10px]">분리됨</Badge>
           ) : (
             <Badge variant="secondary" className="text-[10px]">github.io</Badge>
-          )}
+          ))}
         </div>
 
-        <div className="text-[11px] text-gray-400 font-mono truncate" title={liveUrl}>
-          <Globe className="w-3 h-3 inline mr-1 mb-0.5" />
-          {liveUrl.replace(/^https?:\/\//, "")}
-        </div>
+        {visibleUrl && (
+          <div className="text-[11px] text-gray-400 font-mono truncate" title={visibleUrl}>
+            <Globe className="w-3 h-3 inline mr-1 mb-0.5" />
+            {visibleUrl.replace(/^https?:\/\//, "")}
+          </div>
+        )}
 
         <div className="flex flex-wrap gap-1.5 pt-1">
-          <a
-            href={liveUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] bg-sky-500/15 text-sky-200 hover:bg-sky-500/25 transition-colors"
-          >
-            <ExternalLink className="w-3 h-3" /> 열기
-          </a>
+          {visibleUrl && (
+            <a
+              href={visibleUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] bg-sky-500/15 text-sky-200 hover:bg-sky-500/25 transition-colors"
+            >
+              <ExternalLink className="w-3 h-3" /> 열기
+            </a>
+          )}
           <Button
             variant="ghost"
             size="sm"
             className="h-6 text-[11px] px-2"
             onClick={() => onSelectAgent?.(s.id)}
-            title="이 프로덕트 담당 에이전트와 채팅 — 사이트 패치/개선 요청"
+            title="이 프로덕트 담당 에이전트와 채팅"
           >
             <MessageSquare className="w-3 h-3 mr-1" /> 채팅
           </Button>
-          {!hasOwnDomain && (
+          {/* 도메인 추가 — 관리자만. 일반 사용자 차단 */}
+          {isAdmin && !hasOwnDomain && (
             <Button
               variant="outline"
               size="sm"
