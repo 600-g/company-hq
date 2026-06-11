@@ -123,6 +123,8 @@ export default function AgentCreate({ onDone }: Props) {
   const [confirming, setConfirming] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
+  /* 진행률 게이지 — 실시간 단계 표시 (백엔드는 SSE 안 보내므로 클라가 합성) */
+  const [progress, setProgress] = useState<{ pct: number; stage: string } | null>(null);
 
   /* 성공 가이드 팝업 — 외부 사이트 발급 시 한 번 더 안내 */
   const [successInfo, setSuccessInfo] = useState<null | {
@@ -146,11 +148,14 @@ export default function AgentCreate({ onDone }: Props) {
 
     setGenerating(true);
     setDraft(null);
+    // 15초 타임아웃 — Gemini 쿼터 초과 / Gemma 느림 / 네트워크 끊김 등으로 무한대기 방지
+    const ctrl = new AbortController();
+    const timeoutId = setTimeout(() => ctrl.abort(), 15000);
     try {
       const r = await authFetch(`/api/agents/generate-config`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), description: descSource }),
+        json: { name: name.trim(), description: descSource },
+        signal: ctrl.signal,
       });
       if (r.ok) {
         const d = await r.json();
@@ -162,12 +167,12 @@ export default function AgentCreate({ onDone }: Props) {
             outputHint: d.outputHint || "",
             steps: d.steps || fallbackSteps(descSource),
           });
-          setGenerating(false);
           return;
         }
       }
       throw new Error("api unavailable");
     } catch {
+      // AI 초안 실패해도 진행 가능 — 로컬 fallback 으로 폼 자동 작성
       setDraft({
         role: mode === "project" && role ? role : "전문가",
         description: descSource,
@@ -176,6 +181,7 @@ export default function AgentCreate({ onDone }: Props) {
         steps: fallbackSteps(descSource),
       });
     } finally {
+      clearTimeout(timeoutId);
       setGenerating(false);
     }
   };
@@ -202,13 +208,40 @@ export default function AgentCreate({ onDone }: Props) {
     if (submitting) return;
     setSubmitting(true);
     setServerError(null);
+    setProgress({ pct: 5, stage: "요청 전송 중..." });
+
+    // 합성 진행률 — 백엔드가 stage 안 알려주므로 시간 기반으로 단계적 표시.
+    // Light: 평균 2~5초, Full(GitHub 레포 + CF 발급): 15~40초
+    const useFullTeam = mode === "project" && publicSite && subdomain.trim();
+    const stages: Array<{ at: number; pct: number; stage: string }> = useFullTeam ? [
+      { at: 1500,  pct: 15, stage: "GitHub 레포 생성 중... (5~15초)" },
+      { at: 8000,  pct: 35, stage: "로컬 클론 + CLAUDE.md 생성 중..." },
+      { at: 18000, pct: 60, stage: "시스템 프롬프트 합성 중..." },
+      { at: 28000, pct: 80, stage: "Cloudflare 도메인 발급 중..." },
+      { at: 38000, pct: 92, stage: "마무리 중..." },
+    ] : [
+      { at: 500,  pct: 30, stage: "sandbox 폴더 만드는 중..." },
+      { at: 1500, pct: 55, stage: "팀 등록 중..." },
+      { at: 2500, pct: 75, stage: "시스템 프롬프트 저장 중..." },
+      { at: 3500, pct: 90, stage: "층 배치 동기화 중..." },
+    ];
+    const startTs = Date.now();
+    const progressInterval = setInterval(() => {
+      const elapsed = Date.now() - startTs;
+      let target = stages[0];
+      for (const s of stages) if (elapsed >= s.at) target = s;
+      setProgress((prev) => prev && prev.pct >= target.pct ? prev : { pct: target.pct, stage: target.stage });
+    }, 300);
+
+    // 타임아웃 — Light 30초, Full 60초
+    const ctrl = new AbortController();
+    const timeoutMs = useFullTeam ? 60000 : 30000;
+    const timeoutId = setTimeout(() => ctrl.abort(), timeoutMs);
+
     try {
       const finalRole = mode === "light" ? (draft?.role ?? "") : role.trim();
       const finalDesc = mode === "light" ? (draft?.description ?? quickDesc.trim()) : description.trim();
       const finalSysPrompt = mode === "light" ? (draft?.systemPromptMd ?? "") : systemPromptMd;
-
-      // 외부 사이트 토글이면 풀 /api/teams (GitHub 레포 + 자동 도메인), 아니면 light (sandbox)
-      const useFullTeam = mode === "project" && publicSite && subdomain.trim();
       const finalRepo = (repoName.trim() || subdomain.trim() || "").toLowerCase();
 
       const r = useFullTeam
@@ -224,6 +257,7 @@ export default function AgentCreate({ onDone }: Props) {
               subdomain: subdomain.trim().toLowerCase(),
               subdomain_category: cfCategory,
             },
+            signal: ctrl.signal,
           })
         : await authFetch("/api/teams/light", {
             method: "POST",
@@ -234,6 +268,7 @@ export default function AgentCreate({ onDone }: Props) {
               system_prompt: finalSysPrompt,
               collaborative: true,
             },
+            signal: ctrl.signal,
           });
       const data = await r.json().catch(() => ({}));
       if (!r.ok || !data?.ok) {
@@ -289,11 +324,20 @@ export default function AgentCreate({ onDone }: Props) {
         return;  // onDone 은 사용자가 [채팅 시작] 클릭 시 호출
       }
 
+      setProgress({ pct: 100, stage: "완료!" });
       onDone(agent.id);
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "서버 등록 실패";
+      let msg = e instanceof Error ? e.message : "서버 등록 실패";
+      if (e instanceof DOMException && e.name === "AbortError") {
+        msg = `타임아웃 (${useFullTeam ? "60" : "30"}초 초과) — Gemini 쿼터 초과 또는 GitHub 응답 지연일 수 있어요. 잠시 후 다시 시도해주세요.`;
+      } else if (msg.includes("Failed to fetch") || msg.includes("NetworkError")) {
+        msg = "네트워크 끊김 — 인터넷 연결 확인 후 다시 시도해주세요.";
+      }
       setServerError(msg);
+      setProgress(null);
     } finally {
+      clearTimeout(timeoutId);
+      clearInterval(progressInterval);
       setSubmitting(false);
     }
   };
@@ -823,6 +867,29 @@ export default function AgentCreate({ onDone }: Props) {
 {mode === "light" ? draft?.systemPromptMd : systemPromptMd || "(없음)"}
                 </pre>
               </details>
+              {/* 진행률 게이지 — 단계별 상태 + % */}
+              {submitting && progress && (
+                <div className="rounded-md border border-sky-400/40 bg-sky-500/10 p-3 space-y-2">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-sky-200 font-bold">{progress.stage}</span>
+                    <span className="font-mono text-sky-100 font-bold">{progress.pct}%</span>
+                  </div>
+                  <div className="h-2 rounded-full bg-gray-800/80 border border-gray-700/50 overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-sky-500 via-blue-400 to-cyan-300 transition-all duration-500 shadow-[0_0_8px_rgba(56,189,248,0.5)]"
+                      style={{ width: `${progress.pct}%` }}
+                    />
+                  </div>
+                  <div className="text-[10px] text-gray-400">
+                    {(() => {
+                      const isFull = mode === "project" && publicSite && subdomain.trim();
+                      return isFull
+                        ? "GitHub 레포 생성 → 클론 → CF 도메인 발급 — 평균 15~40초"
+                        : "sandbox 폴더 → 팀 등록 → 시스템 프롬프트 — 평균 2~5초";
+                    })()}
+                  </div>
+                </div>
+              )}
               {serverError && (
                 <div className="rounded-md border border-red-400/40 bg-red-500/10 px-3 py-2 text-[11px] text-red-200 flex items-start gap-1.5">
                   <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />

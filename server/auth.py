@@ -220,12 +220,43 @@ def use_invite_code(code: str):
 
 # ── 사용자 관리 ───────────────────────────────────────
 def register_user(nickname: str, code: str) -> dict | None:
-    """초대코드로 사용자 등록. 세션 토큰 반환."""
+    """초대코드로 사용자 등록 또는 재로그인.
+
+    - 첫 사용: 신규 계정 생성 + 코드 소진
+    - 재사용 (코드 소진된 상태): 같은 닉네임 + 같은 코드 → 기존 계정에 새 토큰 발급 (=재로그인).
+      다른 닉네임 시도 시 거부.
+    """
     code_info = validate_invite_code(code)
+    users = _load_json(_USERS_FILE) if isinstance(_load_json(_USERS_FILE), dict) else {}
+    code_upper = code.upper()
+
+    # 코드가 소진됐어도 같은 닉네임 + 같은 코드로 가입한 사용자가 있으면 → 재로그인 허용
     if not code_info:
+        for uid, u in users.items():
+            if u.get("invite_code") == code_upper and u.get("nickname") == nickname:
+                # 같은 사용자 — 새 토큰 발급 (디바이스 추가 또는 재로그인)
+                token = uuid.uuid4().hex
+                new_hash = hashlib.sha256(token.encode()).hexdigest()
+                tokens_list = list(u.get("tokens") or [])
+                legacy = u.get("token")
+                if legacy and legacy not in tokens_list:
+                    tokens_list.append(legacy)
+                tokens_list.append(new_hash)
+                u["tokens"] = tokens_list[-5:]  # 최대 5 디바이스 동시
+                u.pop("token", None)
+                u["last_active"] = datetime.now().isoformat()
+                _save_json(_USERS_FILE, users)
+                return {
+                    "user_id": uid,
+                    "nickname": u["nickname"],
+                    "role": u["role"],
+                    "permissions": ROLES.get(u["role"], ROLES["guest"]),
+                    "token": token,
+                    "relogin": True,
+                }
         return None
 
-    users = _load_json(_USERS_FILE)
+    # 코드 유효 → 신규 가입
     if not isinstance(users, dict):
         users = {}
 
