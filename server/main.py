@@ -1444,7 +1444,12 @@ async def http_chat_send(team_id: str, body: dict, request: Request):
     if not team:
         return {"ok": False, "error": "팀 없음"}
     SYSTEM_AGENTS = {"cpo-claude", "server-monitor", "hq-ops", "staff", "agent-6d883e"}
-    if (team["id"] not in SYSTEM_AGENTS and not is_owner_of(team, user)
+    role_team = team.get("role", "")
+    is_shared = team["id"] in SYSTEM_AGENTS or role_team in ("system", "dev")
+    is_admin_role = user.get("role") in ("owner", "admin")
+    if is_shared and not is_admin_role:
+        return {"ok": False, "error": "이 에이전트는 관리자 오케스트레이션 전용입니다. 본인의 에이전트를 만들어 사용하세요."}
+    if (not is_shared and not is_owner_of(team, user)
             and not team.get("is_public") and not has_capability(user, "manage_users")):
         return {"ok": False, "error": "다른 사용자의 비공개 에이전트에는 채팅할 수 없어요."}
     prompt = (body.get("prompt") or "").strip()
@@ -1614,16 +1619,32 @@ async def ws_chat(ws: WebSocket, team_id: str, session_id: str | None = None, to
         await ws.close()
         return
 
-    # 시야 필터: 시스템 + 개발팀(공용) + 본인 소유 + is_public + manage_users 만 접근.
+    # 시야 + 채팅 분리:
+    # - 시스템/개발 에이전트: 시야는 공용(사이드바 표시), 채팅은 owner/admin 만 (오케스트레이션 도구).
+    # - 개인 에이전트: 본인 소유 + is_public + manage_users 만 채팅.
     SYSTEM_AGENTS = {"cpo-claude", "server-monitor", "hq-ops", "staff", "agent-6d883e"}
     role = team.get("role", "")
     is_shared = team_id in SYSTEM_AGENTS or role in ("system", "dev")
-    if (not is_shared and not is_owner_of(team, auth_user) and not team.get("is_public")
-            and not has_capability(auth_user, "manage_users")):
-        await ws.accept()
-        await ws.send_json({"type": "error", "content": "🔒 다른 사용자의 에이전트에는 접근할 수 없어요."})
-        await ws.close(code=4403)
-        return
+    is_admin_role = auth_user.get("role") in ("owner", "admin")
+
+    if is_shared:
+        # 시스템/개발 = 오너/관리자 오케스트레이션 전용 채팅 (사원/게스트 차단)
+        if not is_admin_role:
+            await ws.accept()
+            await ws.send_json({
+                "type": "error",
+                "content": "🔒 이 에이전트는 관리자 오케스트레이션 전용입니다. 본인의 에이전트를 만들어 사용하세요.",
+            })
+            await ws.close(code=4403)
+            return
+    else:
+        # 개인 에이전트
+        if (not is_owner_of(team, auth_user) and not team.get("is_public")
+                and not has_capability(auth_user, "manage_users")):
+            await ws.accept()
+            await ws.send_json({"type": "error", "content": "🔒 다른 사용자의 에이전트에는 접근할 수 없어요."})
+            await ws.close(code=4403)
+            return
 
     project_path = team["localPath"]
     local_path = os.path.expanduser(project_path)

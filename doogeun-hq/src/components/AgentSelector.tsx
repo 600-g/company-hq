@@ -3,6 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import { type Agent } from "@/stores/agentStore";
 import { useChatStore } from "@/stores/chatStore";
+import { useAuthStore } from "@/stores/authStore";
+import { toast } from "@/lib/toast";
+import { Lock } from "lucide-react";
 
 // 그룹 라벨에 마우스 hover 시 한 줄 설명 (native title — z-index 무관, 가벼움)
 const GROUP_HOVER: Record<"system" | "dev" | "agent", string> = {
@@ -89,6 +92,28 @@ export default function AgentSelector({
   const streamingByTeam = useChatStore((s) => s.streamingByTeam);
   const unreadByTeam = useChatStore((s) => s.unreadByTeam);
   const lastActiveByTeam = useChatStore((s) => s.lastActiveByTeam);
+  const myRole = useAuthStore((s) => s.user?.role || "guest");
+  const isAdmin = myRole === "owner" || myRole === "admin";
+
+  /** 시스템/개발 에이전트는 admin 전용 채팅 — 사원/게스트는 보이지만 클릭 시 토스트. */
+  const isLockedForMe = (a: Agent): boolean => {
+    if (isAdmin) return false;
+    const fixed = FIXED_AGENT_CONFIG[a.id];
+    if (fixed?.group === "system" || fixed?.group === "dev") return true;
+    return false;
+  };
+
+  const handleAgentClick = (a: Agent) => {
+    if (isLockedForMe(a)) {
+      toast(
+        "이 에이전트는 관리자 오케스트레이션 전용입니다. 본인의 에이전트를 만들어 사용하세요.",
+        "warn",
+        4000
+      );
+      return;
+    }
+    onSelect(a.id);
+  };
   const [collapsed, setCollapsed] = useState<Record<"system" | "dev" | "agent", boolean>>(() =>
     typeof window !== "undefined" ? getCollapsedGroups() : { system: false, dev: false, agent: false }
   );
@@ -164,17 +189,21 @@ export default function AgentSelector({
     const isHqOps = a.id === "hq-ops";
     const isAdminLine = isStaff || isHqOps;
     const isPinned = pinned.has(a.id);
+    const locked = isLockedForMe(a);
     return (
       <div key={a.id} data-agent-id={a.id} className={`flex w-full ${isAdminLine ? "border-b border-sky-500/25 bg-sky-500/5" : ""}`}>
         <button
-          onClick={() => onSelect(a.id)}
+          onClick={() => handleAgentClick(a)}
           onContextMenu={(e) => { e.preventDefault(); onContextMenu?.(a.id, e.clientX, e.clientY); }}
+          title={locked ? "관리자 오케스트레이션 전용 — 채팅 불가" : undefined}
           className={`flex-1 min-w-0 flex items-center gap-1.5 px-2.5 py-1.5 text-left text-[12px] transition-colors ${
+            locked ? "text-gray-500 cursor-not-allowed hover:bg-gray-800/20" :
             active ? "bg-sky-500/15 text-sky-100" : "text-gray-300 hover:bg-gray-800/40"
           }`}
         >
-          <span className="text-sm leading-none shrink-0">{a.emoji}</span>
+          <span className={`text-sm leading-none shrink-0 ${locked ? "opacity-50" : ""}`}>{a.emoji}</span>
           <span className={`flex-1 min-w-0 truncate ${active ? "font-bold" : ""}`}>{a.name}</span>
+          {locked && <Lock className="w-3 h-3 text-gray-600 shrink-0" />}
           {streaming ? (
             <span className="flex items-center gap-0.5 text-[9px] text-amber-300 shrink-0">
               <span className="w-1.5 h-1.5 bg-amber-400 rounded-full animate-pulse" />
