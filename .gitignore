@@ -34,3 +34,9 @@ server/patch_log.jsonl
 server/doogeun.db
 server/doogeun.db-shm
 server/doogeun.db-wal
+
+# 사주 런타임 데이터 (v2)
+server/saju_cache.db
+server/saju_quota.db
+server/saju_stats.json
+server/saju_fortune_pool.json
