@@ -10,6 +10,9 @@ from pathlib import Path
 
 from fastmcp import FastMCP
 
+# 도구 함수명(claude_usage)과 모듈명이 겹쳐서 alias 로 가져온다.
+from claude_usage import format_usage_text as _format_usage_text
+
 mcp = FastMCP("두근컴퍼니-HQ")
 
 PROJECTS_ROOT = Path.home() / "Developer" / "my-company"
@@ -585,6 +588,17 @@ def emergency_action(action: str) -> str:
         return f"❌ 알 수 없는 조치: {action}\n가능: kill_orphans, kill_all, restart_server, restart_tunnel, restart_bot, run_119, run_112, budget, budget_reset, status"
 
     return "\n".join(lines)
+
+
+# ── 11. Claude 사용량 (배터리 잔량) ──────────────────
+
+@mcp.tool()
+def claude_usage() -> str:
+    """Claude Max 플랜 사용량 확인 — 5시간 세션 / 주간 / 모델별 주간 잔량.
+
+    긴 작업을 시작하기 전에 남은 한도를 스스로 점검할 때 쓴다. 2분 캐시.
+    """
+    return _format_usage_text()
 
 
 if __name__ == "__main__":

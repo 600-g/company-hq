@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { RefreshCw, Check, XCircle, AlertTriangle } from "lucide-react";
 import { apiBase } from "@/lib/utils";
 import MemoryOptimizerModal from "@/components/MemoryOptimizerModal";
+import ClaudeUsageWidget from "@/components/ClaudeUsageWidget";
 
 interface ToolCheck { installed: boolean; version: string | null; path: string | null }
 interface SysCheck { ok: boolean; platform?: string; tools?: Record<string, ToolCheck> }
@@ -120,6 +121,9 @@ export default function ServerDashboard() {
           </div>
         )}
       </section>
+
+      {/* Claude Max 잔량 배터리 — 관리자에게만 렌더 (위젯 내부에서 role 체크) */}
+      <ClaudeUsageWidget />
 
       {/* 서비스 상태 */}
       {services.length > 0 && (

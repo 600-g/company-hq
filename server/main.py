@@ -301,6 +301,7 @@ from routers.dispatch import router as dispatch_router
 from routers.doogeun_state import router as doogeun_state_router
 from routers.dashboard import router as dashboard_router
 from routers.embed import router as embed_router
+from routers.claude_usage import router as claude_usage_router
 app.include_router(admin_patch_router)
 app.include_router(admin_ops_router)
 app.include_router(office_layout_router)
@@ -316,6 +317,7 @@ app.include_router(dispatch_router)
 app.include_router(doogeun_state_router)
 app.include_router(dashboard_router)
 app.include_router(embed_router)
+app.include_router(claude_usage_router)
 
 from routers.naver_proxy import router as naver_proxy_router  # noqa: E402
 app.include_router(naver_proxy_router)
