@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.doogeun.saju-fortune-gen</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>-c</string>
+        <string>cd /Users/600mac/Developer/my-company/company-hq/server &amp;&amp; source venv/bin/activate &amp;&amp; python3 saju_fortune_gen.py</string>
+    </array>
+
+    <!-- 매일 KST 06:00 — 사용자가 아침 열기 전 오늘의 풀 갱신 완료 (~2~3분 소요) -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>6</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/Users/600mac/Developer/my-company/company-hq/server/logs/saju_fortune_gen.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/600mac/Developer/my-company/company-hq/server/logs/saju_fortune_gen.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>HOME</key>
+        <string>/Users/600mac</string>
+    </dict>
+</dict>
+</plist>
