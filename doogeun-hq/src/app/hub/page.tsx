@@ -21,6 +21,7 @@ import {
 import SitesModal from "@/components/hub/SitesModal";
 import DebugPanel, { LogsPane } from "@/components/DebugPanel";
 import VersionBadge from "@/components/VersionBadge";
+import ClaudeUsageWidget from "@/components/ClaudeUsageWidget";
 import { useVersionStore } from "@/stores/versionStore";
 import MentionPopup from "@/components/chat/MentionPopup";
 import TerminalPanel from "@/components/TerminalPanel";
@@ -424,6 +425,14 @@ export default function HubPage() {
             location.reload();
           }} />
         </nav>
+
+        {/* Claude Max 잔량 배터리 — 사이드바 하단 상시 노출 (관리자 + 펼친 상태).
+            서버실 모달에만 있으면 글랜스가 안 돼서 사이드바로 승격. 위젯 내부에서도 role 재확인. */}
+        {!sideCollapsed && (user?.role === "owner" || user?.role === "admin") && (
+          <div className="px-2 py-2 border-t border-gray-800/60">
+            <ClaudeUsageWidget />
+          </div>
+        )}
 
         {/* 버전 배지 — 오너 정보 바로 위 */}
         <VersionBadge collapsed={sideCollapsed} />
