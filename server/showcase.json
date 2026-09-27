@@ -1,0 +1,74 @@
+{
+  "items": [
+    {
+      "id": "doogeun",
+      "title": "두근컴퍼니",
+      "subtitle": "AI 에이전트 사무실",
+      "url": "https://aimaker.600g.net",
+      "icon": "lucide:building-2",
+      "color": "#64748b",
+      "visible": true,
+      "order": 1
+    },
+    {
+      "id": "omnifootball",
+      "title": "전지적축덕시점",
+      "subtitle": "축구 팬 PWA",
+      "url": "https://omnifootball.600g.net",
+      "icon": "lucide:circle-dot",
+      "color": "#10b981",
+      "visible": true,
+      "order": 2
+    },
+    {
+      "id": "exam-hub",
+      "title": "시험허브",
+      "subtitle": "자격증 학습",
+      "url": "https://exam.600g.net",
+      "icon": "lucide:book-open",
+      "color": "#f59e0b",
+      "visible": true,
+      "order": 3
+    },
+    {
+      "id": "card-q0046e",
+      "title": "신점 보기",
+      "subtitle": "만세력으로 보는 운명",
+      "url": "https://saju.600g.net",
+      "icon": "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'><path d='M2 7h20'/><path d='M3 5l-1 2'/><path d='M21 5l1 2'/><path d='M3.5 10.5h17'/><path d='M5.5 7v14'/><path d='M18.5 7v14'/><path d='M5.5 21h13'/></svg>",
+      "color": "#0d9488",
+      "visible": true,
+      "order": 4
+    },
+    {
+      "id": "datemap",
+      "title": "데이트맵",
+      "subtitle": "데이트 코스 기록",
+      "url": "https://datemap.600g.net",
+      "icon": "lucide:heart",
+      "color": "#ec4899",
+      "visible": false,
+      "order": 5
+    },
+    {
+      "id": "coinbot",
+      "title": "두근코인봇",
+      "subtitle": "업비트 자동매매",
+      "url": "",
+      "icon": "lucide:bitcoin",
+      "color": "#fbbf24",
+      "visible": false,
+      "order": 6
+    },
+    {
+      "id": "stockbot",
+      "title": "주식자동봇",
+      "subtitle": "주식 자동매매",
+      "url": "",
+      "icon": "lucide:trending-up",
+      "color": "#06b6d4",
+      "visible": false,
+      "order": 7
+    }
+  ]
+}
