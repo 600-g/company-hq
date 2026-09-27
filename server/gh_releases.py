@@ -8,7 +8,8 @@
 
 필요 환경변수:
 - GITHUB_TOKEN   : repo 스코프 PAT
-- APPS_GH_REPO   : "owner/repo" (기본 600-g/app-releases) — **public 이어야** 익명 다운로드 가능
+- APPS_GH_REPO   : "owner/repo" (기본 600-g/app-releases) — 2026-09-28 부터 **비공개**. 다운로드는
+                   routers/apps.py 가 토큰으로 에셋 서명 URL 을 받아 넘긴다 (사이트 경유만)
 """
 from __future__ import annotations
 

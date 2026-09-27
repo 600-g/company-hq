@@ -428,16 +428,18 @@ async def get_apps(request: Request, all: int = 0):
 
 @router.get("/api/apps/_status")
 async def apps_status(request: Request):
-    """배포 저장소가 존재하는지 / public 인지 — 관리 UI 진단용."""
+    """배포 저장소가 존재하는지 / 공개 여부 — 관리 UI 진단용.
+
+    비공개도 정상이다 (2026-09-28 부터 app-releases 는 비공개): 다운로드는 백엔드가
+    GITHUB_TOKEN 으로 에셋 서명 URL 을 받아 넘기므로 사이트 [받기] 로만 받아진다.
+    """
     require_admin(request, None)
     try:
         st = await gh_releases.repo_status()
     except gh_releases.GitHubError as e:
         return {"ok": False, "error": str(e), "repo": gh_releases.repo()}
-    st["ok"] = st["exists"] and st["private"] is False
-    if st["exists"] and st["private"]:
-        st["error"] = "배포 저장소가 private 입니다 — 익명 다운로드가 불가합니다"
-    elif not st["exists"]:
+    st["ok"] = bool(st["exists"])
+    if not st["exists"]:
         st["error"] = "배포 저장소가 없습니다"
     return st
 
